@@ -184,6 +184,7 @@ HTML = '''
         <button class="btn btn-green" onclick="exportCSV()">CSV</button>
         <button class="btn btn-green" onclick="exportJSON()">JSON</button>
         <button class="btn" onclick="validate()">Validate</button>
+        <button class="btn" style="background:#ff9800" onclick="startScrape()">🚀 Start Scrape</button>
     </div>
     <table>
         <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th></tr></thead>
@@ -202,6 +203,13 @@ HTML = '''
         function exportCSV(){window.location.href='/export/csv'}
         function exportJSON(){window.location.href='/export/json'}
         function validate(){if(confirm('Validate?'))window.location.href='/admin/validate'}
+        function startScrape(){
+            if(confirm('Start new scraping job for all cities/categories?')){
+                fetch('/api/trigger/scrape')
+                    .then(r => r.json())
+                    .then(d => alert(d.message || d.error));
+            }
+        }
     </script>
 </body>
 </html>
