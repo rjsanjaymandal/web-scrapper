@@ -15,6 +15,17 @@ from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+# Import enhanced utilities
+try:
+    from enhanced_utils import (
+        SulekhaScraper, ClickIndiaScraper,
+        EmailValidator, PhoneFormatter,
+        FuzzyDeduplicator, QualityScorer,
+        RetryQueue, ScraperScheduler, SelectorManager
+    )
+except ImportError:
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -496,7 +507,9 @@ class ContactScraper:
         self.scrapers: List[BaseScraper] = [
             JustDialScraper(),
             IndiaMartScraper(),
-            ICICIScraper()
+            ICICIScraper(),
+            SulekhaScraper(),
+            ClickIndiaScraper()
         ]
         
         self.stats = {
