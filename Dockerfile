@@ -11,20 +11,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Ensure Playwright installs browsers to a fixed location that everyone can access
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
+
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Force reinstall playwright to ensure browser is downloaded
-RUN pip uninstall -y playwright || true
-RUN pip install playwright
-
-# Download the Chromium browser binary for Playwright
+# Force Playwright install to the specific path
 RUN playwright install chromium
 
 # Create a non-root user
 RUN useradd -m scraper
-WORKDIR /app
 COPY . .
 RUN chown -R scraper:scraper /app
 

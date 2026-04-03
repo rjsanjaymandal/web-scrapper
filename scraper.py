@@ -742,33 +742,50 @@ class ContactScraper:
             logger.info("SQLite fallback active.")
 
     async def _create_pg_tables(self):
-        await self.pool.execute('''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255),
-                phone VARCHAR(50),
-                email VARCHAR(255),
-                address TEXT,
-                category VARCHAR(100),
-                city VARCHAR(100),
-                area VARCHAR(100),
-                state VARCHAR(100),
-                source VARCHAR(100),
-                source_url TEXT,
-                phone_clean VARCHAR(50),
-                email_valid BOOLEAN,
-                enriched BOOLEAN,
-                arn VARCHAR(50),
-                license_no VARCHAR(100),
-                membership_no VARCHAR(100),
-                scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)')
-        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)')
-        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)')
-        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone_clean ON contacts(phone_clean)')
-        await self.pool.execute('CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, source VARCHAR(100), status VARCHAR(50), records_count INTEGER, error_message TEXT, started_at TIMESTAMP, completed_at TIMESTAMP)')
+        # We perform these checks one by one to avoid collision errors in multi-worker environments
+        try:
+            await self.pool.execute('''
+                CREATE TABLE IF NOT EXISTS contacts (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255),
+                    phone VARCHAR(50),
+                    email VARCHAR(255),
+                    address TEXT,
+                    category VARCHAR(100),
+                    city VARCHAR(100),
+                    area VARCHAR(100),
+                    state VARCHAR(100),
+                    source VARCHAR(100),
+                    source_url TEXT,
+                    phone_clean VARCHAR(50),
+                    email_valid BOOLEAN,
+                    enriched BOOLEAN,
+                    arn VARCHAR(50),
+                    license_no VARCHAR(100),
+                    membership_no VARCHAR(100),
+                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception as e:
+            logger.warning(f"Table creation skipped or failed (possibly concurrent): {e}")
+
+        # Individual index creation with error handling for concurrency
+        for idx_sql in [
+            'CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)',
+            'CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)',
+            'CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)',
+            'CREATE INDEX IF NOT EXISTS idx_contacts_phone_clean ON contacts(phone_clean)'
+        ]:
+            try:
+                await self.pool.execute(idx_sql)
+            except Exception as e:
+                # If it already exists or there's a lock, we can ignore it as long as the index is there
+                logger.debug(f"Index creation notice: {e}")
+
+        try:
+            await self.pool.execute('CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, source VARCHAR(100), status VARCHAR(50), records_count INTEGER, error_message TEXT, started_at TIMESTAMP, completed_at TIMESTAMP)')
+        except Exception:
+            pass
     
     def _create_sqlite_tables(self):
         cursor = self.sqlite_conn.cursor()
@@ -782,11 +799,15 @@ class ContactScraper:
                 category TEXT,
                 city TEXT,
                 area TEXT,
+                state TEXT,
                 source TEXT,
                 source_url TEXT,
                 phone_clean TEXT,
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
+                arn TEXT,
+                license_no TEXT,
+                membership_no TEXT,
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -960,7 +981,7 @@ class ContactScraper:
             for l in listings:
                 cursor.execute('''
                     INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (l.get('name'), l.get('phone'), l.get('email'), l.get('address'),
                     category, city, l.get('area'), l.get('state'), source, url, 
                     l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False),
