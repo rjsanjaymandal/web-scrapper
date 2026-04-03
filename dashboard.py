@@ -54,6 +54,9 @@ def get_db_url():
 def get_db():
     """Get a fresh database connection. Simple, reliable, no pool issues."""
     url = get_db_url()
+    # Railway may use postgres:// — psycopg2 needs postgresql://
+    if url and url.startswith('postgres://'):
+        url = url.replace('postgres://', 'postgresql://', 1)
     conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
     conn.autocommit = True
     return conn

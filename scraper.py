@@ -560,8 +560,8 @@ class ContactScraper:
             
         except Exception as e:
             logger.error(f"❌ PostgreSQL connection failed: {e}")
-            # If we are on Railway, DO NOT fall back to local SQLite (invisible to dashboard)
-            if os.environ.get('RAILWAY_ENVIRONMENT'):
+            # If DATABASE_URL is set, we're in cloud — DO NOT fall back to SQLite
+            if os.environ.get('DATABASE_URL'):
                 logger.critical("FATAL: Production database unreachable. Aborting.")
                 raise e
                 
