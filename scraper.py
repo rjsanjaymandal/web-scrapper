@@ -967,8 +967,16 @@ class ContactScraper:
                 scraper = JustDialScraper()
             elif 'indiamart' in url_lower:
                 scraper = IndiaMartScraper()
-            elif 'icici' in url_lower:
-                scraper = ICICIScraper()
+            elif 'amfi' in url_lower:
+                scraper = AMFIScraper()
+            elif 'irdai' in url_lower or 'policyholder' in url_lower:
+                scraper = IRDAIScraper()
+            elif 'icai' in url_lower:
+                scraper = ICAIScraper()
+            elif 'sulekha' in url_lower:
+                scraper = SulekhaScraper()
+            elif 'clickindia' in url_lower:
+                scraper = ClickIndiaScraper()
             else:
                 scraper = JustDialScraper()
             
