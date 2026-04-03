@@ -1,13 +1,12 @@
-from flask import Flask, render_template_string, request, jsonify, Response, send_file, g
+from flask import Flask, render_template_string, request, jsonify, Response, send_file
 import asyncpg
 import asyncio
 import yaml
-import json
 import io
 import re
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 from openpyxl import Workbook
 from pathlib import Path
@@ -28,66 +27,95 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def load_config():
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
-
 _db_pool = None
 
-async def init_pool():
+async def init_db_pool():
     global _db_pool
-    if _db_pool is None:
-        db_url = os.environ.get('DATABASE_URL')
-        if db_url:
-            try:
-                _db_pool = await asyncpg.create_pool(dsn=db_url, timeout=5)
-                # Test connection
-                async with _db_pool.acquire() as conn:
-                    await conn.execute('SELECT 1')
-            except Exception:
-                _db_pool = 'sqlite'
-        else:
-            try:
-                config = load_config().get('database', {})
-                _db_pool = await asyncpg.create_pool(
-                    host=config.get('host', 'localhost'),
-                    port=config.get('port', 5432),
-                    database=config.get('name', 'scraper_db'),
-                    user=config.get('user', 'postgres'),
-                    password=config.get('password', ''),
-                    timeout=2
-                )
-                async with _db_pool.acquire() as conn:
-                    await conn.execute('SELECT 1')
-            except Exception:
-                logger.warning("PostgreSQL connection failed. Using local SQLite.")
-                _db_pool = 'sqlite'
-    return _db_pool
+    if _db_pool is not None and _db_pool != 'sqlite':
+        return _db_pool
+    
+    db_url = os.environ.get('DATABASE_URL')
+    
+    if db_url:
+        try:
+            _db_pool = await asyncpg.create_pool(dsn=db_url, min_size=1, max_size=5, command_timeout=60)
+            async with _db_pool.acquire() as conn:
+                await conn.execute('SELECT 1')
+                await create_tables(conn)
+            logger.info("Connected to Railway PostgreSQL!")
+            return _db_pool
+        except Exception as e:
+            logger.warning(f"Railway DB connection failed: {e}")
+    
+    config = load_config().get('database', {}) if load_config else {}
+    try:
+        _db_pool = await asyncpg.create_pool(
+            host=os.environ.get('DATABASE_HOST', config.get('host', 'localhost')),
+            port=int(os.environ.get('DATABASE_PORT', config.get('port', 5432))),
+            database=os.environ.get('DATABASE_NAME', config.get('name', 'scraper_db')),
+            user=os.environ.get('DATABASE_USER', config.get('user', 'postgres')),
+            password=os.environ.get('DATABASE_PASSWORD', config.get('password', '')),
+            min_size=1, max_size=5, command_timeout=60
+        )
+        async with _db_pool.acquire() as conn:
+            await conn.execute('SELECT 1')
+            await create_tables(conn)
+        logger.info("Connected to PostgreSQL!")
+        return _db_pool
+    except Exception as e:
+        logger.warning(f"PostgreSQL connection failed: {e}")
+        _db_pool = 'sqlite'
+        return 'sqlite'
 
-async def get_db_pool():
-    global _db_pool
-    # Re-initialize if pool is closed or on a different loop
-    if _db_pool is None or _db_pool == 'sqlite':
-        await init_pool()
-    elif hasattr(_db_pool, '_loop') and _db_pool._loop != asyncio.get_running_loop():
-        # Handle case where pool is tied to a different loop
-        _db_pool = None
-        await init_pool()
-    return _db_pool
+async def create_tables(conn):
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS contacts (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255),
+            phone VARCHAR(50),
+            email VARCHAR(255),
+            address TEXT,
+            category VARCHAR(100),
+            city VARCHAR(100),
+            area VARCHAR(100),
+            source VARCHAR(100),
+            source_url TEXT,
+            phone_clean VARCHAR(50),
+            email_valid BOOLEAN,
+            enriched BOOLEAN,
+            quality_score INTEGER DEFAULT 0,
+            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)')
+    logger.info("Database tables ready!")
 
-def validate_phone(phone: str) -> bool:
+def load_config():
+    try:
+        with open('config.yaml', 'r') as f:
+            return yaml.safe_load(f)
+    except:
+        return {}
+
+def get_db_pool():
+    return asyncio.run(init_db_pool())
+
+def validate_phone(phone):
     if not phone:
         return False
     digits = re.sub(r'[^\d]', '', phone)
     return len(digits) >= 10
 
-def validate_email(email: str) -> bool:
+def validate_email(email):
     if not email:
         return False
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return bool(re.match(pattern, email))
+    return bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email))
 
-def format_phone(phone: str) -> str:
+def format_phone(phone):
     if not phone:
         return ""
     digits = re.sub(r'[^\d]', '', phone)
@@ -95,403 +123,190 @@ def format_phone(phone: str) -> str:
         return f"+91-{digits[-10:-7]}-{digits[-7:-4]}-{digits[-4:]}"
     return phone
 
-def calculate_quality_score(contact: dict) -> int:
+def calc_quality(c):
     score = 0
-    if contact.get('phone_clean'):
-        score += 30
-    if contact.get('email') and validate_email(contact.get('email')):
-        score += 30
-    if contact.get('address'):
-        score += 20
-    if contact.get('city'):
-        score += 10
-    if contact.get('area'):
-        score += 10
+    if c.get('phone_clean'): score += 30
+    if c.get('email') and validate_email(c.get('email')): score += 30
+    if c.get('address'): score += 20
+    if c.get('city'): score += 10
+    if c.get('area'): score += 10
     return min(score, 100)
 
-class RateLimiter:
-    def __init__(self):
-        self.requests = {}
-        self.limits = {'default': 100, 'api': 1000}
-    
-    def check(self, key: str, limit_type: str = 'default') -> bool:
-        limit = self.limits.get(limit_type, 100)
-        now = datetime.now()
-        
-        if key not in self.requests:
-            self.requests[key] = []
-        
-        self.requests[key] = [t for t in self.requests[key] if now - t < timedelta(minutes=1)]
-        
-        if len(self.requests[key]) >= limit:
-            return False
-        
-        self.requests[key].append(now)
-        return True
-
-rate_limiter = RateLimiter()
-
-def rate_limit(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        key = request.headers.get('X-API-Key') or request.remote_addr
-        if not rate_limiter.check(key, 'api'):
-            return jsonify({'error': 'Rate limit exceeded'}), 429
-        return f(*args, **kwargs)
-    return decorated
-
-def require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not token:
-            return jsonify({'error': 'Unauthorized'}), 401
-        return f(*args, **kwargs)
-    return decorated
-
-HTML_TEMPLATE = """
+HTML = '''
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Scraper Dashboard</title>
+    <title>Contact Scraper</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 24px; }
-        .nav a { color: white; text-decoration: none; margin-left: 20px; padding: 8px 16px; border-radius: 6px; }
-        .nav a:hover { background: rgba(255,255,255,0.1); }
-        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .stat-card h3 { color: #666; font-size: 14px; margin-bottom: 10px; }
-        .stat-card .value { font-size: 32px; font-weight: bold; color: #333; }
-        .stat-card .sub { font-size: 12px; color: #999; }
-        .stat-card .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-top: 5px; }
-        .badge-good { background: #e8f5e9; color: #2e7d32; }
-        .badge-warn { background: #fff3e0; color: #ef6c00; }
-        .badge-bad { background: #ffebee; color: #c62828; }
-        .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .chart-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .filters { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; }
-        .filters input, .filters select { padding: 10px 15px; border: 1px solid #ddd; border-radius: 8px; }
-        .btn { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        .btn:hover { background: #5568d3; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat h3 { color: #666; font-size: 12px; }
+        .stat .val { font-size: 28px; font-weight: bold; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .filters input, .filters select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .btn { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; }
         .btn-green { background: #4caf50; }
-        .btn-green:hover { background: #43a047; }
-        .btn-red { background: #f44336; }
-        .table-container { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #f8f9fa; padding: 15px; text-align: left; font-weight: 600; }
-        td { padding: 12px 15px; border-top: 1px solid #eee; }
-        tr:hover { background: #f8f9fa; }
-        .tag { padding: 4px 10px; border-radius: 20px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        .tag { padding: 4px 8px; border-radius: 12px; font-size: 11px; }
         .tag-source { background: #e3f2fd; color: #1976d2; }
-        .tag-category { background: #e8f5e9; color: #388e3c; }
-        .quality-score { font-weight: bold; }
-        .score-high { color: #2e7d32; }
-        .score-mid { color: #ef6c00; }
-        .score-low { color: #c62828; }
-        .api-key-input { font-family: monospace; background: #f5f5f5; padding: 10px; border-radius: 4px; }
+        .tag-cat { background: #e8f5e9; color: #388e3c; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Contact Scraper Dashboard</h1>
-        <nav class="nav">
-            <a href="/">Dashboard</a>
-            <a href="/api/contacts">API</a>
-            <a href="/admin">Admin</a>
-            <a href="/health">Health</a>
-        </nav>
     </div>
-    <div class="container">
-        <div class="stats">
-            <div class="stat-card">
-                <h3>Total Contacts</h3>
-                <div class="value">{{ stats.total }}</div>
-                <div class="sub">Unique records in DB</div>
-            </div>
-            <div class="stat-card">
-                <h3>With Phone</h3>
-                <div class="value">{{ stats.with_phone }}</div>
-                <div class="sub">{{ stats.phone_pct }}% coverage</div>
-            </div>
-            <div class="stat-card">
-                <h3>With Email</h3>
-                <div class="value">{{ stats.with_email }}</div>
-                <div class="sub">{{ stats.email_pct }}% coverage</div>
-            </div>
-            <div class="stat-card">
-                <h3>Quality Score</h3>
-                <div class="value">{{ stats.avg_quality }}</div>
-                <div class="sub">Average quality</div>
-            </div>
-            <div class="stat-card">
-                <h3>Valid Contacts</h3>
-                <div class="value">{{ stats.validated }}</div>
-                <div class="sub">Validated records</div>
-            </div>
-            <div class="stat-card">
-                <h3>Last Update</h3>
-                <div class="value" style="font-size:16px">{{ stats.last_updated }}</div>
-            </div>
-        </div>
-        
-        <div class="charts">
-            <div class="chart-card"><h3>Contacts by Source</h3><canvas id="sourceChart"></canvas></div>
-            <div class="chart-card"><h3>Contacts by Category</h3><canvas id="categoryChart"></canvas></div>
-            <div class="chart-card"><h3>Quality Distribution</h3><canvas id="qualityChart"></canvas></div>
-            <div class="chart-card"><h3>Contacts by City</h3><canvas id="cityChart"></canvas></div>
-        </div>
-        
-        <div class="filters">
-            <input type="text" id="searchInput" placeholder="Search name, phone, email..." style="flex:1;">
-            <select id="sourceFilter"><option value="">All Sources</option>{% for s in sources %}<option value="{{s}}">{{s}}</option>{% endfor %}</select>
-            <select id="categoryFilter"><option value="">All Categories</option>{% for c in categories %}<option value="{{c}}">{{c}}</option>{% endfor %}</select>
-            <select id="cityFilter"><option value="">All Cities</option>{% for c in cities %}<option value="{{c}}">{{c}}</option>{% endfor %}</select>
-            <select id="qualityFilter"><option value="">All Quality</option><option value="high">High (70+)</option><option value="mid">Medium (40-70)</option><option value="low">Low (<40)</option></select>
-            <button class="btn" onclick="applyFilters()">Filter</button>
-            <button class="btn btn-green" onclick="triggerScrape()">Start Scrape</button>
-            <button class="btn btn-green" onclick="exportData('csv')">CSV</button>
-            <button class="btn btn-green" onclick="exportData('json')">JSON</button>
-            <button class="btn btn-green" onclick="exportData('excel')">Excel</button>
-            <button class="btn btn-red" onclick="validateAll()">Validate</button>
-            <button class="btn btn-red" onclick="formatPhones()">Format Phones</button>
-        </div>
-        
-        <div class="table-container">
-            <table>
-                <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th><th>Quality</th><th>Date</th></tr></thead>
-                <tbody>{% for c in contacts %}<tr>
-                    <td>{{c.name}}</td>
-                    <td>{{c.phone or '-'}}</td>
-                    <td>{{c.email or '-'}}</td>
-                    <td>{{c.city}}</td>
-                    <td><span class="tag tag-source">{{c.source}}</span></td>
-                    <td><span class="tag tag-category">{{c.category}}</span></td>
-                    <td class="quality-score {% if c.quality_score>=70 %}score-high{% elif c.quality_score>=40 %}score-mid{% else %}score-low{% endif %}">{{c.quality_score}}</td>
-                    <td>{{c.scraped_at.strftime('%Y-%m-%d') if c.scraped_at else '-'}}</td>
-                </tr>{% endfor %}</tbody>
-            </table>
+    <div class="stats">
+        <div class="stat"><h3>Total</h3><div class="val">{{s.total}}</div></div>
+        <div class="stat"><h3>Phone</h3><div class="val">{{s.phone}}</div></div>
+        <div class="stat"><h3>Email</h3><div class="val">{{s.email}}</div></div>
+        <div class="stat"><h3>Cities</h3><div class="val">{{s.cities}}</div></div>
+    </div>
+    <div class="card">
+        <div class="charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;">
+            <div><h3>By Source</h3><canvas id="c1"></canvas></div>
+            <div><h3>By Category</h3><canvas id="c2"></canvas></div>
         </div>
     </div>
-    
+    <div class="filters">
+        <input type="text" id="q" placeholder="Search...">
+        <select id="src"><option value="">Source</option>{% for s in sources %}<option>{{s}}</option>{% endfor %}</select>
+        <select id="cat"><option value="">Category</option>{% for c in cats %}<option>{{c}}</option>{% endfor %}</select>
+        <button class="btn btn-green" onclick="exportCSV()">CSV</button>
+        <button class="btn btn-green" onclick="exportJSON()">JSON</button>
+        <button class="btn" onclick="validate()">Validate</button>
+    </div>
+    <table>
+        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th></tr></thead>
+        <tbody>{% for c in contacts %}<tr>
+            <td>{{c.name}}</td>
+            <td>{{c.phone or '-'}}</td>
+            <td>{{c.email or '-'}}</td>
+            <td>{{c.city}}</td>
+            <td><span class="tag tag-source">{{c.source}}</span></td>
+            <td><span class="tag tag-cat">{{c.category}}</span></td>
+        </tr>{% endfor %}</tbody>
+    </table>
     <script>
-        new Chart(document.getElementById('sourceChart'), {type:'doughnut',data:{labels:Object.keys({{stats.by_source|tojson}}),datasets:[{data:Object.values({{stats.by_source|tojson}}),backgroundColor:['#667eea','#764ba2','#4caf50','#ff9800','#f44336']}]}});
-        new Chart(document.getElementById('categoryChart'), {type:'bar',data:{labels:Object.keys({{stats.by_category|tojson}}),datasets:[{label:'Contacts',data:Object.values({{stats.by_category|tojson}}),backgroundColor:'#667eea'}]}});
-        new Chart(document.getElementById('qualityChart'), {type:'bar',data:{labels:['High','Medium','Low'],datasets:[{data:[{{stats.quality_high}},{{stats.quality_mid}},{{stats.quality_low}}],backgroundColor:['#4caf50','#ff9800','#f44336']}]}});
-        new Chart(document.getElementById('cityChart'), {type:'bar',data:{labels:Object.keys({{stats.by_city|tojson}}).slice(0,10),datasets:[{data:Object.values({{stats.by_city|tojson}}).slice(0,10),backgroundColor:'#667eea'}]}});
-        function applyFilters() { const p=new URLSearchParams(); ['searchInput','sourceFilter','categoryFilter','cityFilter','qualityFilter'].forEach(id=>{const v=document.getElementById(id).value;if(v)p.set(id,v);});window.location.href='/?'+p.toString(); }
-        function exportData(f) { window.location.href='/export/'+f; }
-        function validateAll() {
-            if(confirm('Start background validation?')) {
-                fetch('/api/trigger/validate').then(r => r.json()).then(d => alert(d.message || d.error));
-            }
-        }
-        function formatPhones() { if(confirm('Format all phones to +91?'))window.location.href='/admin/format-phones'; }
-        function triggerScrape() {
-            if(confirm('Trigger new background scrape?')) {
-                fetch('/api/trigger/scrape').then(r => r.json()).then(d => alert(d.message || d.error));
-            }
-        }
+        new Chart(document.getElementById('c1'),{type:'doughnut',data:{labels:Object.keys({{by_source|tojson}}),datasets:[{data:Object.values({{by_source|tojson}}),backgroundColor:['#667eea','#764ba2','#4caf50']}]}});
+        new Chart(document.getElementById('c2'),{type:'bar',data:{labels:Object.keys({{by_cat|tojson}}),datasets:[{data:Object.values({{by_cat|tojson}}),backgroundColor:'#667eea'}]}});
+        function exportCSV(){window.location.href='/export/csv'}
+        function exportJSON(){window.location.href='/export/json'}
+        function validate(){if(confirm('Validate?'))window.location.href='/admin/validate'}
     </script>
 </body>
 </html>
-"""
+'''
 
 @app.route('/')
 async def index():
-    pool = await get_db_pool()
-    try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT 100')
-            total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
-            with_phone = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE phone_clean IS NOT NULL")
-            with_email = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE email IS NOT NULL")
-            validated = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE email_valid = true")
-            
-            sources = await conn.fetch('SELECT DISTINCT source FROM contacts')
-            categories = await conn.fetch('SELECT DISTINCT category FROM contacts')
-            cities = await conn.fetch('SELECT DISTINCT city FROM contacts')
-            
-            by_source = await conn.fetch('SELECT source, COUNT(*) as c FROM contacts GROUP BY source')
-            by_category = await conn.fetch('SELECT category, COUNT(*) as c FROM contacts GROUP BY category')
-            by_city = await conn.fetch('SELECT city, COUNT(*) as c FROM contacts GROUP BY city ORDER BY c DESC LIMIT 20')
-            
-            quality_high = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE (CASE WHEN phone_clean IS NOT NULL THEN 30 ELSE 0 END + CASE WHEN email IS NOT NULL AND email LIKE '%@%.%' THEN 30 ELSE 0 END + CASE WHEN address IS NOT NULL THEN 20 ELSE 0 END + CASE WHEN city IS NOT NULL THEN 10 ELSE 0 END + CASE WHEN area IS NOT NULL THEN 10 ELSE 0 END) >= 70")
-            quality_mid = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE (CASE WHEN phone_clean IS NOT NULL THEN 30 ELSE 0 END + CASE WHEN email IS NOT NULL AND email LIKE '%@%.%' THEN 30 ELSE 0 END + CASE WHEN address IS NOT NULL THEN 20 ELSE 0 END + CASE WHEN city IS NOT NULL THEN 10 ELSE 0 END + CASE WHEN area IS NOT NULL THEN 10 ELSE 0 END) >= 40 AND (CASE WHEN phone_clean IS NOT NULL THEN 30 ELSE 0 END + CASE WHEN email IS NOT NULL AND email LIKE '%@%.%' THEN 30 ELSE 0 END + CASE WHEN address IS NOT NULL THEN 20 ELSE 0 END + CASE WHEN city IS NOT NULL THEN 10 ELSE 0 END + CASE WHEN area IS NOT NULL THEN 10 ELSE 0 END) < 70")
-            quality_low = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE (CASE WHEN phone_clean IS NOT NULL THEN 30 ELSE 0 END + CASE WHEN email IS NOT NULL AND email LIKE '%@%.%' THEN 30 ELSE 0 END + CASE WHEN address IS NOT NULL THEN 20 ELSE 0 END + CASE WHEN city IS NOT NULL THEN 10 ELSE 0 END + CASE WHEN area IS NOT NULL THEN 10 ELSE 0 END) < 40")
-            
-            last_updated = await conn.fetchval("SELECT MAX(scraped_at) FROM contacts")
-            
-            for c in contacts:
-                c['quality_score'] = calculate_quality_score(c)
-    finally:
-        await pool.close()
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return "Database not configured. Set DATABASE_URL or DATABASE_PASSWORD."
     
-    avg_quality = round((quality_high * 80 + quality_mid * 50 + quality_low * 20) / total, 1) if total > 0 else 0
+    async with pool.acquire() as conn:
+        contacts = await conn.fetch('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT 100')
+        total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
+        with_phone = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+        with_email = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE email IS NOT NULL AND email != ''")
+        sources = await conn.fetch('SELECT DISTINCT source FROM contacts')
+        cats = await conn.fetch('SELECT DISTINCT category FROM contacts')
+        by_source = await conn.fetch('SELECT source, COUNT(*) c FROM contacts GROUP BY source')
+        by_cat = await conn.fetch('SELECT category, COUNT(*) c FROM contacts GROUP BY category')
     
-    return render_template_string(HTML_TEMPLATE, contacts=contacts,
-        stats={'total': total, 'with_phone': with_phone, 'phone_pct': round(with_phone/total*100,1) if total else 0,
-               'with_email': with_email, 'email_pct': round(with_email/total*100,1) if total else 0,
-               'validated': validated, 'avg_quality': avg_quality, 'last_updated': last_updated.strftime('%Y-%m-%d %H:%M') if last_updated else 'N/A',
-               'by_source': {r['source']: r['c'] for r in by_source}, 'by_category': {r['category']: r['c'] for r in by_category},
-               'by_city': {r['city']: r['c'] for r in by_city}, 'quality_high': quality_high, 'quality_mid': quality_mid, 'quality_low': quality_low},
-        sources=[s['source'] for s in sources], categories=[c['category'] for c in categories], cities=[c['city'] for c in cities])
+    return render_template_string(HTML,
+        contacts=contacts, s={'total':total,'phone':with_phone,'email':with_email,'cities':len(sources)},
+        sources=[s['source'] for s in sources], cats=[c['category'] for c in cats],
+        by_source={r['source']:r['c'] for r in by_source}, by_cat={r['category']:r['c'] for r in by_cat})
 
 @app.route('/health')
-async def health_check():
-    pool = await get_db_pool()
+async def health():
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return jsonify({'status':'error','db':'not configured'})
     try:
         async with pool.acquire() as conn:
-            await conn.fetchval('SELECT 1')
-        db_status = 'healthy'
-    except Exception as e:
-        db_status = f'unhealthy: {str(e)}'
-    finally:
-        await pool.close()
-    
-    return jsonify({
-        'status': 'ok' if db_status == 'healthy' else 'error',
-        'timestamp': datetime.now().isoformat(),
-        'services': {'database': db_status}
-    })
+            await conn.execute('SELECT 1')
+        return jsonify({'status':'ok','db':'connected'})
+    except:
+        return jsonify({'status':'error','db':'disconnected'})
 
 @app.route('/api/contacts')
-@rate_limit
-async def api_contacts():
-    limit = min(request.args.get('limit', 100, type=int), 1000)
-    offset = request.args.get('offset', 0, type=int)
-    
-    pool = await get_db_pool()
-    try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch(f'SELECT name, phone, email, city, category, source, scraped_at FROM contacts ORDER BY scraped_at DESC LIMIT {limit} OFFSET {offset}')
-            total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
-    finally:
-        await pool.close()
-    
-    return jsonify({'success': True, 'total': total, 'limit': limit, 'offset': offset, 'data': [dict(c) for c in contacts]})
+async def api():
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return jsonify({'error':'no database'})
+    limit = min(request.args.get('limit',100,type=int),1000)
+    async with pool.acquire() as conn:
+        contacts = await conn.fetch(f'SELECT name,phone,email,city,category,source FROM contacts ORDER BY scraped_at DESC LIMIT {limit}')
+        total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
+    return jsonify({'total':total,'data':[dict(c) for c in contacts]})
 
 @app.route('/api/stats')
-@rate_limit
-async def api_stats():
-    pool = await get_db_pool()
-    try:
-        async with pool.acquire() as conn:
-            by_source = await conn.fetch('SELECT source, COUNT(*) as c FROM contacts GROUP BY source')
-            by_category = await conn.fetch('SELECT category, COUNT(*) as c FROM contacts GROUP BY category')
-            by_city = await conn.fetch('SELECT city, COUNT(*) as c FROM contacts GROUP BY city ORDER BY c DESC LIMIT 10')
-            total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
-            with_phone = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE phone_clean IS NOT NULL")
-            with_email = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE email IS NOT NULL")
-    finally:
-        await pool.close()
-    
-    return jsonify({'total': total, 'with_phone': with_phone, 'with_email': with_email,
-        'by_source': {r['source']: r['c'] for r in by_source},
-        'by_category': {r['category']: r['c'] for r in by_category},
-        'by_city': {r['city']: r['c'] for r in by_city}})
+async def stats():
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return jsonify({'error':'no database'})
+    async with pool.acquire() as conn:
+        by_source = await conn.fetch('SELECT source, COUNT(*) c FROM contacts GROUP BY source')
+        by_cat = await conn.fetch('SELECT category, COUNT(*) c FROM contacts GROUP BY category')
+    return jsonify({'by_source':{r['source']:r['c'] for r in by_source},'by_category':{r['category']:r['c'] for r in by_cat}})
 
 @app.route('/export/<fmt>')
-@rate_limit
-async def export_data(fmt):
-    pool = await get_db_pool()
-    try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch('SELECT * FROM contacts ORDER BY scraped_at DESC')
-    finally:
-        await pool.close()
+async def export(fmt):
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return jsonify({'error':'no database'})
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('SELECT * FROM contacts')
     
     if fmt == 'csv':
         import csv
-        output = io.StringIO()
-        if contacts:
-            w = csv.DictWriter(output, fieldnames=contacts[0].keys())
+        out = io.StringIO()
+        if rows:
+            w = csv.DictWriter(out, fieldnames=rows[0].keys())
             w.writeheader()
-            for r in contacts: w.writerow(dict(r))
-        return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=contacts.csv'})
-    
+            for r in rows: w.writerow(dict(r))
+        return Response(out.getvalue(), mimetype='text/csv', headers={'Content-Disposition':'attachment;filename=contacts.csv'})
     if fmt == 'json':
-        return jsonify({'success': True, 'total': len(contacts), 'data': [dict(c) for c in contacts]})
-    
+        return jsonify({'total':len(rows),'data':[dict(r) for r in rows]})
     if fmt == 'excel':
         wb = Workbook()
         ws = wb.active
         ws.title = "Contacts"
-        if contacts:
-            ws.append(list(contacts[0].keys()))
-            for r in contacts: ws.append(list(r.values()))
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        return send_file(output, download_name='contacts.xlsx', as_attachment=True)
-    
-    return jsonify({'error': 'Invalid format'}), 400
+        if rows:
+            ws.append(list(rows[0].keys()))
+            for r in rows: ws.append(list(r.values()))
+        out = io.BytesIO()
+        wb.save(out)
+        out.seek(0)
+        return send_file(out, download_name='contacts.xlsx', as_attachment=True)
+    return 'Invalid',400
 
 @app.route('/admin/validate')
-async def validate_contacts():
-    pool = await get_db_pool()
+async def validate():
+    pool = await init_db_pool()
+    if pool == 'sqlite':
+        return jsonify({'error':'no database'})
     updated = 0
-    try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch('SELECT id, phone, email FROM contacts')
-            for c in contacts:
-                p_valid = validate_phone(c['phone']) if c['phone'] else False
-                e_valid = validate_email(c['email']) if c['email'] else False
-                await conn.execute('UPDATE contacts SET phone_clean = CASE WHEN $2 THEN (REGEXP_REPLACE($1, $9, $10, $11))[LENGTH(REGEXP_REPLACE($1, $9, $10, $11))-9:] ELSE NULL END, email_valid = $3 WHERE id = $4', c['phone'], p_valid, e_valid, c['id'], r'[^0-9]', '', 'g')
-                updated += 1
-        logger.info(f"Validated {updated} contacts")
-    finally:
-        await pool.close()
-    return jsonify({'success': True, 'validated': updated})
-
-@app.route('/admin/format-phones')
-async def format_phones():
-    pool = await get_db_pool()
-    updated = 0
-    try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch("SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''")
-            for c in contacts:
-                formatted = format_phone(c['phone'])
-                if formatted:
-                    await conn.execute('UPDATE contacts SET phone = $1 WHERE id = $2', formatted, c['id'])
-                    updated += 1
-        logger.info(f"Formatted {updated} phone numbers")
-    finally:
-        await pool.close()
-    return jsonify({'success': True, 'formatted': updated})
-
-@app.route('/api/trigger/scrape')
-async def trigger_scrape():
-    try:
-        from tasks import scrape_category_task
-        config = load_config()
-        for city in config.get('cities', []):
-            for cat in config.get('categories', []):
-                scrape_category_task.delay(city, cat)
-        return jsonify({'success': True, 'message': f"Scraping tasks for {len(config.get('cities', [])) * len(config.get('categories', []))} combinations added to queue"})
-    except Exception as e:
-        logger.error(f"Trigger scrape failed: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/trigger/validate')
-async def trigger_validate():
-    try:
-        from tasks import validate_all_contacts_task
-        validate_all_contacts_task.delay()
-        return jsonify({'success': True, 'message': 'Validation task added to queue'})
-    except Exception as e:
-        logger.error(f"Trigger validate failed: {e}")
-        return jsonify({'error': str(e)}), 500
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('SELECT id, phone, email FROM contacts')
+        for r in rows:
+            p = validate_phone(r['phone']) if r['phone'] else False
+            e = validate_email(r['email']) if r['email'] else False
+            await conn.execute('UPDATE contacts SET email_valid=$1 WHERE id=$2', e, r['id'])
+            updated += 1
+    return jsonify({'validated':updated})
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Starting enhanced dashboard on port {port}")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port)
