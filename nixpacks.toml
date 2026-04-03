@@ -1,0 +1,11 @@
+[phases.install]
+cmds = [
+    "pip install -r requirements.txt",
+    "playwright install chromium --with-deps"
+]
+
+[phases.build]
+cmds = ["echo Build finished!"]
+
+[start]
+cmd = "gunicorn dashboard:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"

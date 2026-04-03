@@ -1,8 +1,0 @@
-[build]
-builder = "NIXPACKS"
-
-[services.web]
-command = "gunicorn -w 1 -k uvicorn.workers.UvicornWorker dashboard:app --bind 0.0.0.0:$PORT"
-
-[services.worker]
-command = "celery -A tasks.celery_app worker --loglevel=info"
