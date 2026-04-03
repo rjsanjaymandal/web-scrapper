@@ -78,31 +78,26 @@ def load_config() -> Config:
     proxy_cfg = data.get('proxy', {})
     
     # Environment Variable Support (Prioritize these for Railway)
+    # Environment Variable Support (Prioritize these for Railway)
     db_url = os.environ.get('DATABASE_URL')
     if db_url:
+        from urllib.parse import urlparse
+        
         # Railway/Heroku sometimes use postgres:// instead of postgresql://
         if db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
-        
-        # Parse host, port, name, user, password from URL
-        # Format: postgresql://user:password@host:port/dbname
-        try:
-            # Simple parsing without fragile regex
-            part1 = db_url.split('://')[1]
-            auth, host_port_db = part1.split('@')
-            db_user, db_password = auth.split(':')
-            host_port, db_name = host_port_db.split('/')
-            if ':' in host_port:
-                db_host, db_port = host_port.split(':')
-                db_port = int(db_port)
-            else:
-                db_host = host_port
-                db_port = 5432
             
-            # Remove any query params (like ?sslmode=disable)
-            if '?' in db_name:
-                db_name = db_name.split('?')[0]
-                
+        try:
+            result = urlparse(db_url)
+            db_user = result.username
+            db_password = result.password
+            db_host = result.hostname
+            db_port = result.port or 5432
+            db_name = result.path.lstrip('/')
+            
+            if not all([db_user, db_host, db_name]):
+                 raise ValueError("Incomplete DATABASE_URL")
+                 
         except Exception as e:
             logger.error(f"Failed to parse DATABASE_URL: {e}. Falling back to env vars.")
             db_host = os.environ.get('DB_HOST', db_cfg.get('host', 'localhost'))
