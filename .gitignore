@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Environment
+.env
+*.env
+
+# Logs
+logs/
+*.log
+
+# Exports
+exports/
+
+# Local DB
+*.db
+
+# Agent (local AI config - not for deployment)
+.agent/
+
+# OS
+.DS_Store
+Thumbs.db
