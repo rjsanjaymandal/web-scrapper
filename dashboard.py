@@ -37,14 +37,18 @@ _db_pool = None
 async def init_pool():
     global _db_pool
     if _db_pool is None:
-        config = load_config()['database']
-        _db_pool = await asyncpg.create_pool(
-            host=config['host'],
-            port=config['port'],
-            database=config['name'],
-            user=config['user'],
-            password=config['password']
-        )
+        db_url = os.environ.get('DATABASE_URL')
+        if db_url:
+            _db_pool = await asyncpg.create_pool(dsn=db_url)
+        else:
+            config = load_config().get('database', {})
+            _db_pool = await asyncpg.create_pool(
+                host=config.get('host', 'localhost'),
+                port=config.get('port', 5432),
+                database=config.get('name', 'scraper_db'),
+                user=config.get('user', 'postgres'),
+                password=config.get('password', '')
+            )
     return _db_pool
 
 def get_db_pool():

@@ -56,50 +56,88 @@ class Config:
 
 
 def load_config() -> Config:
-    with open('config.yaml', 'r') as f:
-        data = yaml.safe_load(f)
+    config_path = Path('config.yaml')
+    data = {}
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            data = yaml.safe_load(f) or {}
     
     scraper_cfg = data.get('scraper', {})
+    db_cfg = data.get('database', {})
+    proxy_cfg = data.get('proxy', {})
     
+    # Environment Variable Support (Prioritize these for Railway)
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        # Example: postgresql://user:pass@host:port/dbname
+        import re
+        db_match = re.match(r'postgresql://(?P<user>.*?):(?P<password>.*?)@(?P<host>.*?):(?P<port>\d+)/(?P<name>.*)', db_url)
+        if db_match:
+            db_groups = db_match.groupdict()
+            db_host = db_groups['host']
+            db_port = int(db_groups['port'])
+            db_name = db_groups['name']
+            db_user = db_groups['user']
+            db_password = db_groups['password']
+        else:
+            db_host = os.environ.get('DB_HOST', db_cfg.get('host', 'localhost'))
+            db_port = int(os.environ.get('DB_PORT', db_cfg.get('port', 5432)))
+            db_name = os.environ.get('DB_NAME', db_cfg.get('name', 'scraper_db'))
+            db_user = os.environ.get('DB_USER', db_cfg.get('user', 'postgres'))
+            db_password = os.environ.get('DB_PASSWORD', db_cfg.get('password', ''))
+    else:
+        db_host = os.environ.get('DB_HOST', db_cfg.get('host', 'localhost'))
+        db_port = int(os.environ.get('DB_PORT', db_cfg.get('port', 5432)))
+        db_name = os.environ.get('DB_NAME', db_cfg.get('name', 'scraper_db'))
+        db_user = os.environ.get('DB_USER', db_cfg.get('user', 'postgres'))
+        db_password = os.environ.get('DB_PASSWORD', db_cfg.get('password', ''))
+
     proxies = []
-    if 'proxies' in data.get('proxy', {}):
-        for p in data['proxy']['proxies']:
+    env_proxy_host = os.environ.get('PROXY_HOST')
+    if env_proxy_host:
+        proxies.append({
+            'host': env_proxy_host,
+            'username': os.environ.get('PROXY_USER', ''),
+            'password': os.environ.get('PROXY_PASS', '')
+        })
+    elif 'proxies' in proxy_cfg:
+        for p in proxy_cfg['proxies']:
             proxies.append({
                 'host': p.get('host', ''),
                 'username': p.get('username', ''),
                 'password': p.get('password', '')
             })
-    elif data.get('proxy', {}).get('host'):
+    elif proxy_cfg.get('host'):
         proxies.append({
-            'host': data['proxy']['host'],
-            'username': data['proxy'].get('username', ''),
-            'password': data['proxy'].get('password', '')
+            'host': proxy_cfg['host'],
+            'username': proxy_cfg.get('username', ''),
+            'password': proxy_cfg.get('password', '')
         })
     
     return Config(
-        db_host=data['database']['host'],
-        db_port=data['database']['port'],
-        db_name=data['database']['name'],
-        db_user=data['database']['user'],
-        db_password=data['database']['password'],
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        db_user=db_user,
+        db_password=db_password,
         proxies=proxies,
-        request_delay_min=scraper_cfg.get('request_delay_min', 2),
-        request_delay_max=scraper_cfg.get('request_delay_max', 5),
-        max_retries=scraper_cfg.get('max_retries', 3),
-        timeout_seconds=scraper_cfg.get('timeout_seconds', 30),
-        headless=scraper_cfg.get('headless', True),
-        test_mode=scraper_cfg.get('test_mode', False),
-        export_csv=scraper_cfg.get('export_csv', True),
-        csv_output_dir=scraper_cfg.get('csv_output_dir', 'exports'),
-        enable_email_extraction=scraper_cfg.get('enable_email_extraction', True),
-        enable_sitemap=scraper_cfg.get('enable_sitemap', False),
-        enable_deduplication=scraper_cfg.get('enable_deduplication', True),
-        enable_email_verify=scraper_cfg.get('enable_email_verify', False),
-        enable_enrichment=scraper_cfg.get('enable_enrichment', False),
-        scheduler_enabled=scraper_cfg.get('scheduler_enabled', False),
-        scheduler_interval_hours=scraper_cfg.get('scheduler_interval_hours', 24),
-        categories=data['categories'],
-        cities=data['cities']
+        request_delay_min=int(os.environ.get('SCRAPER_DELAY_MIN', scraper_cfg.get('request_delay_min', 2))),
+        request_delay_max=int(os.environ.get('SCRAPER_DELAY_MAX', scraper_cfg.get('request_delay_max', 5))),
+        max_retries=int(os.environ.get('SCRAPER_MAX_RETRIES', scraper_cfg.get('max_retries', 3))),
+        timeout_seconds=int(os.environ.get('SCRAPER_TIMEOUT', scraper_cfg.get('timeout_seconds', 30))),
+        headless=os.environ.get('SCRAPER_HEADLESS', str(scraper_cfg.get('headless', True))).lower() == 'true',
+        test_mode=os.environ.get('SCRAPER_TEST_MODE', str(scraper_cfg.get('test_mode', False))).lower() == 'true',
+        export_csv=os.environ.get('SCRAPER_EXPORT_CSV', str(scraper_cfg.get('export_csv', True))).lower() == 'true',
+        csv_output_dir=os.environ.get('SCRAPER_EXPORT_DIR', scraper_cfg.get('csv_output_dir', 'exports')),
+        enable_email_extraction=os.environ.get('SCRAPER_ENABLE_EMAIL', str(scraper_cfg.get('enable_email_extraction', True))).lower() == 'true',
+        enable_sitemap=os.environ.get('SCRAPER_ENABLE_SITEMAP', str(scraper_cfg.get('enable_sitemap', False))).lower() == 'true',
+        enable_deduplication=os.environ.get('SCRAPER_ENABLE_DEDUPE', str(scraper_cfg.get('enable_deduplication', True))).lower() == 'true',
+        enable_email_verify=os.environ.get('SCRAPER_ENABLE_EMAIL_VERIFY', str(scraper_cfg.get('enable_email_verify', False))).lower() == 'true',
+        enable_enrichment=os.environ.get('SCRAPER_ENABLE_ENRICH', str(scraper_cfg.get('enable_enrichment', False))).lower() == 'true',
+        scheduler_enabled=os.environ.get('SCRAPER_SCHEDULER_ENABLED', str(scraper_cfg.get('scheduler_enabled', False))).lower() == 'true',
+        scheduler_interval_hours=int(os.environ.get('SCRAPER_SCHEDULER_INTERVAL', scraper_cfg.get('scheduler_interval_hours', 24))),
+        categories=data.get('categories', []),
+        cities=data.get('cities', [])
     )
 
 

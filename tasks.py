@@ -9,10 +9,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Initialize Celery
-# Note: In a production environment, these URLs should come from config.yaml or environment variables
+import os
+redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 celery_app = Celery('scraper', 
-                    broker='redis://localhost:6379/0', 
-                    backend='redis://localhost:6379/0')
+                    broker=redis_url, 
+                    backend=redis_url)
 
 @celery_app.task(name="tasks.scrape_category_task")
 def scrape_category_task(city: str, category: str, source: str = None):
