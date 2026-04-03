@@ -39,16 +39,29 @@ async def init_pool():
     if _db_pool is None:
         db_url = os.environ.get('DATABASE_URL')
         if db_url:
-            _db_pool = await asyncpg.create_pool(dsn=db_url)
+            try:
+                _db_pool = await asyncpg.create_pool(dsn=db_url, timeout=5)
+                # Test connection
+                async with _db_pool.acquire() as conn:
+                    await conn.execute('SELECT 1')
+            except Exception:
+                _db_pool = 'sqlite'
         else:
-            config = load_config().get('database', {})
-            _db_pool = await asyncpg.create_pool(
-                host=config.get('host', 'localhost'),
-                port=config.get('port', 5432),
-                database=config.get('name', 'scraper_db'),
-                user=config.get('user', 'postgres'),
-                password=config.get('password', '')
-            )
+            try:
+                config = load_config().get('database', {})
+                _db_pool = await asyncpg.create_pool(
+                    host=config.get('host', 'localhost'),
+                    port=config.get('port', 5432),
+                    database=config.get('name', 'scraper_db'),
+                    user=config.get('user', 'postgres'),
+                    password=config.get('password', ''),
+                    timeout=2
+                )
+                async with _db_pool.acquire() as conn:
+                    await conn.execute('SELECT 1')
+            except Exception:
+                logger.warning("PostgreSQL connection failed. Using local SQLite.")
+                _db_pool = 'sqlite'
     return _db_pool
 
 def get_db_pool():

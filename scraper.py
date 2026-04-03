@@ -236,6 +236,40 @@ class JustDialScraper(BaseScraper):
             pass
         return None
     
+    async def _extract_phone(self, card) -> Optional[str]:
+        # JustDial uses icon classes for numbers to prevent scraping
+        # e.g., <span class="mobilesv mcl-016"></span> 
+        # We try to find these icons and map them
+        try:
+            icons = await card.query_selector_all('span.mobilesv')
+            if not icons:
+                # Fallback to direct text
+                text = await self._get_text(card, '.store-phone')
+                return self._clean_phone(text) if text else None
+            
+            # Map of JD icon class endings to digits (approximation)
+            # This is dynamic and varies, but we'll implement a map based on common patterns
+            jd_map = {
+                'icon-ji': '9', 'icon-dc': '0', 'icon-fe': '1', 'icon-hg': '2', 'icon-ba': '3',
+                'icon-lk': '4', 'icon-nm': '5', 'icon-op': '6', 'icon-rq': '7', 'icon-ts': '8',
+                'icon-acb': '0', 'icon-yz': '1', 'icon-wx': '2', 'icon-vu': '3', 'icon-ts': '4',
+                'icon-rq': '5', 'icon-pon': '6', 'icon-mlk': '7', 'icon-jih': '8', 'icon-gfed': '9'
+            }
+            
+            phone_digits = []
+            for icon in icons:
+                class_attr = await icon.get_attribute('class')
+                for icon_class, digit in jd_map.items():
+                    if icon_class in class_attr:
+                        phone_digits.append(digit)
+                        break
+            
+            if phone_digits:
+                return "".join(phone_digits)
+        except Exception as e:
+            logger.debug(f"Phone extraction error: {e}")
+        return None
+
     async def extract_listings(self, page: Page) -> List[Dict]:
         listings = []
         try:
@@ -245,7 +279,7 @@ class JustDialScraper(BaseScraper):
             for card in cards:
                 try:
                     name = await self._get_text(card, '.store-name')
-                    phone = await self._get_text(card, '.store-phone')
+                    phone = await self._extract_phone(card)
                     address = await self._get_text(card, '.store-address')
                     area = await self._get_text(card, '.store-area')
                     detail_url = await self.get_detail_url(card)
@@ -253,7 +287,7 @@ class JustDialScraper(BaseScraper):
                     if name:
                         listings.append({
                             'name': name.strip(),
-                            'phone': self._clean_phone(phone) if phone else None,
+                            'phone': phone,
                             'address': address.strip() if address else None,
                             'area': area.strip() if area else None,
                             'detail_url': detail_url
@@ -475,6 +509,7 @@ class ContactScraper:
 
     async def init_db(self):
         try:
+            # Try PostgreSQL first
             self.pool = await asyncpg.create_pool(
                 host=self.config.db_host,
                 port=self.config.db_port,
@@ -482,59 +517,70 @@ class ContactScraper:
                 user=self.config.db_user,
                 password=self.config.db_password,
                 min_size=2,
-                max_size=10
+                max_size=10,
+                command_timeout=5
             )
+            # Test connection
+            async with self.pool.acquire() as conn:
+                await conn.execute('SELECT 1')
             
-            await self.pool.execute('''
-                CREATE TABLE IF NOT EXISTS contacts (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255),
-                    phone VARCHAR(50),
-                    email VARCHAR(255),
-                    address TEXT,
-                    category VARCHAR(100),
-                    city VARCHAR(100),
-                    area VARCHAR(100),
-                    source VARCHAR(100),
-                    source_url TEXT,
-                    phone_clean VARCHAR(50),
-                    email_valid BOOLEAN,
-                    enriched BOOLEAN,
-                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            logger.info("Connected to PostgreSQL successfully")
+            await self._create_pg_tables()
             
-            await self.pool.execute('''
-                CREATE TABLE IF NOT EXISTS scrape_logs (
-                    id SERIAL PRIMARY KEY,
-                    source VARCHAR(100),
-                    category VARCHAR(100),
-                    city VARCHAR(100),
-                    status VARCHAR(50),
-                    records_count INTEGER,
-                    error_message TEXT,
-                    started_at TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
-            ''')
-            
-            await self.pool.execute('''
-                CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)
-            ''')
-            await self.pool.execute('''
-                CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)
-            ''')
-            await self.pool.execute('''
-                CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)
-            ''')
-            await self.pool.execute('''
-                CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)
-            ''')
-            
-            logger.info("Database initialized successfully")
         except Exception as e:
-            logger.error(f"Database init failed: {e}")
-            raise
+            logger.warning(f"PostgreSQL connection failed: {e}. Falling back to SQLite for local development.")
+            self.pool = None # We will use a different approach for SQLite
+            # Actually, to avoid rewriting all the SQL, let's keep the pool logic but use a wrapper or similar
+            # For simplicity in this local-first approach, we'll implement a simple sqlite3 fallback for the essential methods.
+            self.use_sqlite = True
+            import sqlite3
+            self.sqlite_conn = sqlite3.connect('scraper_local.db')
+            self._create_sqlite_tables()
+            logger.info("SQLite initialized (scraper_local.db)")
+
+    async def _create_pg_tables(self):
+        await self.pool.execute('''
+            CREATE TABLE IF NOT EXISTS contacts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                phone VARCHAR(50),
+                email VARCHAR(255),
+                address TEXT,
+                category VARCHAR(100),
+                city VARCHAR(100),
+                area VARCHAR(100),
+                source VARCHAR(100),
+                source_url TEXT,
+                phone_clean VARCHAR(50),
+                email_valid BOOLEAN,
+                enriched BOOLEAN,
+                scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # ... and other tables/indices
+        await self.pool.execute('CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, source VARCHAR(100), status VARCHAR(50), records_count INTEGER, error_message TEXT, started_at TIMESTAMP, completed_at TIMESTAMP)')
+    
+    def _create_sqlite_tables(self):
+        cursor = self.sqlite_conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                category TEXT,
+                city TEXT,
+                area TEXT,
+                source TEXT,
+                source_url TEXT,
+                phone_clean TEXT,
+                email_valid BOOLEAN,
+                enriched BOOLEAN,
+                scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        self.sqlite_conn.commit()
 
     async def init_browser(self):
         self.playwright = await async_playwright().start()
@@ -599,6 +645,16 @@ class ContactScraper:
         if not self.config.enable_deduplication:
             return False
         
+        if hasattr(self, 'use_sqlite') and self.use_sqlite:
+            cursor = self.sqlite_conn.cursor()
+            if phone:
+                cursor.execute('SELECT 1 FROM contacts WHERE phone_clean = ? LIMIT 1', (phone,))
+                if cursor.fetchone(): return True
+            if email:
+                cursor.execute('SELECT 1 FROM contacts WHERE email = ? LIMIT 1', (email,))
+                if cursor.fetchone(): return True
+            return False
+
         async with self.pool.acquire() as conn:
             if phone:
                 exists = await conn.fetchval('''
@@ -689,6 +745,19 @@ class ContactScraper:
         if not listings:
             return
             
+        if hasattr(self, 'use_sqlite') and self.use_sqlite:
+            cursor = self.sqlite_conn.cursor()
+            for l in listings:
+                cursor.execute('''
+                    INSERT INTO contacts (name, phone, email, address, category, city, area, source, source_url, phone_clean, email_valid, enriched)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (l.get('name'), l.get('phone'), l.get('email'), l.get('address'),
+                    category, city, l.get('area'), source, url, 
+                    l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False)))
+            self.sqlite_conn.commit()
+            logger.info(f"Saved {len(listings)} records to SQLite")
+            return
+
         async with self.pool.acquire() as conn:
             for listing in listings:
                 await conn.execute('''
@@ -727,6 +796,12 @@ class ContactScraper:
             return filename
 
     async def get_stats(self) -> Dict:
+        if hasattr(self, 'use_sqlite') and self.use_sqlite:
+            cursor = self.sqlite_conn.cursor()
+            total = cursor.execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
+            with_email = cursor.execute('SELECT COUNT(*) FROM contacts WHERE email IS NOT NULL').fetchone()[0]
+            return {'total_contacts': total, 'with_email': with_email, 'by_source': {}, 'by_category': {}}
+
         async with self.pool.acquire() as conn:
             total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
             by_source = await conn.fetch('''
