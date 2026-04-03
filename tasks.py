@@ -2,10 +2,14 @@ from celery import Celery
 import asyncio
 import logging
 import os
+import sys
 import json
 import redis
 from datetime import datetime
 from pathlib import Path
+
+# Fix for Railway/Docker: Ensure the current directory is in the Python path
+sys.path.append(os.getcwd())
 
 # Heavy imports are now inside the task to ensure registration never fails
 # from scraper import ContactScraper, load_config
@@ -29,13 +33,13 @@ def set_status(msg, is_running=True):
 
 if not redis_url:
     logger.warning("REDIS_URL not found. Celery tasks will run locally (always_eager).")
-    celery_app = Celery('scraper')
+    celery_app = Celery('web_scraper_app')
     celery_app.conf.update(
         task_always_eager=True,
         task_eager_propagates=True
     )
 else:
-    celery_app = Celery('scraper', 
+    celery_app = Celery('web_scraper_app', 
                         broker=redis_url, 
                         backend=redis_url)
 
