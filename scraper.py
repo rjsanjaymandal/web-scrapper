@@ -15,6 +15,29 @@ from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+CITY_STATE_MAP = {
+    'mumbai': 'MAHARASHTRA',
+    'delhi': 'DELHI',
+    'bangalore': 'KARNATAKA',
+    'hyderabad': 'TELANGANA',
+    'ahmedabad': 'GUJARAT',
+    'chennai': 'TAMIL NADU',
+    'kolkata': 'WEST BENGAL',
+    'surat': 'GUJARAT',
+    'pune': 'MAHARASHTRA',
+    'jaipur': 'RAJASTHAN',
+    'lucknow': 'UTTAR PRADESH',
+    'kanpur': 'UTTAR PRADESH',
+    'nagpur': 'MAHARASHTRA',
+    'indore': 'MADHYA PRADESH',
+    'thane': 'MAHARASHTRA',
+    'bhopal': 'MADHYA PRADESH',
+    'visakhapatnam': 'ANDHRA PRADESH',
+    'pimpri-chinchwad': 'MAHARASHTRA',
+    'patna': 'BIHAR',
+    'vadodara': 'GUJARAT',
+}
+
 # Import enhanced utilities
 try:
     from enhanced_utils import (
@@ -220,7 +243,7 @@ class DataEnricher:
 
 class BaseScraper(ABC):
     @abstractmethod
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         pass
     
     @abstractmethod
@@ -435,7 +458,7 @@ class IndiaMartScraper(BaseScraper):
             pass
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
             cards = await page.query_selector_all('.prod-list .prod-item')
@@ -484,7 +507,7 @@ class ICICIScraper(BaseScraper):
     async def get_detail_url(self, card) -> Optional[str]:
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
             cards = await page.query_selector_all('.agent-card, .search-result-item')
@@ -529,16 +552,33 @@ class AMFIScraper(BaseScraper):
     ARN_BASE_URL = "https://www.amfiindia.com/load-distributor-data"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return self.ARN_BASE_URL
+        return "https://www.amfiindia.com/locate-distributor"
     
     async def get_detail_url(self, card) -> Optional[str]:
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
+            # 1. Click Filter Location
+            filter_btn = await page.wait_for_selector('span:has-text("Filter Location")', timeout=10000)
+            if filter_btn:
+                await filter_btn.click()
+            
+            # 2. Select City tab and search city
+            if city:
+                await page.wait_for_selector('input[placeholder="Search City Name"]', timeout=5000)
+                await page.fill('input[placeholder="Search City Name"]', city)
+                await page.wait_for_timeout(1000) # Wait for suggestions
+                
+                # Select first matching suggestion
+                await page.click('li p:visible')
+                await page.wait_for_timeout(2000) # Wait for table to update
+            
             await page.wait_for_selector('table, .distributor-list', timeout=15000)
             rows = await page.query_selector_all('table tbody tr, .distributor-item')
+            
+            # (Rest of extraction logic stays same, but we added the interaction step above)
             
             for row in rows:
                 try:
@@ -600,9 +640,24 @@ class IRDAIScraper(BaseScraper):
     async def get_detail_url(self, card) -> Optional[str]:
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
+            # IRDAI interaction: Select State and click Locate
+            state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA") # Default to Maharashtra
+            
+            await page.wait_for_selector('#ddlState', timeout=10000)
+            await page.select_option('#ddlState', label=state)
+            await page.wait_for_timeout(1000)
+            
+            if city:
+                # District often matches City in these portals
+                try:
+                    await page.select_option('#ddlDistrict', label=city.upper())
+                except:
+                    pass
+            
+            await page.click('#btnLocate')
             await page.wait_for_selector('.agent-list, table, .search-results', timeout=15000)
             cards = await page.query_selector_all('.agent-item, tr, .result-item')
             
@@ -660,9 +715,24 @@ class ICAIScraper(BaseScraper):
             pass
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
+            # ICAI interaction: Select State, then City, then Search
+            state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA")
+            
+            await page.wait_for_selector('#ddlState', timeout=10000)
+            await page.select_option('#ddlState', label=state)
+            await page.wait_for_timeout(1500) # Wait for City dropdown to populate
+            
+            if city:
+                try:
+                    await page.wait_for_selector('#ddlCity', timeout=5000)
+                    await page.select_option('#ddlCity', label=city.upper())
+                except:
+                    logger.warning(f"City {city} not found in ICAI dropdown")
+            
+            await page.click('#btnSearch')
             await page.wait_for_selector('.member-list, table, .ca-list', timeout=15000)
             cards = await page.query_selector_all('.member-item, tr, .ca-item')
             
@@ -933,7 +1003,8 @@ class ContactScraper:
         self.context = await self.browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             viewport={'width': 1920, 'height': 1080},
-            proxy=proxy_dict
+            proxy=proxy_dict,
+            ignore_https_errors=True
         )
         
         self.page = await self.context.new_page()
@@ -993,7 +1064,7 @@ class ContactScraper:
         
         return False
 
-    async def scrape_page(self, url: str, max_pages: int = 3) -> List[Dict]:
+    async def scrape_page(self, url: str, city: str = None, category: str = None, max_pages: int = 3) -> List[Dict]:
         all_listings = []
         
         for page_num in range(1, max_pages + 1):
@@ -1021,7 +1092,7 @@ class ContactScraper:
                     
                     await self.rate_limiter.wait()
                     
-                    listings = await self._extract_current_page()
+                    listings = await self._extract_current_page(city, category)
                     logger.info(f"Extracted {len(listings)} listings from page {page_num}")
                     
                     if not listings:
@@ -1059,7 +1130,7 @@ class ContactScraper:
                 
         return all_listings
 
-    async def _extract_current_page(self) -> List[Dict]:
+    async def _extract_current_page(self, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
             url_lower = self.page.url.lower()
@@ -1080,7 +1151,7 @@ class ContactScraper:
             else:
                 scraper = JustDialScraper()
             
-            listings = await scraper.extract_listings(self.page)
+            listings = await scraper.extract_listings(self.page, city, category)
         except Exception as e:
             logger.warning(f"Extraction error: {e}")
         return listings
@@ -1177,7 +1248,7 @@ class ContactScraper:
             logger.info(f"Source: {scraper.source_name}, URL: {url}")
             
             self.stats['total_scrape'] += 1
-            listings = await self.scrape_page(url)
+            listings = await self.scrape_page(url, city, category)
             
             logger.info(f"DEBUG: Got {len(listings)} listings from {scraper.source_name}")
             
