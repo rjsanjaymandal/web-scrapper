@@ -95,6 +95,8 @@ class Config:
     enable_enrichment: bool
     scheduler_enabled: bool
     scheduler_interval_hours: int
+    max_pages: int
+    dashboard_page_size: int
     categories: List[str]
     cities: List[str]
 
@@ -189,6 +191,8 @@ def load_config() -> Config:
         enable_enrichment=os.environ.get('SCRAPER_ENABLE_ENRICH', str(scraper_cfg.get('enable_enrichment', False))).lower() == 'true',
         scheduler_enabled=os.environ.get('SCRAPER_SCHEDULER_ENABLED', str(scraper_cfg.get('scheduler_enabled', False))).lower() == 'true',
         scheduler_interval_hours=int(os.environ.get('SCRAPER_SCHEDULER_INTERVAL', scraper_cfg.get('scheduler_interval_hours', 24))),
+        max_pages=int(os.environ.get('SCRAPER_MAX_PAGES', scraper_cfg.get('max_pages_per_source', 3))),
+        dashboard_page_size=int(os.environ.get('DASHBOARD_PAGE_SIZE', scraper_cfg.get('dashboard_page_size', 50))),
         categories=data.get('categories', []),
         cities=data.get('cities', [])
     )
@@ -1607,10 +1611,16 @@ class ContactScraper:
         self.stats['successful'] += 1
         return all_listings
 
-    async def scrape_page(self, url: str, city: str = None, category: str = None, scraper: Optional[BaseScraper] = None, max_pages: int = 3) -> List[Dict]:
+    async def scrape_page(self, url: str, city: str = None, category: str = None, scraper: Optional[BaseScraper] = None, max_pages: Optional[int] = None) -> List[Dict]:
         all_listings = []
+        limit = max_pages or self.config.max_pages
+        start_page = load_progress(city, category, scraper.source_name if scraper else 'Unknown')
         
-        for page_num in range(1, max_pages + 1):
+        if start_page > limit:
+            logger.info(f"Already scraped {start_page-1} pages, which meets or exceeds limit {limit}. Resetting to page 1.")
+            start_page = 1
+
+        for page_num in range(start_page, limit + 1):
             page_url = (
                 scraper.build_search_url(city, category, page_num)
                 if scraper and page_num > 1
@@ -1663,6 +1673,9 @@ class ContactScraper:
                         break
 
                     all_listings.extend(await self._process_listings(listings))
+                    
+                    # Update progress after each successful page
+                    save_progress(city, category, scraper.source_name if scraper else 'Unknown', page_num + 1)
                     
                     success = True
                     self.rate_limiter.record_success()
@@ -1838,7 +1851,7 @@ class ContactScraper:
             self.stats['by_source'][scraper.source_name] = \
                 self.stats['by_source'].get(scraper.source_name, 0) + len(listings)
             
-            save_progress(city, category, scraper.source_name, 1)
+            save_progress(city, category, scraper.source_name, 1) # Reset for next cycle
             await self.rate_limiter.wait()
 
     async def run(self):

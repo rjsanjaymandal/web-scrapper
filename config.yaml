@@ -33,6 +33,8 @@ scraper:
   enable_enrichment: true
   scheduler_enabled: false
   scheduler_interval_hours: 24
+  max_pages_per_source: 5
+  dashboard_page_size: 50
 
 categories:
   - Insurance-Agents

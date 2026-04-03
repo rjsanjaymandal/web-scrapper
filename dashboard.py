@@ -184,6 +184,12 @@ HTML = '''
         .pulse { animation: pulse 1.5s ease-in-out infinite; }
         .empty { text-align: center; padding: 60px; color: #8b8fa3; }
         .empty h2 { font-size: 18px; margin-bottom: 8px; color: #c9d1d9; }
+        .pagination { display: flex; justify-content: center; gap: 8px; margin: 30px 0; align-items: center; }
+        .page-link { padding: 8px 16px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 8px; color: #8b8fa3; text-decoration: none; font-size: 14px; transition: all 0.2s; }
+        .page-link:hover { background: #2d3148; color: #fff; }
+        .page-link.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .page-link.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+        .page-info { color: #8b8fa3; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -232,6 +238,18 @@ HTML = '''
     <div class="empty">
         <h2>No contacts yet</h2>
         <p>Click "Start Scrape" to begin collecting leads from your configured sources.</p>
+    </div>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        <a href="/?page=1" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        
+        <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
+
+        <a href="/?page={{ page + 1 }}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
 
@@ -291,12 +309,29 @@ HTML = '''
 @app.route('/')
 def index():
     try:
+        config = load_config()
+        scraper_cfg = config.get('scraper', {})
+        page_size = int(os.environ.get('DASHBOARD_PAGE_SIZE', scraper_cfg.get('dashboard_page_size', 50)))
+        
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', page_size, type=int)
+        
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT 100')
-        contacts = cur.fetchall()
+        
+        # Get count first
         cur.execute('SELECT COUNT(*) as cnt FROM contacts')
         total = cur.fetchone()['cnt']
+        total_pages = (total + limit - 1) // limit if total > 0 else 1
+        
+        # Clamp page
+        if page > total_pages: page = total_pages
+        if page < 1: page = 1
+        offset = (page - 1) * limit
+
+        cur.execute('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT %s OFFSET %s', (limit, offset))
+        contacts = cur.fetchall()
+        
         cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone != ''")
         with_phone = cur.fetchone()['cnt']
         cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email != ''")
@@ -312,12 +347,13 @@ def index():
     except Exception as e:
         logger.error(f"Database error: {e}")
         contacts, total, with_phone, with_email, city_count = [], 0, 0, 0, 0
-        by_source, by_cat = {}, {}
+        by_source, by_cat, total_pages, page = {}, {}, 1, 1
 
     return render_template_string(HTML,
         contacts=contacts,
         s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count},
-        by_source=by_source, by_cat=by_cat)
+        by_source=by_source, by_cat=by_cat,
+        page=page, total_pages=total_pages)
 
 
 @app.route('/api/status')
@@ -360,14 +396,24 @@ def api_contacts():
     try:
         conn = get_db()
         cur = conn.cursor()
+        
+        page = request.args.get('page', 1, type=int)
         limit = min(request.args.get('limit', 100, type=int), 1000)
-        cur.execute('SELECT name, phone, email, city, category, source FROM contacts ORDER BY scraped_at DESC LIMIT %s', (limit,))
+        offset = (page - 1) * limit
+        
+        cur.execute('SELECT name, phone, email, city, category, source FROM contacts ORDER BY scraped_at DESC LIMIT %s OFFSET %s', (limit, offset))
         contacts = cur.fetchall()
         cur.execute('SELECT COUNT(*) as cnt FROM contacts')
         total = cur.fetchone()['cnt']
         cur.close()
         conn.close()
-        return jsonify({'total': total, 'data': [dict(c) for c in contacts]})
+        return jsonify({
+            'total': total, 
+            'page': page,
+            'limit': limit,
+            'total_pages': (total + limit - 1) // limit,
+            'data': [dict(c) for c in contacts]
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
