@@ -310,20 +310,29 @@ def get_status():
 
 @app.route('/api/trigger/scrape')
 def trigger_scrape():
+    """Trigger scraping tasks. Default: official sources only (AMFI, IRDAI, ICAI)."""
     from tasks import scrape_category_task
+    use_business = request.args.get('business', 'false').lower() == 'true'
+    
     config = load_config()
     cities = config.get('cities', [])
     categories = config.get('categories', [])
-    sources = config.get('sources', ['justdial'])
 
     count = 0
     for city in cities:
         for cat in categories:
-            for source in sources:
-                scrape_category_task.delay(city, cat, source)
-                count += 1
+            # Default: use official sources (use_business=False)
+            # Add ?business=true to enable business directories
+            scrape_category_task.delay(city, cat, source=None, use_business=use_business)
+            count += 1
 
-    return jsonify({'message': f'🚀 {count} scraping tasks queued!', 'tasks': count})
+    source_type = "Business Directories" if use_business else "Official Sources (AMFI, IRDAI, ICAI)"
+    return jsonify({
+        'message': f'🚀 {count} scraping tasks queued for {source_type}!',
+        'tasks': count,
+        'source_type': source_type,
+        'use_business': use_business
+    })
 
 
 @app.route('/api/contacts')

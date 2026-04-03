@@ -22,6 +22,21 @@ exports/
 
 # Agent (local AI config - not for deployment)
 .agent/
+.local_tools/
+!/**/.gitkeep
+
+# Local Dev Tools (User's specific local-only plugins)
+node_modules/
+package-lock.json
+package.json
+
+# Screenshots & Visual Debugging (Local Only)
+*.png
+*.jpg
+*.jpeg
+screenshots/
+amfi_*.png
+irdai_*.png
 
 # OS
 .DS_Store

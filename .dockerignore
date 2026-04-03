@@ -1,22 +1,47 @@
+# Local Dev Tools (User's specific local-only plugins)
+node_modules
+package-lock.json
+package.json
+.agent
+.local_tools
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# Python Cache & OS
 __pycache__
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .Python
 *.so
 *.egg
 *.egg-info
 dist
 build
-exports/*
-!exports/.gitkeep
-logs/*
-!logs/.gitkeep
-.env
-.venv
-venv/
-ENV/
+.DS_Store
+Thumbs.db
+
+# Cache & Testing
 .pytest_cache
 .coverage
 htmlcov/
+
+# Screenshots & Visual Debugging (Local Only)
+*.png
+*.jpg
+*.jpeg
+screenshots/
+amfi_*.png
+irdai_*.png
+
+# Logs
+logs/*
+!logs/.gitkeep
 *.log
+
+# Exports
+exports/*
+!exports/.gitkeep

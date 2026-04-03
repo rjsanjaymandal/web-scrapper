@@ -559,51 +559,275 @@ class AMFIScraper(BaseScraper):
     
     async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
+        logger.info(f"AMFI: Starting extraction for city={city}, category={category}")
+        
         try:
-            # 1. Click Filter Location
-            filter_btn = await page.wait_for_selector('span:has-text("Filter Location")', timeout=10000)
-            if filter_btn:
-                await filter_btn.click()
+            # Log page info
+            page_title = await page.title()
+            page_url = page.url
+            logger.info(f"AMFI: Page title: {page_title}")
+            logger.info(f"AMFI: Page URL: {page_url}")
             
-            # 2. Select City tab and search city
-            if city:
-                await page.wait_for_selector('input[placeholder="Search City Name"]', timeout=5000)
-                await page.fill('input[placeholder="Search City Name"]', city)
-                await page.wait_for_timeout(1000) # Wait for suggestions
+            # Step 1: Click "Filter Location" to expand location filters
+            filter_location_selectors = [
+                'span:has-text("Filter Location")',
+                'button:has-text("Filter Location")',
+                'a:has-text("Filter Location")',
+                '[class*="filter-location"]',
+                '#filterLocation',
+                '[onclick*="Filter"]'
+            ]
+            
+            filter_clicked = False
+            for sel in filter_location_selectors:
+                try:
+                    filter_elem = await page.query_selector(sel)
+                    if filter_elem:
+                        await filter_elem.click()
+                        logger.info(f"AMFI: Clicked Filter Location: {sel}")
+                        filter_clicked = True
+                        await asyncio.sleep(2)
+                        break
+                except Exception as e:
+                    logger.debug(f"AMFI: Could not click {sel}: {e}")
+                    continue
+            
+            if not filter_clicked:
+                logger.warning("AMFI: Could not click Filter Location")
+            
+            # Take screenshot after clicking filter
+            await page.screenshot(path='amfi_filter.png')
+            
+            # Step 2: Now find and select city from the expanded filter
+            city_input_selectors = [
+                'input[placeholder*="City"]',
+                'input[id*="city"]',
+                'input[id*="City"]',
+                'input[name*="city"]',
+                'input[id*="ddlCity"]',
+                'input[id*="loc"]'
+            ]
+            
+            city_filled = False
+            for sel in city_input_selectors:
+                try:
+                    input_elem = await page.query_selector(sel)
+                    if input_elem:
+                        await input_elem.click()
+                        await input_elem.fill('')
+                        await asyncio.sleep(0.3)
+                        
+                        # Type city name
+                        for char in (city or 'Delhi'):
+                            await input_elem.type(char, delay=50)
+                        
+                        logger.info(f"AMFI: Typed city: {city or 'Delhi'}")
+                        city_filled = True
+                        await asyncio.sleep(1)
+                        break
+                except Exception as e:
+                    logger.debug(f"AMFI: Error with {sel}: {e}")
+                    continue
+            
+            # Step 3: Wait for suggestions and select
+            if city_filled:
+                suggestion_selectors = [
+                    'li[class*="suggestion"]',
+                    'li[class*="ui-menu"]',
+                    '[class*="autocomplete"] li',
+                    'ul li',
+                    'li:has-text("' + (city or 'Delhi') + '")'
+                ]
                 
-                # Select first matching suggestion
-                await page.click('li p:visible')
-                await page.wait_for_timeout(2000) # Wait for table to update
+                for sug_sel in suggestion_selectors:
+                    try:
+                        suggestions = await page.query_selector_all(sug_sel)
+                        if suggestions and len(suggestions) > 0:
+                            logger.info(f"AMFI: Found {len(suggestions)} suggestions")
+                            # Click first suggestion
+                            await suggestions[0].click()
+                            logger.info("AMFI: Clicked first suggestion")
+                            break
+                    except Exception:
+                        continue
+                
+                await asyncio.sleep(1)
             
-            await page.wait_for_selector('table, .distributor-list', timeout=15000)
-            rows = await page.query_selector_all('table tbody tr, .distributor-item')
+            # Step 4: Click Search/Submit button
+            search_button_selectors = [
+                'button:has-text("Search")',
+                'input[type="submit"]',
+                'button[type="submit"]',
+                'input[value*="Search"]',
+                '#search, #btnSearch',
+                'button:has-text("Submit")'
+            ]
             
-            # (Rest of extraction logic stays same, but we added the interaction step above)
+            for sel in search_button_selectors:
+                try:
+                    btn = await page.query_selector(sel)
+                    if btn:
+                        await btn.click()
+                        logger.info(f"AMFI: Clicked search button: {sel}")
+                        break
+                except Exception:
+                    continue
             
+            # Wait for results
+            logger.info("AMFI: Waiting for results to load...")
+            await asyncio.sleep(3)
+            await page.wait_for_load_state('networkidle', timeout=15000)
+            
+            # Take screenshot of results
+            await page.screenshot(path='amfi_results.png')
+            logger.info("AMFI: Screenshot saved: amfi_results.png")
+            
+            # Log current page state
+            body_text = await page.inner_text('body')
+            logger.info(f"AMFI: Page text preview (first 500 chars): {body_text[:500]}")
+            
+            # Try multiple row selectors
+            row_selectors = [
+                'table tbody tr',
+                '.distributor-list .distributor-item',
+                '.result-row, .result-item',
+                'tr[data-id], tr[class*="dist"]',
+                'div[class*="distributor"]',
+                'table tr',
+                '#example tbody tr',
+                '.dataTables_scrollBody tbody tr',
+                'div[id*="table"] tbody tr',
+                '[class*="table"] tbody tr',
+                '.table-responsive table tr'
+            ]
+            
+            rows = []
+            for selector in row_selectors:
+                rows = await page.query_selector_all(selector)
+                if rows:
+                    logger.info(f"AMFI: Found {len(rows)} rows with selector: {selector}")
+                    break
+            
+            if not rows:
+                logger.warning("AMFI: No rows found with standard selectors!")
+                
+                # Try using JavaScript to get all content
+                try:
+                    js_result = await page.evaluate('''() => {
+                        // Get all text content
+                        const body = document.body;
+                        const text = body.innerText;
+                        
+                        // Get all table data
+                        const tables = document.querySelectorAll('table');
+                        let tableData = [];
+                        tables.forEach((table, i) => {
+                            tableData.push({
+                                index: i,
+                                html: table.outerHTML.substring(0, 1000)
+                            });
+                        });
+                        
+                        // Get all divs with data
+                        const divs = document.querySelectorAll('div[class*="row"], div[class*="data"], div[class*="result"]');
+                        let divData = [];
+                        divs.forEach((div, i) => {
+                            if (i < 5) {
+                                divData.push({
+                                    class: div.className,
+                                    text: div.innerText.substring(0, 200)
+                                });
+                            }
+                        });
+                        
+                        return {
+                            textLength: text.length,
+                            textPreview: text.substring(0, 1000),
+                            tableCount: tables.length,
+                            tables: tableData,
+                            divCount: divs.length,
+                            divs: divData
+                        };
+                    }''')
+                    
+                    logger.info(f"AMFI: JS Result - text length: {js_result['textLength']}")
+                    logger.info(f"AMFI: JS Result - text preview: {js_result['textPreview'][:500]}")
+                    logger.info(f"AMFI: JS Result - table count: {js_result['tableCount']}")
+                    logger.info(f"AMFI: JS Result - div count: {js_result['divCount']}")
+                    
+                    if js_result['tables']:
+                        for t in js_result['tables']:
+                            logger.info(f"AMFI: JS Table {t['index']}: {t['html'][:300]}")
+                    
+                    if js_result['divs']:
+                        for d in js_result['divs']:
+                            logger.info(f"AMFI: JS Div {d['class']}: {d['text'][:100]}")
+                    
+                    # Try to parse text content for distributor data
+                    text = js_result['textPreview']
+                    
+                    # Look for ARN patterns in the text
+                    arn_pattern = re.compile(r'(\d{6,})\s+([A-Z][A-Z\s]+)\s+(\d{2}/\d{2}/\d{4})', re.MULTILINE)
+                    matches = arn_pattern.findall(text)
+                    
+                    if matches:
+                        logger.info(f"AMFI: Found {len(matches)} potential distributor matches via regex")
+                        for match in matches[:10]:
+                            arn, name, date = match
+                            if len(name.strip()) > 3:
+                                listings.append({
+                                    'name': name.strip(),
+                                    'arn': arn.strip(),
+                                    'city': city,
+                                    'state': None,
+                                    'phone': None,
+                                    'address': None,
+                                    'area': None,
+                                    'detail_url': None
+                                })
+                        logger.info(f"AMFI: Extracted {len(listings)} listings via regex")
+                    
+                except Exception as js_err:
+                    logger.error(f"AMFI: JavaScript evaluation error: {js_err}")
+                
+                return listings
+            
+            # Extract data from rows
             for row in rows:
                 try:
-                    cols = await row.query_selector_all('td')
-                    if len(cols) >= 4:
+                    cols = await row.query_selector_all('td, .col, [class*="cell"]')
+                    
+                    if not cols or len(cols) < 2:
+                        continue
+                    
+                    if len(cols) >= 2:
                         name = await cols[0].inner_text()
-                        arn = await cols[1].inner_text() if len(cols) > 1 else None
-                        city = await cols[2].inner_text() if len(cols) > 2 else None
-                        state = await cols[3].inner_text() if len(cols) > 3 else None
+                        arn_result = await cols[1].inner_text() if len(cols) > 1 else None
+                        city_result = await cols[2].inner_text() if len(cols) > 2 else city
+                        state_result = await cols[3].inner_text() if len(cols) > 3 else None
                         
-                        if name and arn:
+                        if name and arn_result and len(name.strip()) > 1:
                             listings.append({
                                 'name': name.strip(),
-                                'arn': arn.strip(),
-                                'city': city.strip() if city else None,
-                                'state': state.strip() if state else None,
+                                'arn': arn_result.strip(),
+                                'city': city_result.strip() if city_result else city,
+                                'state': state_result.strip() if state_result else None,
                                 'phone': None,
                                 'address': None,
                                 'area': None,
                                 'detail_url': None
                             })
-                except:
+                except Exception as e:
+                    logger.debug(f"AMFI: Row parse error: {e}")
                     continue
+            
+            logger.info(f"AMFI: Total listings extracted: {len(listings)}")
+            
         except Exception as e:
-            logger.warning(f"AMFI extraction error: {e}")
+            logger.error(f"AMFI: Extraction error: {e}")
+            import traceback
+            logger.error(f"AMFI: Traceback: {traceback.format_exc()}")
+        
         return listings
     
     async def fetch_with_post(self, session: aiohttp.ClientSession, city: str = None, state: str = None) -> List[Dict]:
@@ -642,46 +866,145 @@ class IRDAIScraper(BaseScraper):
     
     async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
+        logger.info(f"IRDAI: Starting extraction for city={city}, category={category}")
+        
         try:
-            # IRDAI interaction: Select State and click Locate
-            state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA") # Default to Maharashtra
+            # Log page info
+            page_title = await page.title()
+            page_url = page.url
+            logger.info(f"IRDAI: Page title: {page_title}")
+            logger.info(f"IRDAI: Page URL: {page_url}")
             
-            await page.wait_for_selector('#ddlState', timeout=10000)
-            await page.select_option('#ddlState', label=state)
-            await page.wait_for_timeout(1000)
+            # Determine state from city
+            state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA")
+            logger.info(f"IRDAI: Selected state: {state}")
             
-            if city:
-                # District often matches City in these portals
+            # Try to find and interact with form elements
+            selectors_to_try = [
+                ('#ddlState', 'select'),
+                ('[id*="state"]', 'select'),
+                ('[name*="state"]', 'select'),
+                ('select[id*="State"]', 'select')
+            ]
+            
+            state_selected = False
+            for sel, elem_type in selectors_to_try:
                 try:
-                    await page.select_option('#ddlDistrict', label=city.upper())
-                except:
-                    pass
+                    elem = await page.query_selector(sel)
+                    if elem:
+                        await elem.select_option(label=state)
+                        state_selected = True
+                        logger.info(f"IRDAI: Selected state using selector: {sel}")
+                        break
+                except Exception:
+                    continue
             
-            await page.click('#btnLocate')
-            await page.wait_for_selector('.agent-list, table, .search-results', timeout=15000)
-            cards = await page.query_selector_all('.agent-item, tr, .result-item')
+            if state_selected:
+                await asyncio.sleep(1)
+                
+                # Try district/city selection
+                district_selectors = ['#ddlDistrict', '[id*="district"]', '[id*="city"]']
+                for sel in district_selectors:
+                    try:
+                        elem = await page.query_selector(sel)
+                        if elem:
+                            await elem.select_option(label=city.upper() if city else None)
+                            logger.info(f"IRDAI: Selected district using selector: {sel}")
+                            break
+                    except Exception:
+                        continue
+                
+                # Click search/locate button
+                button_selectors = ['#btnLocate', '#btnSearch', '[id*="Locate"]', '[id*="Search"]', 'button[type="submit"]']
+                for sel in button_selectors:
+                    try:
+                        btn = await page.query_selector(sel)
+                        if btn:
+                            await btn.click()
+                            logger.info(f"IRDAI: Clicked button using selector: {sel}")
+                            break
+                    except Exception:
+                        continue
+                
+                await asyncio.sleep(2)
+            
+            # Log page state after interaction
+            body_text = await page.inner_text('body')
+            logger.info(f"IRDAI: Page text preview (first 300 chars): {body_text[:300]}")
+            
+            # Try multiple row selectors
+            row_selectors = [
+                '.agent-item',
+                'tr[data-id]',
+                'table tbody tr',
+                '.result-item',
+                '.search-result',
+                'tr[class*="agent"]'
+            ]
+            
+            cards = []
+            for sel in row_selectors:
+                cards = await page.query_selector_all(sel)
+                if cards:
+                    logger.info(f"IRDAI: Found {len(cards)} rows with selector: {sel}")
+                    break
+            
+            if not cards:
+                logger.warning("IRDAI: No rows found!")
+                # Text-based fallback
+                all_text = await page.inner_text('body')
+                # Look for license patterns (like 1234567, IRDA/XXXX)
+                import re
+                license_pattern = re.compile(r'(?:License|No\.?)\s*:?\s*([A-Z0-9/]{5,})', re.IGNORECASE)
+                lines = [l.strip() for l in all_text.split('\n') if l.strip()]
+                
+                for i, line in enumerate(lines):
+                    if license_pattern.search(line):
+                        name = lines[i-1] if i > 0 else line
+                        license_no = license_pattern.search(line).group(1)
+                        listings.append({
+                            'name': name[:100],
+                            'license_no': license_no,
+                            'city': city,
+                            'phone': None,
+                            'address': None,
+                            'area': None,
+                            'detail_url': None
+                        })
+                        if len(listings) >= 50:
+                            break
+                
+                logger.info(f"IRDAI: Text extraction found {len(listings)} listings")
+                return listings
             
             for card in cards:
                 try:
-                    name = await self._get_text(card, '.agent-name, .name, td:first-child')
-                    license_no = await self._get_text(card, '.license-no, td:nth-child(2)')
-                    city = await self._get_text(card, '.city, td:nth-child(3)')
-                    phone = await self._get_text(card, '.phone, td:nth-child(4)')
+                    name = await self._get_text(card, '.agent-name, .name, td:first-child, [class*="name"]')
+                    license_no = await self._get_text(card, '.license-no, td:nth-child(2), [class*="license"]')
+                    city_result = await self._get_text(card, '.city, td:nth-child(3), [class*="city"]')
+                    phone = await self._get_text(card, '.phone, td:nth-child(4), [class*="phone"]')
                     
-                    if name and license_no:
+                    if name and license_no and len(name.strip()) > 1:
                         listings.append({
                             'name': name.strip(),
                             'license_no': license_no.strip(),
-                            'city': city.strip() if city else None,
+                            'city': city_result.strip() if city_result else city,
                             'phone': self._clean_phone(phone) if phone else None,
                             'address': None,
                             'area': None,
                             'detail_url': None
                         })
-                except:
+                except Exception as e:
+                    logger.debug(f"IRDAI: Card parse error: {e}")
                     continue
+            
+            logger.info(f"IRDAI: Total listings extracted: {len(listings)}")
+            
         except Exception as e:
-            logger.warning(f"IRDAI extraction error: {e}")
+            logger.error(f"IRDAI: Extraction error: {e}")
+            import traceback
+            logger.error(f"IRDAI: Traceback: {traceback.format_exc()}")
+        
         return listings
     
     def _clean_phone(self, phone: str) -> Optional[str]:
