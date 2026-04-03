@@ -257,35 +257,35 @@ class JustDialScraper(BaseScraper):
         return None
     
     async def _extract_phone(self, card) -> Optional[str]:
-        # JustDial uses icon classes for numbers to prevent scraping
-        # e.g., <span class="mobilesv mcl-016"></span> 
-        # We try to find these icons and map them
         try:
-            icons = await card.query_selector_all('span.mobilesv')
-            if not icons:
-                # Fallback to direct text
-                text = await self._get_text(card, '.store-phone')
-                return self._clean_phone(text) if text else None
+            icons = await card.query_selector_all('span[class*="mobilesv"], span[class*="icon"], [class*="phone"]')
+            if icons:
+                jd_map = {
+                    'icon-ji': '9', 'icon-dc': '0', 'icon-fe': '1', 'icon-hg': '2', 'icon-ba': '3',
+                    'icon-lk': '4', 'icon-nm': '5', 'icon-op': '6', 'icon-rq': '7', 'icon-ts': '8',
+                    'icon-acb': '0', 'icon-yz': '1', 'icon-wx': '2', 'icon-vu': '3', 'icon-ts': '4',
+                    'icon-rq': '5', 'icon-pon': '6', 'icon-mlk': '7', 'icon-jih': '8', 'icon-gfed': '9',
+                    'mcl-': ''
+                }
+                phone_digits = []
+                for icon in icons:
+                    class_attr = await icon.get_attribute('class') or ''
+                    for icon_class, digit in jd_map.items():
+                        if icon_class in class_attr:
+                            if digit:
+                                phone_digits.append(digit)
+                            break
+                if len(phone_digits) >= 8:
+                    return "".join(phone_digits)
             
-            # Map of JD icon class endings to digits (approximation)
-            # This is dynamic and varies, but we'll implement a map based on common patterns
-            jd_map = {
-                'icon-ji': '9', 'icon-dc': '0', 'icon-fe': '1', 'icon-hg': '2', 'icon-ba': '3',
-                'icon-lk': '4', 'icon-nm': '5', 'icon-op': '6', 'icon-rq': '7', 'icon-ts': '8',
-                'icon-acb': '0', 'icon-yz': '1', 'icon-wx': '2', 'icon-vu': '3', 'icon-ts': '4',
-                'icon-rq': '5', 'icon-pon': '6', 'icon-mlk': '7', 'icon-jih': '8', 'icon-gfed': '9'
-            }
+            text = await self._get_text(card, '.store-phone, .phone, [class*="contact"], a[href*="tel"]')
+            if text:
+                return self._clean_phone(text)
             
-            phone_digits = []
-            for icon in icons:
-                class_attr = await icon.get_attribute('class')
-                for icon_class, digit in jd_map.items():
-                    if icon_class in class_attr:
-                        phone_digits.append(digit)
-                        break
-            
-            if phone_digits:
-                return "".join(phone_digits)
+            all_text = await card.inner_text() if card else ''
+            phone_match = re.search(r'(\d{8,12})', all_text)
+            if phone_match:
+                return self._clean_phone(phone_match.group(1))
         except Exception as e:
             logger.debug(f"Phone extraction error: {e}")
         return None
@@ -293,16 +293,72 @@ class JustDialScraper(BaseScraper):
     async def extract_listings(self, page: Page) -> List[Dict]:
         listings = []
         try:
-            await page.wait_for_selector('.store-list', timeout=10000)
-            cards = await page.query_selector_all('.store-list .store-info')
+            await page.wait_for_selector('body', timeout=10000)
+            page_content = await page.content()
+            logger.info(f"Page loaded, content length: {len(page_content)}")
+            
+            card_selectors = [
+                '.store-list .store-info',
+                '.store-list .results', 
+                '.store-info',
+                '.results .store-info',
+                '[class*="store"]',
+                '.listing-card',
+                '.business-card',
+                'li.store-data',
+                '.srch-result',
+            ]
+            
+            cards = []
+            for sel in card_selectors:
+                try:
+                    cards = await page.query_selector_all(sel)
+                    if cards:
+                        logger.info(f"Found {len(cards)} cards with selector: {sel}")
+                        break
+                except:
+                    continue
+            
+            if not cards:
+                logger.warning("No cards found with any selector")
+                return listings
             
             for card in cards:
                 try:
-                    name = await self._get_text(card, '.store-name')
+                    name_selectors = ['.store-name', '.name', 'h2', 'h3', '.business-name', '[class*="name"]', 'a.store-name']
+                    name = None
+                    for sel in name_selectors:
+                        name = await self._get_text(card, sel)
+                        if name:
+                            break
+                    
                     phone = await self._extract_phone(card)
-                    address = await self._get_text(card, '.store-address')
-                    area = await self._get_text(card, '.store-area')
-                    detail_url = await self.get_detail_url(card)
+                    
+                    addr_selectors = ['.store-address', '.address', '.addr', '[class*="address"]']
+                    address = None
+                    for sel in addr_selectors:
+                        address = await self._get_text(card, sel)
+                        if address:
+                            break
+                    
+                    area_selectors = ['.store-area', '.area', '[class*="area"]']
+                    area = None
+                    for sel in area_selectors:
+                        area = await self._get_text(card, sel)
+                        if area:
+                            break
+                    
+                    link_selectors = ['a.store-name', 'a.business-name', 'a[href*="/"]']
+                    detail_url = None
+                    for sel in link_selectors:
+                        try:
+                            link = await card.query_selector(sel)
+                            if link:
+                                detail_url = await link.get_attribute('href')
+                                if detail_url:
+                                    break
+                        except:
+                            continue
                     
                     if name:
                         listings.append({
@@ -315,6 +371,8 @@ class JustDialScraper(BaseScraper):
                 except Exception as e:
                     logger.debug(f"Card parse error: {e}")
                     continue
+            
+            logger.info(f"Extracted {len(listings)} listings")
         except Exception as e:
             logger.warning(f"Listings extraction error: {e}")
         return listings
