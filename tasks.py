@@ -6,7 +6,9 @@ import json
 import redis
 from datetime import datetime
 from pathlib import Path
-from scraper import ContactScraper, load_config
+
+# Heavy imports are now inside the task to ensure registration never fails
+# from scraper import ContactScraper, load_config
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,6 +44,7 @@ def scrape_category_task(city: str, category: str, source: str = None):
     """
     Background task to scrape a specific category in a city from a specific source.
     """
+    from scraper import ContactScraper, load_config
     set_status(f"🚀 Scraping {category} in {city}...")
     
     async def _run_scrape():
@@ -66,6 +69,7 @@ def scrape_category_task(city: str, category: str, source: str = None):
 
 @celery_app.task(name="tasks.validate_all_contacts_task")
 def validate_all_contacts_task():
+    from scraper import ContactScraper, load_config
     set_status("🔍 Validating all contacts...")
     async def _run_validation():
         config = load_config()
@@ -82,6 +86,7 @@ def validate_all_contacts_task():
 
 @celery_app.task(name="tasks.export_data_task")
 def export_data_task(export_format: str = "csv"):
+    from scraper import ContactScraper, load_config
     async def _run_export():
         config = load_config()
         scraper = ContactScraper(config)
@@ -95,6 +100,7 @@ def export_data_task(export_format: str = "csv"):
 
 @celery_app.task(name="tasks.cleanup_old_data_task")
 def cleanup_old_data_task(days: int = 90):
+    from scraper import ContactScraper, load_config
     async def _run_cleanup():
         config = load_config()
         scraper = ContactScraper(config)

@@ -537,15 +537,19 @@ class ContactScraper:
     async def init_db(self):
         try:
             # Try PostgreSQL first
+            # Use SSL if a password is set (cloud databases)
+            ssl_ctx = 'require' if self.config.db_password else None
+            
             self.pool = await asyncpg.create_pool(
                 host=self.config.db_host,
                 port=self.config.db_port,
                 database=self.config.db_name,
                 user=self.config.db_user,
                 password=self.config.db_password,
-                min_size=2,
+                min_size=1,
                 max_size=10,
-                command_timeout=5
+                command_timeout=60,
+                ssl=ssl_ctx
             )
             # Test connection
             async with self.pool.acquire() as conn:
@@ -555,15 +559,17 @@ class ContactScraper:
             await self._create_pg_tables()
             
         except Exception as e:
-            logger.warning(f"PostgreSQL connection failed: {e}. Falling back to SQLite for local development.")
-            self.pool = None # We will use a different approach for SQLite
-            # Actually, to avoid rewriting all the SQL, let's keep the pool logic but use a wrapper or similar
-            # For simplicity in this local-first approach, we'll implement a simple sqlite3 fallback for the essential methods.
+            logger.error(f"❌ PostgreSQL connection failed: {e}")
+            # If we are on Railway, DO NOT fall back to local SQLite (invisible to dashboard)
+            if os.environ.get('RAILWAY_ENVIRONMENT'):
+                logger.critical("FATAL: Production database unreachable. Aborting.")
+                raise e
+                
             self.use_sqlite = True
             import sqlite3
             self.sqlite_conn = sqlite3.connect('scraper_local.db')
             self._create_sqlite_tables()
-            logger.info("SQLite initialized (scraper_local.db)")
+            logger.info("SQLite fallback active.")
 
     async def _create_pg_tables(self):
         await self.pool.execute('''
