@@ -80,17 +80,31 @@ def load_config() -> Config:
     # Environment Variable Support (Prioritize these for Railway)
     db_url = os.environ.get('DATABASE_URL')
     if db_url:
-        # Example: postgresql://user:pass@host:port/dbname
-        import re
-        db_match = re.match(r'postgresql://(?P<user>.*?):(?P<password>.*?)@(?P<host>.*?):(?P<port>\d+)/(?P<name>.*)', db_url)
-        if db_match:
-            db_groups = db_match.groupdict()
-            db_host = db_groups['host']
-            db_port = int(db_groups['port'])
-            db_name = db_groups['name']
-            db_user = db_groups['user']
-            db_password = db_groups['password']
-        else:
+        # Railway/Heroku sometimes use postgres:// instead of postgresql://
+        if db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        
+        # Parse host, port, name, user, password from URL
+        # Format: postgresql://user:password@host:port/dbname
+        try:
+            # Simple parsing without fragile regex
+            part1 = db_url.split('://')[1]
+            auth, host_port_db = part1.split('@')
+            db_user, db_password = auth.split(':')
+            host_port, db_name = host_port_db.split('/')
+            if ':' in host_port:
+                db_host, db_port = host_port.split(':')
+                db_port = int(db_port)
+            else:
+                db_host = host_port
+                db_port = 5432
+            
+            # Remove any query params (like ?sslmode=disable)
+            if '?' in db_name:
+                db_name = db_name.split('?')[0]
+                
+        except Exception as e:
+            logger.error(f"Failed to parse DATABASE_URL: {e}. Falling back to env vars.")
             db_host = os.environ.get('DB_HOST', db_cfg.get('host', 'localhost'))
             db_port = int(os.environ.get('DB_PORT', db_cfg.get('port', 5432)))
             db_name = os.environ.get('DB_NAME', db_cfg.get('name', 'scraper_db'))
