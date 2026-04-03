@@ -61,6 +61,16 @@ LOGS_DIR = PROJ_DIR / "logs"
 EXPORTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
+OFFICIAL_CATEGORY_SOURCE_MAP = {
+    'mutual-fund-agents': ['AMFI'],
+    'mutual-fund-agent': ['AMFI'],
+    'insurance-agents': ['IRDAI'],
+    'insurance-agent': ['IRDAI'],
+    'tax-advocates': ['ICAI'],
+    'tax-advocate': ['ICAI'],
+    'chartered-accountants': ['ICAI'],
+}
+
 
 @dataclass
 class Config:
@@ -550,9 +560,18 @@ class AMFIScraper(BaseScraper):
     source_name = "AMFI"
     
     ARN_BASE_URL = "https://www.amfiindia.com/load-distributor-data"
+    SEARCH_API_URL = "https://www.amfiindia.com/api/distributor-agent"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return "https://www.amfiindia.com/locate-distributor"
+
+    def get_search_params(self, city: str, page: int = 1, page_size: int = 100) -> Dict:
+        return {
+            'strOpt': 'ALL',
+            'city': city,
+            'page': page,
+            'pageSize': page_size,
+        }
     
     async def get_detail_url(self, card) -> Optional[str]:
         return None
@@ -1163,6 +1182,9 @@ class ContactScraper:
         self.pool: Optional[asyncpg.Pool] = None
         self.proxy_manager = ProxyManager(config.proxies, config.test_mode)
         self.rate_limiter = RateLimiter(config.request_delay_min, config.request_delay_max)
+        self.browser_proxy_disabled = False
+        self.sqlite_conn = None
+        self.use_sqlite = False
         
         self.scrapers: List[BaseScraper] = [
             AMFIScraper(),
@@ -1184,6 +1206,66 @@ class ContactScraper:
             'duplicates_skipped': 0,
             'by_source': {}
         }
+
+    def _normalize_key(self, value: Optional[str]) -> str:
+        if not value:
+            return ''
+        return re.sub(r'[^a-z0-9]+', '-', value.strip().lower()).strip('-')
+
+    def _select_scrapers(self, category: str, source_name: Optional[str], use_business: bool) -> List[BaseScraper]:
+        if source_name:
+            return [s for s in self.scrapers + self.business_scrapers if s.source_name == source_name]
+
+        if use_business:
+            return list(self.business_scrapers)
+
+        expected_sources = OFFICIAL_CATEGORY_SOURCE_MAP.get(self._normalize_key(category))
+        if not expected_sources:
+            return list(self.scrapers)
+
+        filtered = [s for s in self.scrapers if s.source_name in expected_sources]
+        return filtered or list(self.scrapers)
+
+    def _is_proxy_error(self, error: Exception) -> bool:
+        message = str(error).lower()
+        return 'proxy' in message and (
+            'err_proxy_connection_failed' in message
+            or 'proxy connection failed' in message
+            or 'proxy authentication' in message
+        )
+
+    async def _close_browser(self, stop_playwright: bool = False):
+        if self.page:
+            self.page = None
+
+        if self.context:
+            try:
+                await self.context.close()
+            except Exception as exc:
+                logger.debug(f"Browser context close warning: {exc}")
+            finally:
+                self.context = None
+
+        if self.browser:
+            try:
+                await self.browser.close()
+            except Exception as exc:
+                logger.debug(f"Browser close warning: {exc}")
+            finally:
+                self.browser = None
+
+        if stop_playwright and self.playwright:
+            try:
+                await self.playwright.stop()
+            except Exception as exc:
+                logger.debug(f"Playwright stop warning: {exc}")
+            finally:
+                self.playwright = None
+
+    async def ensure_browser(self):
+        if self.page and self.browser and self.context:
+            return
+        await self.init_browser()
 
     async def init_db(self):
         try:
@@ -1294,54 +1376,83 @@ class ContactScraper:
         ''')
         self.sqlite_conn.commit()
 
-    async def init_browser(self):
-        self.playwright = await async_playwright().start()
-        
-        # Add a small random jitter to avoid multiple workers launching browsers at the exact same millisecond
-        import random
-        await asyncio.sleep(random.uniform(0, 5))
-        
+    async def init_browser(self, disable_proxy: bool = False, force_restart: bool = False):
+        if force_restart:
+            await self._close_browser()
+
+        if self.page and self.browser and self.context:
+            return
+
+        if not self.playwright:
+            self.playwright = await async_playwright().start()
+
+        await asyncio.sleep(random.uniform(0.2, 1.2))
+
         launch_args = [
             '--disable-blink-features=AutomationControlled',
             '--disable-dev-shm-usage',
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-gpu',
-            '--no-zygote' # Help reduce process count
+            '--no-zygote',
         ]
-        
-        proxy_str = self.proxy_manager.get_proxy_string()
-        
-        if self.config.test_mode:
-            logger.info("Running in TEST MODE (no proxy)")
-            self.browser = await self.playwright.chromium.launch(
-                headless=True,
-                args=launch_args
-            )
-        else:
-            logger.info(f"Using proxy: {proxy_str[:50] if proxy_str else 'None'}...")
-            self.browser = await self.playwright.chromium.launch(
-                headless=True,
-                args=launch_args
-            )
-            
+
+        use_proxy = bool(self.config.proxies) and not self.config.test_mode and not disable_proxy
+        if disable_proxy:
+            self.browser_proxy_disabled = True
+
+        proxy_str = self.proxy_manager.get_proxy_string() if use_proxy else None
         proxy_dict = {'server': proxy_str} if proxy_str else None
-        self.context = await self.browser.new_context(
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            viewport={'width': 1920, 'height': 1080},
-            proxy=proxy_dict,
-            ignore_https_errors=True
-        )
-        
-        self.page = await self.context.new_page()
-        
-        await self.page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        """)
-        
-        logger.info("Browser initialized")
+
+        for attempt in range(1, 4):
+            try:
+                if self.config.test_mode:
+                    logger.info("Running in TEST MODE (no proxy)")
+                elif use_proxy:
+                    logger.info(f"Using proxy: {proxy_str[:50] if proxy_str else 'None'}...")
+                else:
+                    logger.info("Launching browser without proxy")
+
+                self.browser = await self.playwright.chromium.launch(
+                    headless=self.config.headless,
+                    args=launch_args
+                )
+
+                context_kwargs = {
+                    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'viewport': {'width': 1920, 'height': 1080},
+                    'ignore_https_errors': True,
+                }
+                if proxy_dict:
+                    context_kwargs['proxy'] = proxy_dict
+
+                self.context = await self.browser.new_context(**context_kwargs)
+                self.page = await self.context.new_page()
+
+                await self.page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                """)
+
+                logger.info("Browser initialized")
+                return
+            except Exception as exc:
+                await self._close_browser()
+
+                if use_proxy and self._is_proxy_error(exc):
+                    logger.warning("Proxy failed during browser setup, retrying without proxy")
+                    use_proxy = False
+                    proxy_str = None
+                    proxy_dict = None
+                    self.browser_proxy_disabled = True
+                    continue
+
+                if attempt == 3:
+                    raise
+
+                logger.warning(f"Browser init retry {attempt}/3 failed: {exc}")
+                await asyncio.sleep(min(6, attempt * 2))
 
     async def extract_email_from_detail(self, detail_url: str) -> Optional[str]:
         if not detail_url or not self.config.enable_email_extraction:
@@ -1390,18 +1501,105 @@ class ContactScraper:
         
         return False
 
-    async def scrape_page(self, url: str, city: str = None, category: str = None, max_pages: int = 3) -> List[Dict]:
+    async def _process_listings(self, listings: List[Dict]) -> List[Dict]:
+        processed_listings = []
+
+        for listing in listings:
+            if self.config.enable_email_extraction and listing.get('detail_url'):
+                email = await self.extract_email_from_detail(listing['detail_url'])
+                listing['email'] = email
+
+            if self.config.enable_enrichment:
+                listing = await DataEnricher.enrich_contact(listing)
+
+            is_dup = await self.is_duplicate(listing.get('phone_clean'), listing.get('email'))
+            if is_dup:
+                self.stats['duplicates_skipped'] += 1
+                continue
+
+            processed_listings.append(listing)
+
+        return processed_listings
+
+    def _format_amfi_listing(self, record: Dict, city: str) -> Dict:
+        phone = record.get('TelephoneNumber_O') or record.get('TelephoneNumber_R')
+        record_city = record.get('City') or city
+        normalized_city = record_city.title() if isinstance(record_city, str) else city
+
+        return {
+            'name': (record.get('ARNHolderName') or '').strip(),
+            'phone': phone.strip() if isinstance(phone, str) and phone.strip() else None,
+            'email': (record.get('Email') or '').strip() or None,
+            'address': (record.get('Address') or '').strip(' "'),
+            'area': None,
+            'state': CITY_STATE_MAP.get(self._normalize_key(normalized_city), CITY_STATE_MAP.get(self._normalize_key(city))),
+            'city': normalized_city,
+            'arn': (record.get('ARN') or '').strip() or None,
+            'detail_url': None,
+        }
+
+    async def scrape_amfi_api(self, scraper: AMFIScraper, city: str, category: str) -> List[Dict]:
+        all_listings = []
+        page_num = 1
+        page_size = 100
+        timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
+        headers = {
+            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            while True:
+                params = scraper.get_search_params(city=city, page=page_num, page_size=page_size)
+                logger.info(f"Fetching AMFI API page {page_num} for {city}")
+
+                async with session.get(scraper.SEARCH_API_URL, params=params) as response:
+                    if response.status != 200:
+                        raise RuntimeError(f"AMFI API returned HTTP {response.status}")
+
+                    payload = await response.json(content_type=None)
+
+                records = payload.get('data') or []
+                if not records:
+                    break
+
+                batch = [self._format_amfi_listing(record, city) for record in records if record.get('ARNHolderName')]
+                batch = await self._process_listings(batch)
+                all_listings.extend(batch)
+
+                meta = payload.get('meta') or {}
+                total_pages = meta.get('pageCount') or page_num
+                if page_num >= total_pages:
+                    break
+
+                page_num += 1
+                await self.rate_limiter.wait()
+
+        logger.info(f"AMFI API extracted {len(all_listings)} listings for {city}")
+        self.rate_limiter.record_success()
+        self.stats['successful'] += 1
+        return all_listings
+
+    async def scrape_page(self, url: str, city: str = None, category: str = None, scraper: Optional[BaseScraper] = None, max_pages: int = 3) -> List[Dict]:
         all_listings = []
         
         for page_num in range(1, max_pages + 1):
+            page_url = (
+                scraper.build_search_url(city, category, page_num)
+                if scraper and page_num > 1
+                else url
+            )
+            if page_num > 1 and page_url == url:
+                break
+
             retries = 0
             success = False
             
             while retries < self.config.max_retries and not success:
                 try:
-                    page_url = url if page_num == 1 else url.replace('.com/', f'.com/page-{page_num}/')
                     logger.info(f"Fetching: {page_url}")
-                    
+
+                    await self.ensure_browser()
                     await self.page.goto(page_url, timeout=self.config.timeout_seconds * 1000, wait_until='networkidle')
                     await asyncio.sleep(2)
                     
@@ -1418,33 +1616,25 @@ class ContactScraper:
                     
                     await self.rate_limiter.wait()
                     
-                    listings = await self._extract_current_page(city, category)
+                    listings = await self._extract_current_page(city, category, scraper)
                     logger.info(f"Extracted {len(listings)} listings from page {page_num}")
                     
                     if not listings:
                         logger.warning(f"No listings found on page {page_num}")
                         break
-                    
-                    for listing in listings:
-                        if self.config.enable_email_extraction and listing.get('detail_url'):
-                            email = await self.extract_email_from_detail(listing['detail_url'])
-                            listing['email'] = email
-                        
-                        if self.config.enable_enrichment:
-                            listing = await DataEnricher.enrich_contact(listing)
-                        
-                        is_dup = await self.is_duplicate(listing.get('phone_clean'), listing.get('email'))
-                        if is_dup:
-                            self.stats['duplicates_skipped'] += 1
-                            continue
-                        
-                        all_listings.append(listing)
+
+                    all_listings.extend(await self._process_listings(listings))
                     
                     success = True
                     self.rate_limiter.record_success()
                     self.stats['successful'] += 1
                     
                 except Exception as e:
+                    if self._is_proxy_error(e) and not self.browser_proxy_disabled:
+                        logger.warning("Proxy failed during page fetch, retrying browser without proxy")
+                        await self.init_browser(disable_proxy=True, force_restart=True)
+                        continue
+
                     retries += 1
                     self.rate_limiter.record_failure()
                     self.stats['failed'] += 1
@@ -1456,26 +1646,27 @@ class ContactScraper:
                 
         return all_listings
 
-    async def _extract_current_page(self, city: str = None, category: str = None) -> List[Dict]:
+    async def _extract_current_page(self, city: str = None, category: str = None, scraper: Optional[BaseScraper] = None) -> List[Dict]:
         listings = []
         try:
-            url_lower = self.page.url.lower()
-            if 'justdial' in url_lower:
-                scraper = JustDialScraper()
-            elif 'indiamart' in url_lower:
-                scraper = IndiaMartScraper()
-            elif 'amfi' in url_lower:
-                scraper = AMFIScraper()
-            elif 'irdai' in url_lower or 'policyholder' in url_lower:
-                scraper = IRDAIScraper()
-            elif 'icai' in url_lower:
-                scraper = ICAIScraper()
-            elif 'sulekha' in url_lower:
-                scraper = SulekhaScraper()
-            elif 'clickindia' in url_lower:
-                scraper = ClickIndiaScraper()
-            else:
-                scraper = JustDialScraper()
+            if not scraper:
+                url_lower = self.page.url.lower()
+                if 'justdial' in url_lower:
+                    scraper = JustDialScraper()
+                elif 'indiamart' in url_lower:
+                    scraper = IndiaMartScraper()
+                elif 'amfi' in url_lower:
+                    scraper = AMFIScraper()
+                elif 'irdai' in url_lower or 'policyholder' in url_lower:
+                    scraper = IRDAIScraper()
+                elif 'icai' in url_lower:
+                    scraper = ICAIScraper()
+                elif 'sulekha' in url_lower:
+                    scraper = SulekhaScraper()
+                elif 'clickindia' in url_lower:
+                    scraper = ClickIndiaScraper()
+                else:
+                    scraper = JustDialScraper()
             
             listings = await scraper.extract_listings(self.page, city, category)
         except Exception as e:
@@ -1500,15 +1691,34 @@ class ContactScraper:
             logger.info(f"Saved {len(listings)} records to SQLite")
             return
 
+        records = [
+            (
+                listing.get('name'),
+                listing.get('phone'),
+                listing.get('email'),
+                listing.get('address'),
+                category,
+                city,
+                listing.get('area'),
+                listing.get('state'),
+                source,
+                url,
+                listing.get('phone_clean'),
+                listing.get('email_valid', False),
+                listing.get('enriched', False),
+                listing.get('arn'),
+                listing.get('license_no'),
+                listing.get('membership_no'),
+            )
+            for listing in listings
+        ]
+
         async with self.pool.acquire() as conn:
-            for listing in listings:
-                await conn.execute('''
+            async with conn.transaction():
+                await conn.executemany('''
                     INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                ''', listing.get('name'), listing.get('phone'), listing.get('email'), listing.get('address'),
-                    category, city, listing.get('area'), listing.get('state'), source, url, 
-                    listing.get('phone_clean'), listing.get('email_valid', False), listing.get('enriched', False),
-                    listing.get('arn'), listing.get('license_no'), listing.get('membership_no'))
+                ''', records)
         
         logger.info(f"Saved {len(listings)} records to database")
 
@@ -1565,16 +1775,22 @@ class ContactScraper:
     async def scrape_category(self, city: str, category: str, source_name: Optional[str] = None, use_business: bool = False):
         logger.info(f"\n>>> Scraping: {category} in {city}")
         
-        scrapers_to_run = self.business_scrapers if use_business else self.scrapers
-        if source_name:
-            scrapers_to_run = [s for s in self.scrapers + self.business_scrapers if s.source_name == source_name]
-            
+        scrapers_to_run = self._select_scrapers(category, source_name, use_business)
+
         for scraper in scrapers_to_run:
             url = scraper.build_search_url(city, category)
             logger.info(f"Source: {scraper.source_name}, URL: {url}")
             
             self.stats['total_scrape'] += 1
-            listings = await self.scrape_page(url, city, category)
+            try:
+                if isinstance(scraper, AMFIScraper):
+                    listings = await self.scrape_amfi_api(scraper, city, category)
+                else:
+                    listings = await self.scrape_page(url, city, category, scraper=scraper)
+            except Exception as exc:
+                self.stats['failed'] += 1
+                logger.error(f"{scraper.source_name} failed for {category} in {city}: {exc}")
+                continue
             
             logger.info(f"DEBUG: Got {len(listings)} listings from {scraper.source_name}")
             
@@ -1593,7 +1809,6 @@ class ContactScraper:
         logger.info("="*60)
         
         await self.init_db()
-        await self.init_browser()
         
         try:
             for city in self.config.cities:
@@ -1624,12 +1839,13 @@ class ContactScraper:
             await self.close()
 
     async def close(self):
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+        await self._close_browser(stop_playwright=True)
         if self.pool:
             await self.pool.close()
+            self.pool = None
+        if self.sqlite_conn:
+            self.sqlite_conn.close()
+            self.sqlite_conn = None
 
 
 class Scheduler:
