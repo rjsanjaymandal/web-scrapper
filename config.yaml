@@ -1,0 +1,58 @@
+database:
+  host: localhost
+  port: 5432
+  name: scraper_db
+  user: postgres
+  password: your_password_here
+
+proxy:
+  host: brd-customer-YOUR_CUSTOMER-zone-YOUR_ZONE
+  username: your_username
+  password: your_password
+  proxies:
+    - host: brd-customer-ZONE1-region
+      username: user1
+      password: pass1
+    - host: brd-customer-ZONE2-region
+      username: user2
+      password: pass2
+
+scraper:
+  request_delay_min: 2
+  request_delay_max: 5
+  max_retries: 3
+  timeout_seconds: 30
+  headless: true
+  test_mode: false
+  export_csv: true
+  csv_output_dir: exports
+  enable_email_extraction: true
+  enable_sitemap: false
+  enable_deduplication: true
+  enable_email_verify: false
+  enable_enrichment: true
+  scheduler_enabled: false
+  scheduler_interval_hours: 24
+
+categories:
+  - Insurance-Agents
+  - Mutual-Fund-Agents
+  - Tax-Advocates
+
+cities:
+  - Delhi
+  - Mumbai
+  - Bangalore
+  - Chennai
+  - Kolkata
+  - Hyderabad
+  - Pune
+
+celery:
+  broker_url: redis://localhost:6379/0
+  result_backend: redis://localhost:6379/0
+  task_serializer: json
+  accept_content: ['json']
+  result_serializer: json
+  timezone: UTC
+  enable_utc: true

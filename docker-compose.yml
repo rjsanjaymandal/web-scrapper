@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  scraper:
+    build: .
+    container_name: contact_scraper
+    volumes:
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scraper_db
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=your_password
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    container_name: scraper_dashboard
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./exports:/app/exports
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scraper_db
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=your_password
+    depends_on:
+      - scraper
+    restart: unless-stopped
