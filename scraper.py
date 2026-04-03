@@ -293,9 +293,16 @@ class JustDialScraper(BaseScraper):
     async def extract_listings(self, page: Page) -> List[Dict]:
         listings = []
         try:
-            await page.wait_for_selector('body', timeout=10000)
+            await page.wait_for_selector('body', timeout=15000)
+            await asyncio.sleep(3)
+            
+            page_title = await page.title()
+            page_url = page.url
+            logger.info(f"JustDial page title: {page_title}")
+            logger.info(f"JustDial page URL: {page_url}")
+            
             page_content = await page.content()
-            logger.info(f"Page loaded, content length: {len(page_content)}")
+            logger.info(f"Page content length: {len(page_content)}")
             
             card_selectors = [
                 '.store-list .store-info',
@@ -307,6 +314,10 @@ class JustDialScraper(BaseScraper):
                 '.business-card',
                 'li.store-data',
                 '.srch-result',
+                '.clg-listing',
+                '.search-result',
+                'article',
+                '.card',
             ]
             
             cards = []
@@ -320,7 +331,23 @@ class JustDialScraper(BaseScraper):
                     continue
             
             if not cards:
-                logger.warning("No cards found with any selector")
+                logger.warning("No cards found with any selector, trying text extraction")
+                body_text = await page.inner_text('body')
+                phone_matches = re.findall(r'(\d{10,12})', body_text)
+                name_lines = [line.strip() for line in body_text.split('\n') if len(line.strip()) > 3 and not line.strip().startswith(('http', 'www', '©'))]
+                
+                for i, name in enumerate(name_lines[:20]):
+                    if any(x in name.lower() for x in ['cookie', 'privacy', 'terms', 'login', 'sign up', 'download']):
+                        continue
+                    phone = phone_matches[i] if i < len(phone_matches) else None
+                    listings.append({
+                        'name': name,
+                        'phone': phone,
+                        'address': None,
+                        'area': None,
+                        'detail_url': None
+                    })
+                logger.info(f"Extracted {len(listings)} listings from text")
                 return listings
             
             for card in cards:
@@ -976,14 +1003,29 @@ class ContactScraper:
             while retries < self.config.max_retries and not success:
                 try:
                     page_url = url if page_num == 1 else url.replace('.com/', f'.com/page-{page_num}/')
-                    logger.debug(f"Fetching: {page_url}")
+                    logger.info(f"Fetching: {page_url}")
                     
                     await self.page.goto(page_url, timeout=self.config.timeout_seconds * 1000, wait_until='networkidle')
+                    await asyncio.sleep(2)
+                    
+                    page_title = await self.page.title()
+                    page_url_final = self.page.url
+                    logger.info(f"Page loaded - Title: {page_title}, URL: {page_url_final}")
+                    
+                    page_text = await self.page.inner_text('body')
+                    logger.info(f"Page text preview (first 500 chars): {page_text[:500]}")
+                    
+                    if 'captcha' in page_text.lower() or 'verify' in page_text.lower() or 'robot' in page_text.lower():
+                        logger.warning("CAPTCHA or bot detection detected!")
+                        break
+                    
                     await self.rate_limiter.wait()
                     
                     listings = await self._extract_current_page()
+                    logger.info(f"Extracted {len(listings)} listings from page {page_num}")
                     
                     if not listings:
+                        logger.warning(f"No listings found on page {page_num}")
                         break
                     
                     for listing in listings:
