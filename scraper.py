@@ -437,6 +437,179 @@ class ICICIScraper(BaseScraper):
         return await elem.inner_text() if elem else None
 
 
+class AMFIScraper(BaseScraper):
+    """Scraper for AMFI Mutual Fund Distributor data (amfiindia.com)"""
+    source_name = "AMFI"
+    
+    ARN_BASE_URL = "https://www.amfiindia.com/load-distributor-data"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return self.ARN_BASE_URL
+    
+    async def get_detail_url(self, card) -> Optional[str]:
+        return None
+    
+    async def extract_listings(self, page: Page) -> List[Dict]:
+        listings = []
+        try:
+            await page.wait_for_selector('table, .distributor-list', timeout=15000)
+            rows = await page.query_selector_all('table tbody tr, .distributor-item')
+            
+            for row in rows:
+                try:
+                    cols = await row.query_selector_all('td')
+                    if len(cols) >= 4:
+                        name = await cols[0].inner_text()
+                        arn = await cols[1].inner_text() if len(cols) > 1 else None
+                        city = await cols[2].inner_text() if len(cols) > 2 else None
+                        state = await cols[3].inner_text() if len(cols) > 3 else None
+                        
+                        if name and arn:
+                            listings.append({
+                                'name': name.strip(),
+                                'arn': arn.strip(),
+                                'city': city.strip() if city else None,
+                                'state': state.strip() if state else None,
+                                'phone': None,
+                                'address': None,
+                                'area': None,
+                                'detail_url': None
+                            })
+                except:
+                    continue
+        except Exception as e:
+            logger.warning(f"AMFI extraction error: {e}")
+        return listings
+    
+    async def fetch_with_post(self, session: aiohttp.ClientSession, city: str = None, state: str = None) -> List[Dict]:
+        listings = []
+        try:
+            payload = {}
+            if city:
+                payload['city'] = city
+            if state:
+                payload['state'] = state
+                
+            async with session.post(self.ARN_BASE_URL, data=payload, timeout=30) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    logger.debug(f"AMFI response length: {len(html)}")
+        except Exception as e:
+            logger.warning(f"AMFI POST error: {e}")
+        return listings
+    
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
+class IRDAIScraper(BaseScraper):
+    """Scraper for IRDAI Insurance Agent data (policyholder.gov.in)"""
+    source_name = "IRDAI"
+    
+    AGENT_SEARCH_URL = "https://www.policyholder.gov.in/agent-search"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return self.AGENT_SEARCH_URL
+    
+    async def get_detail_url(self, card) -> Optional[str]:
+        return None
+    
+    async def extract_listings(self, page: Page) -> List[Dict]:
+        listings = []
+        try:
+            await page.wait_for_selector('.agent-list, table, .search-results', timeout=15000)
+            cards = await page.query_selector_all('.agent-item, tr, .result-item')
+            
+            for card in cards:
+                try:
+                    name = await self._get_text(card, '.agent-name, .name, td:first-child')
+                    license_no = await self._get_text(card, '.license-no, td:nth-child(2)')
+                    city = await self._get_text(card, '.city, td:nth-child(3)')
+                    phone = await self._get_text(card, '.phone, td:nth-child(4)')
+                    
+                    if name and license_no:
+                        listings.append({
+                            'name': name.strip(),
+                            'license_no': license_no.strip(),
+                            'city': city.strip() if city else None,
+                            'phone': self._clean_phone(phone) if phone else None,
+                            'address': None,
+                            'area': None,
+                            'detail_url': None
+                        })
+                except:
+                    continue
+        except Exception as e:
+            logger.warning(f"IRDAI extraction error: {e}")
+        return listings
+    
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone:
+            return None
+        digits = re.sub(r'[^\d]', '', phone)
+        if len(digits) >= 10:
+            return digits[-10:]
+        return digits if digits else None
+    
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
+class ICAIScraper(BaseScraper):
+    """Scraper for ICAI Tax Advocate/CA data (icai.org)"""
+    source_name = "ICAI"
+    
+    MEMBER_SEARCH_URL = "https://www.icai.org/member-search"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return f"{self.MEMBER_SEARCH_URL}?city={city.lower()}"
+    
+    async def get_detail_url(self, card) -> Optional[str]:
+        try:
+            link = await card.query_selector('a.view-profile')
+            if link:
+                return await link.get_attribute('href')
+        except:
+            pass
+        return None
+    
+    async def extract_listings(self, page: Page) -> List[Dict]:
+        listings = []
+        try:
+            await page.wait_for_selector('.member-list, table, .ca-list', timeout=15000)
+            cards = await page.query_selector_all('.member-item, tr, .ca-item')
+            
+            for card in cards:
+                try:
+                    name = await self._get_text(card, '.member-name, .name, td:first-child')
+                    membership_no = await self._get_text(card, '.membership-no, td:nth-child(2)')
+                    city = await self._get_text(card, '.city, td:nth-child(3)')
+                    email = await self._get_text(card, '.email, td:nth-child(4)')
+                    
+                    if name and membership_no:
+                        listings.append({
+                            'name': name.strip(),
+                            'membership_no': membership_no.strip(),
+                            'city': city.strip() if city else None,
+                            'email': email.strip() if email else None,
+                            'phone': None,
+                            'address': None,
+                            'area': None,
+                            'detail_url': await self.get_detail_url(card)
+                        })
+                except:
+                    continue
+        except Exception as e:
+            logger.warning(f"ICAI extraction error: {e}")
+        return listings
+    
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
 class SitemapScraper:
     @staticmethod
     async def fetch_sitemap_urls(base_url: str) -> List[str]:
@@ -516,7 +689,9 @@ class ContactScraper:
         self.scrapers: List[BaseScraper] = [
             JustDialScraper(),
             IndiaMartScraper(),
-            ICICIScraper(),
+            AMFIScraper(),
+            IRDAIScraper(),
+            ICAIScraper(),
             SulekhaScraper(),
             ClickIndiaScraper()
         ]
@@ -577,15 +752,22 @@ class ContactScraper:
                 category VARCHAR(100),
                 city VARCHAR(100),
                 area VARCHAR(100),
+                state VARCHAR(100),
                 source VARCHAR(100),
                 source_url TEXT,
                 phone_clean VARCHAR(50),
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
+                arn VARCHAR(50),
+                license_no VARCHAR(100),
+                membership_no VARCHAR(100),
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # ... and other tables/indices
+        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)')
+        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)')
+        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)')
+        await self.pool.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone_clean ON contacts(phone_clean)')
         await self.pool.execute('CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, source VARCHAR(100), status VARCHAR(50), records_count INTEGER, error_message TEXT, started_at TIMESTAMP, completed_at TIMESTAMP)')
     
     def _create_sqlite_tables(self):
@@ -777,11 +959,12 @@ class ContactScraper:
             cursor = self.sqlite_conn.cursor()
             for l in listings:
                 cursor.execute('''
-                    INSERT INTO contacts (name, phone, email, address, category, city, area, source, source_url, phone_clean, email_valid, enriched)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (l.get('name'), l.get('phone'), l.get('email'), l.get('address'),
-                    category, city, l.get('area'), source, url, 
-                    l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False)))
+                    category, city, l.get('area'), l.get('state'), source, url, 
+                    l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False),
+                    l.get('arn'), l.get('license_no'), l.get('membership_no')))
             self.sqlite_conn.commit()
             logger.info(f"Saved {len(listings)} records to SQLite")
             return
@@ -789,11 +972,12 @@ class ContactScraper:
         async with self.pool.acquire() as conn:
             for listing in listings:
                 await conn.execute('''
-                    INSERT INTO contacts (name, phone, email, address, category, city, area, source, source_url, phone_clean, email_valid, enriched)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 ''', listing.get('name'), listing.get('phone'), listing.get('email'), listing.get('address'),
-                    category, city, listing.get('area'), source, url, 
-                    listing.get('phone_clean'), listing.get('email_valid', False), listing.get('enriched', False))
+                    category, city, listing.get('area'), listing.get('state'), source, url, 
+                    listing.get('phone_clean'), listing.get('email_valid', False), listing.get('enriched', False),
+                    listing.get('arn'), listing.get('license_no'), listing.get('membership_no'))
         
         logger.info(f"Saved {len(listings)} records to database")
 

@@ -77,11 +77,15 @@ def init_tables():
                 category VARCHAR(100),
                 city VARCHAR(100),
                 area VARCHAR(100),
+                state VARCHAR(100),
                 source VARCHAR(100),
                 source_url TEXT,
                 phone_clean VARCHAR(50),
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
+                arn VARCHAR(50),
+                license_no VARCHAR(100),
+                membership_no VARCHAR(100),
                 quality_score INTEGER DEFAULT 0,
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
