@@ -17,8 +17,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download the Chromium browser binary for Playwright
 RUN playwright install chromium
 
-# Copy application code
+# Create a non-root user
+RUN useradd -m scraper
+WORKDIR /app
 COPY . .
+RUN chown -R scraper:scraper /app
+
+# Switch to non-root user
+USER scraper
 
 # Default port
 EXPOSE 8080
