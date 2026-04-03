@@ -64,10 +64,16 @@ async def init_pool():
                 _db_pool = 'sqlite'
     return _db_pool
 
-def get_db_pool():
-    # If using sync Flask with async routes, we still need to manage the loop
-    # In a more traditional async Flask setup, we'd do this differently.
-    return asyncio.run(init_pool())
+async def get_db_pool():
+    global _db_pool
+    # Re-initialize if pool is closed or on a different loop
+    if _db_pool is None or _db_pool == 'sqlite':
+        await init_pool()
+    elif hasattr(_db_pool, '_loop') and _db_pool._loop != asyncio.get_running_loop():
+        # Handle case where pool is tied to a different loop
+        _db_pool = None
+        await init_pool()
+    return _db_pool
 
 def validate_phone(phone: str) -> bool:
     if not phone:
