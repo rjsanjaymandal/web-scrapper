@@ -6,6 +6,8 @@ import io
 import re
 import os
 import logging
+import json
+import redis
 from datetime import datetime
 from functools import wraps
 from openpyxl import Workbook
@@ -26,6 +28,10 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Redis Client for Status Tracking
+REDIS_URL = os.environ.get('REDIS_URL')
+redis_client = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
 
 _db_pool = None
 
@@ -101,9 +107,6 @@ def load_config():
     except:
         return {}
 
-def get_db_pool():
-    return asyncio.run(init_db_pool())
-
 def validate_phone(phone):
     if not phone:
         return False
@@ -115,30 +118,13 @@ def validate_email(email):
         return False
     return bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email))
 
-def format_phone(phone):
-    if not phone:
-        return ""
-    digits = re.sub(r'[^\d]', '', phone)
-    if len(digits) >= 10:
-        return f"+91-{digits[-10:-7]}-{digits[-7:-4]}-{digits[-4:]}"
-    return phone
-
-def calc_quality(c):
-    score = 0
-    if c.get('phone_clean'): score += 30
-    if c.get('email') and validate_email(c.get('email')): score += 30
-    if c.get('address'): score += 20
-    if c.get('city'): score += 10
-    if c.get('area'): score += 10
-    return min(score, 100)
-
 HTML = '''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Scraper</title>
+    <title>Contact Scraper Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -159,17 +145,22 @@ HTML = '''
         .tag { padding: 4px 8px; border-radius: 12px; font-size: 11px; }
         .tag-source { background: #e3f2fd; color: #1976d2; }
         .tag-cat { background: #e8f5e9; color: #388e3c; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .pulse { animation: pulse 1.5s infinite; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Contact Scraper Dashboard</h1>
+        <h1>Financial Services Contact Scraper</h1>
     </div>
     <div class="stats">
-        <div class="stat"><h3>Total</h3><div class="val">{{s.total}}</div></div>
-        <div class="stat"><h3>Phone</h3><div class="val">{{s.phone}}</div></div>
-        <div class="stat"><h3>Email</h3><div class="val">{{s.email}}</div></div>
-        <div class="stat"><h3>Cities</h3><div class="val">{{s.cities}}</div></div>
+        <div class="stat"><h3>Total Contacts</h3><div class="val">{{s.total}}</div></div>
+        <div class="stat"><h3>Phone Numbers</h3><div class="val">{{s.phone}}</div></div>
+        <div class="stat"><h3>Verified Emails</h3><div class="val">{{s.email}}</div></div>
+        <div class="stat" style="border: 2px solid #667eea;">
+            <h3>Live Scraper Status</h3>
+            <div id="live-status" class="val" style="font-size:16px; color:#667eea;">Idle</div>
+        </div>
     </div>
     <div class="card">
         <div class="charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;">
@@ -178,13 +169,9 @@ HTML = '''
         </div>
     </div>
     <div class="filters">
-        <input type="text" id="q" placeholder="Search...">
-        <select id="src"><option value="">Source</option>{% for s in sources %}<option>{{s}}</option>{% endfor %}</select>
-        <select id="cat"><option value="">Category</option>{% for c in cats %}<option>{{c}}</option>{% endfor %}</select>
-        <button class="btn btn-green" onclick="exportCSV()">CSV</button>
-        <button class="btn btn-green" onclick="exportJSON()">JSON</button>
-        <button class="btn" onclick="validate()">Validate</button>
-        <button class="btn" style="background:#ff9800" onclick="startScrape()">🚀 Start Scrape</button>
+        <button class="btn btn-green" onclick="exportCSV()">Export CSV</button>
+        <button class="btn btn-green" onclick="exportJSON()">Export JSON</button>
+        <button class="btn" style="background:#ff9800" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
     </div>
     <table>
         <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th></tr></thead>
@@ -200,16 +187,44 @@ HTML = '''
     <script>
         new Chart(document.getElementById('c1'),{type:'doughnut',data:{labels:Object.keys({{by_source|tojson}}),datasets:[{data:Object.values({{by_source|tojson}}),backgroundColor:['#667eea','#764ba2','#4caf50']}]}});
         new Chart(document.getElementById('c2'),{type:'bar',data:{labels:Object.keys({{by_cat|tojson}}),datasets:[{data:Object.values({{by_cat|tojson}}),backgroundColor:'#667eea'}]}});
+        
         function exportCSV(){window.location.href='/export/csv'}
         function exportJSON(){window.location.href='/export/json'}
-        function validate(){if(confirm('Validate?'))window.location.href='/admin/validate'}
+        
         function startScrape(){
-            if(confirm('Start new scraping job for all cities/categories?')){
-                fetch('/api/trigger/scrape')
-                    .then(r => r.json())
-                    .then(d => alert(d.message || d.error));
+            if(confirm('Start new scraping job for all cities/categories in config.yaml?')){
+                fetch('/api/trigger/scrape').then(r => r.json()).then(d => alert(d.message || d.error));
             }
         }
+
+        let lastRunningState = false;
+        function updateStatus() {
+            fetch('/api/status').then(r => r.json()).then(data => {
+                const el = document.getElementById('live-status');
+                const btn = document.getElementById('scrape-btn');
+                el.innerText = data.message || "Idle";
+                
+                if (data.running) {
+                    el.style.color = "#ff9800";
+                    el.classList.add('pulse');
+                    btn.disabled = true;
+                    btn.style.opacity = "0.5";
+                    btn.innerText = "🚧 Scraping...";
+                    lastRunningState = true;
+                } else {
+                    el.style.color = "#667eea";
+                    el.classList.remove('pulse');
+                    btn.disabled = false;
+                    btn.style.opacity = "1";
+                    btn.innerText = "🚀 Start Scrape";
+                    if (lastRunningState) {
+                        location.reload(); // Refresh when job finishes to show new data
+                    }
+                    lastRunningState = false;
+                }
+            });
+        }
+        setInterval(updateStatus, 3000);
     </script>
 </body>
 </html>
@@ -218,65 +233,53 @@ HTML = '''
 @app.route('/')
 async def index():
     pool = await init_db_pool()
-    if pool == 'sqlite':
-        return "Database not configured. Set DATABASE_URL or DATABASE_PASSWORD."
-    
+    if pool == 'sqlite': return "Database Error."
     async with pool.acquire() as conn:
         contacts = await conn.fetch('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT 100')
         total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
         with_phone = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE phone IS NOT NULL AND phone != ''")
         with_email = await conn.fetchval("SELECT COUNT(*) FROM contacts WHERE email IS NOT NULL AND email != ''")
         sources = await conn.fetch('SELECT DISTINCT source FROM contacts')
-        cats = await conn.fetch('SELECT DISTINCT category FROM contacts')
         by_source = await conn.fetch('SELECT source, COUNT(*) c FROM contacts GROUP BY source')
         by_cat = await conn.fetch('SELECT category, COUNT(*) c FROM contacts GROUP BY category')
     
     return render_template_string(HTML,
         contacts=contacts, s={'total':total,'phone':with_phone,'email':with_email,'cities':len(sources)},
-        sources=[s['source'] for s in sources], cats=[c['category'] for c in cats],
         by_source={r['source']:r['c'] for r in by_source}, by_cat={r['category']:r['c'] for r in by_cat})
 
-@app.route('/health')
-async def health():
-    pool = await init_db_pool()
-    if pool == 'sqlite':
-        return jsonify({'status':'error','db':'not configured'})
+@app.route('/api/status')
+async def get_status():
+    if not redis_client: return jsonify({"message": "Idle", "running": False})
     try:
-        async with pool.acquire() as conn:
-            await conn.execute('SELECT 1')
-        return jsonify({'status':'ok','db':'connected'})
+        status = redis_client.get("scraper_status")
+        if status:
+            return Response(status, mimetype='application/json')
     except:
-        return jsonify({'status':'error','db':'disconnected'})
+        pass
+    return jsonify({"message": "Idle", "running": False})
 
-@app.route('/api/contacts')
-async def api():
-    pool = await init_db_pool()
-    if pool == 'sqlite':
-        return jsonify({'error':'no database'})
-    limit = min(request.args.get('limit',100,type=int),1000)
-    async with pool.acquire() as conn:
-        contacts = await conn.fetch(f'SELECT name,phone,email,city,category,source FROM contacts ORDER BY scraped_at DESC LIMIT {limit}')
-        total = await conn.fetchval('SELECT COUNT(*) FROM contacts')
-    return jsonify({'total':total,'data':[dict(c) for c in contacts]})
-
-@app.route('/api/stats')
-async def stats():
-    pool = await init_db_pool()
-    if pool == 'sqlite':
-        return jsonify({'error':'no database'})
-    async with pool.acquire() as conn:
-        by_source = await conn.fetch('SELECT source, COUNT(*) c FROM contacts GROUP BY source')
-        by_cat = await conn.fetch('SELECT category, COUNT(*) c FROM contacts GROUP BY category')
-    return jsonify({'by_source':{r['source']:r['c'] for r in by_source},'by_category':{r['category']:r['c'] for r in by_cat}})
+@app.route('/api/trigger/scrape')
+async def trigger_scrape():
+    from tasks import scrape_category_task
+    config = load_config()
+    cities = config.get('cities', [])
+    categories = config.get('categories', [])
+    sources = config.get('sources', ['justdial'])
+    
+    count = 0
+    for city in cities:
+        for cat in categories:
+            for source in sources:
+                scrape_category_task.delay(city, cat, source)
+                count += 1
+    
+    return jsonify({'message': f'Search started! {count} tasks added to the queue.', 'tasks': count})
 
 @app.route('/export/<fmt>')
 async def export(fmt):
     pool = await init_db_pool()
-    if pool == 'sqlite':
-        return jsonify({'error':'no database'})
     async with pool.acquire() as conn:
         rows = await conn.fetch('SELECT * FROM contacts')
-    
     if fmt == 'csv':
         import csv
         out = io.StringIO()
@@ -285,35 +288,7 @@ async def export(fmt):
             w.writeheader()
             for r in rows: w.writerow(dict(r))
         return Response(out.getvalue(), mimetype='text/csv', headers={'Content-Disposition':'attachment;filename=contacts.csv'})
-    if fmt == 'json':
-        return jsonify({'total':len(rows),'data':[dict(r) for r in rows]})
-    if fmt == 'excel':
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Contacts"
-        if rows:
-            ws.append(list(rows[0].keys()))
-            for r in rows: ws.append(list(r.values()))
-        out = io.BytesIO()
-        wb.save(out)
-        out.seek(0)
-        return send_file(out, download_name='contacts.xlsx', as_attachment=True)
     return 'Invalid',400
-
-@app.route('/admin/validate')
-async def validate():
-    pool = await init_db_pool()
-    if pool == 'sqlite':
-        return jsonify({'error':'no database'})
-    updated = 0
-    async with pool.acquire() as conn:
-        rows = await conn.fetch('SELECT id, phone, email FROM contacts')
-        for r in rows:
-            p = validate_phone(r['phone']) if r['phone'] else False
-            e = validate_email(r['email']) if r['email'] else False
-            await conn.execute('UPDATE contacts SET email_valid=$1 WHERE id=$2', e, r['id'])
-            updated += 1
-    return jsonify({'validated':updated})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
