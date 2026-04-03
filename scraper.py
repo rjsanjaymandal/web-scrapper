@@ -1132,10 +1132,12 @@ class ContactScraper:
             
         for scraper in scrapers_to_run:
             url = scraper.build_search_url(city, category)
-            logger.info(f"Source: {scraper.source_name}")
+            logger.info(f"Source: {scraper.source_name}, URL: {url}")
             
             self.stats['total_scrape'] += 1
             listings = await self.scrape_page(url)
+            
+            logger.info(f"DEBUG: Got {len(listings)} listings from {scraper.source_name}")
             
             await self.save_to_db(listings, category, city, scraper.source_name, url)
             
