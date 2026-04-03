@@ -626,13 +626,13 @@ class ContactScraper:
         if self.config.test_mode:
             logger.info("Running in TEST MODE (no proxy)")
             self.browser = await self.playwright.chromium.launch(
-                headless=False,
+                headless=True,
                 args=launch_args
             )
         else:
             logger.info(f"Using proxy: {proxy_str[:50] if proxy_str else 'None'}...")
             self.browser = await self.playwright.chromium.launch(
-                headless=self.config.headless,
+                headless=True,
                 args=launch_args
             )
             
