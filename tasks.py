@@ -44,9 +44,10 @@ else:
                         backend=redis_url)
 
 @celery_app.task(name="tasks.scrape_category_task")
-def scrape_category_task(city: str, category: str, source: str = None):
+def scrape_category_task(city: str, category: str, source: str = None, use_business: bool = False):
     """
     Background task to scrape a specific category in a city from a specific source.
+    use_business: If True, use business directories (JustDial, etc). If False (default), use official sources (AMFI, IRDAI, ICAI).
     """
     from scraper import ContactScraper, load_config
     set_status(f"🚀 Scraping {category} in {city}...")
@@ -59,9 +60,9 @@ def scrape_category_task(city: str, category: str, source: str = None):
         await scraper.init_db()
         await scraper.init_browser()
         try:
-            await scraper.scrape_category(city, category, source)
+            await scraper.scrape_category(city, category, source, use_business)
             set_status(f"✅ Finished: {category} in {city}", False)
-            return {"status": "completed", "city": city, "category": category, "source": source}
+            return {"status": "completed", "city": city, "category": category, "source": source, "use_business": use_business}
         except Exception as e:
             set_status(f"❌ Failed: {str(e)}", False)
             logger.error(f"Task failed: {e}")

@@ -313,7 +313,7 @@ class JustDialScraper(BaseScraper):
             logger.debug(f"Phone extraction error: {e}")
         return None
 
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
             await page.wait_for_selector('body', timeout=15000)
@@ -842,11 +842,14 @@ class ContactScraper:
         self.rate_limiter = RateLimiter(config.request_delay_min, config.request_delay_max)
         
         self.scrapers: List[BaseScraper] = [
-            JustDialScraper(),
-            IndiaMartScraper(),
             AMFIScraper(),
             IRDAIScraper(),
             ICAIScraper(),
+        ]
+        
+        self.business_scrapers: List[BaseScraper] = [
+            JustDialScraper(),
+            IndiaMartScraper(),
             SulekhaScraper(),
             ClickIndiaScraper()
         ]
@@ -1236,12 +1239,12 @@ class ContactScraper:
                 'by_category': {r['category']: r['count'] for r in by_category}
             }
 
-    async def scrape_category(self, city: str, category: str, source_name: Optional[str] = None):
+    async def scrape_category(self, city: str, category: str, source_name: Optional[str] = None, use_business: bool = False):
         logger.info(f"\n>>> Scraping: {category} in {city}")
         
-        scrapers_to_run = self.scrapers
+        scrapers_to_run = self.business_scrapers if use_business else self.scrapers
         if source_name:
-            scrapers_to_run = [s for s in self.scrapers if s.source_name == source_name]
+            scrapers_to_run = [s for s in self.scrapers + self.business_scrapers if s.source_name == source_name]
             
         for scraper in scrapers_to_run:
             url = scraper.build_search_url(city, category)
