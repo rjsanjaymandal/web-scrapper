@@ -816,12 +816,17 @@ class ContactScraper:
     async def init_browser(self):
         self.playwright = await async_playwright().start()
         
+        # Add a small random jitter to avoid multiple workers launching browsers at the exact same millisecond
+        import random
+        await asyncio.sleep(random.uniform(0, 5))
+        
         launch_args = [
             '--disable-blink-features=AutomationControlled',
             '--disable-dev-shm-usage',
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--no-zygote' # Help reduce process count
         ]
         
         proxy_str = self.proxy_manager.get_proxy_string()
