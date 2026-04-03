@@ -1040,17 +1040,17 @@ class IRDAIScraper(BaseScraper):
 
 
 class ICAIScraper(BaseScraper):
-    """Scraper for ICAI Tax Advocate/CA data (icai.org)"""
+    """Scraper for ICAI CA directory data (caconnect.icai.org)"""
     source_name = "ICAI"
     
-    MEMBER_SEARCH_URL = "https://www.icai.org/member-search"
+    MEMBER_SEARCH_URL = "https://caconnect.icai.org/city-wise-list"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return f"{self.MEMBER_SEARCH_URL}?city={city.lower()}"
+        return f"{self.MEMBER_SEARCH_URL}/{city.title()}"
     
     async def get_detail_url(self, card) -> Optional[str]:
         try:
-            link = await card.query_selector('a.view-profile')
+            link = await card.query_selector('a[href*="memberProfile"], a[href*="firmProfile"]')
             if link:
                 return await link.get_attribute('href')
         except:
@@ -1060,43 +1060,38 @@ class ICAIScraper(BaseScraper):
     async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
         listings = []
         try:
-            # ICAI interaction: Select State, then City, then Search
-            state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA")
-            
-            await page.wait_for_selector('#ddlState', timeout=10000)
-            await page.select_option('#ddlState', label=state)
-            await page.wait_for_timeout(1500) # Wait for City dropdown to populate
-            
-            if city:
-                try:
-                    await page.wait_for_selector('#ddlCity', timeout=5000)
-                    await page.select_option('#ddlCity', label=city.upper())
-                except:
-                    logger.warning(f"City {city} not found in ICAI dropdown")
-            
-            await page.click('#btnSearch')
-            await page.wait_for_selector('.member-list, table, .ca-list', timeout=15000)
-            cards = await page.query_selector_all('.member-item, tr, .ca-item')
+            await page.wait_for_selector('.searchBox.scr, .div .searchBox', timeout=15000)
+            cards = await page.query_selector_all('.searchBox.scr')
             
             for card in cards:
                 try:
-                    name = await self._get_text(card, '.member-name, .name, td:first-child')
-                    membership_no = await self._get_text(card, '.membership-no, td:nth-child(2)')
-                    city = await self._get_text(card, '.city, td:nth-child(3)')
-                    email = await self._get_text(card, '.email, td:nth-child(4)')
+                    name = await self._get_text(card, 'p b')
+                    location = await self._get_text(card, '.state')
+                    detail_url = await self.get_detail_url(card)
                     
-                    if name and membership_no:
+                    if name:
+                        cleaned_name = re.sub(r'^\s*CA\.\s*', '', name.strip(), flags=re.IGNORECASE)
+                        state = None
+                        city_value = city
+                        if location:
+                            normalized_location = re.sub(r'\s+', ' ', location).strip()
+                            parts = [part.strip() for part in normalized_location.split(',') if part.strip()]
+                            if len(parts) >= 2:
+                                city_value = parts[0].title()
+                                state = parts[1].upper()
+
                         listings.append({
-                            'name': name.strip(),
-                            'membership_no': membership_no.strip(),
-                            'city': city.strip() if city else None,
-                            'email': email.strip() if email else None,
+                            'name': cleaned_name,
+                            'membership_no': None,
+                            'city': city_value,
+                            'state': state,
+                            'email': None,
                             'phone': None,
                             'address': None,
                             'area': None,
-                            'detail_url': await self.get_detail_url(card)
+                            'detail_url': detail_url
                         })
-                except:
+                except Exception:
                     continue
         except Exception as e:
             logger.warning(f"ICAI extraction error: {e}")
@@ -1332,6 +1327,34 @@ class ContactScraper:
         except Exception as e:
             logger.warning(f"Table creation skipped or failed (possibly concurrent): {e}")
 
+        required_columns = {
+            'name': 'VARCHAR(255)',
+            'phone': 'VARCHAR(50)',
+            'email': 'VARCHAR(255)',
+            'address': 'TEXT',
+            'category': 'VARCHAR(100)',
+            'city': 'VARCHAR(100)',
+            'area': 'VARCHAR(100)',
+            'state': 'VARCHAR(100)',
+            'source': 'VARCHAR(100)',
+            'source_url': 'TEXT',
+            'phone_clean': 'VARCHAR(50)',
+            'email_valid': 'BOOLEAN',
+            'enriched': 'BOOLEAN',
+            'arn': 'VARCHAR(50)',
+            'license_no': 'VARCHAR(100)',
+            'membership_no': 'VARCHAR(100)',
+            'scraped_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+        }
+
+        for column_name, column_type in required_columns.items():
+            try:
+                await self.pool.execute(
+                    f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}'
+                )
+            except Exception as e:
+                logger.warning(f"Column migration skipped for contacts.{column_name}: {e}")
+
         # Individual index creation with error handling for concurrency
         for idx_sql in [
             'CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)',
@@ -1541,7 +1564,7 @@ class ContactScraper:
     async def scrape_amfi_api(self, scraper: AMFIScraper, city: str, category: str) -> List[Dict]:
         all_listings = []
         page_num = 1
-        page_size = 100
+        page_size = int(os.environ.get('SCRAPER_AMFI_PAGE_SIZE', '10000'))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
         headers = {
             'Accept': 'application/json, text/plain, */*',
@@ -1569,6 +1592,10 @@ class ContactScraper:
 
                 meta = payload.get('meta') or {}
                 total_pages = meta.get('pageCount') or page_num
+                if page_num == 1:
+                    logger.info(
+                        f"AMFI API total for {city}: {meta.get('total', len(records))} records across {total_pages} page(s) with pageSize={page_size}"
+                    )
                 if page_num >= total_pages:
                     break
 
@@ -1609,9 +1636,21 @@ class ContactScraper:
                     
                     page_text = await self.page.inner_text('body')
                     logger.info(f"Page text preview (first 500 chars): {page_text[:500]}")
+                    page_text_lower = page_text.lower()
                     
-                    if 'captcha' in page_text.lower() or 'verify' in page_text.lower() or 'robot' in page_text.lower():
+                    if 'captcha' in page_text_lower or 'verify' in page_text_lower or 'robot' in page_text_lower:
                         logger.warning("CAPTCHA or bot detection detected!")
+                        break
+
+                    error_signatures = [
+                        'service unavailable',
+                        'gateway timeout',
+                        '404 not found',
+                        'cannot find the requested page',
+                        'azure front door',
+                    ]
+                    if any(signature in page_text_lower for signature in error_signatures):
+                        logger.warning("Source returned an error page; skipping extraction for this source")
                         break
                     
                     await self.rate_limiter.wait()
