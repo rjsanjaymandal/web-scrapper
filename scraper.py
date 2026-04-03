@@ -1511,24 +1511,55 @@ class ContactScraper:
                 if cursor.fetchone(): return True
             return False
 
-        async with self.pool.acquire() as conn:
-            if phone:
-                exists = await conn.fetchval('''
-                    SELECT 1 FROM contacts WHERE phone_clean = $1 LIMIT 1
-                ''', phone)
-                if exists:
-                    return True
-            
-            if email:
-                exists = await conn.fetchval('''
-                    SELECT 1 FROM contacts WHERE email = $1 LIMIT 1
-                ''', email)
-                if exists:
-                    return True
+    async def _filter_duplicates_bulk(self, listings: List[Dict]) -> List[Dict]:
+        if not self.config.enable_deduplication or not listings:
+            return listings
         
-        return False
+        phones = {l['phone_clean'] for l in listings if l.get('phone_clean')}
+        emails = {l['email'] for l in listings if l.get('email')}
+        
+        existing_phones = set()
+        existing_emails = set()
+        
+        try:
+            if hasattr(self, 'use_sqlite') and self.use_sqlite:
+                cursor = self.sqlite_conn.cursor()
+                if phones:
+                    placeholders = ','.join(['?'] * len(phones))
+                    cursor.execute(f'SELECT phone_clean FROM contacts WHERE phone_clean IN ({placeholders})', list(phones))
+                    existing_phones = {r[0] for r in cursor.fetchall()}
+                if emails:
+                    placeholders = ','.join(['?'] * len(emails))
+                    cursor.execute(f'SELECT email FROM contacts WHERE email IN ({placeholders})', list(emails))
+                    existing_emails = {r[0] for r in cursor.fetchall()}
+            else:
+                async with self.pool.acquire() as conn:
+                    if phones:
+                        phone_list = list(phones)
+                        for i in range(0, len(phone_list), 500):
+                            chunk = phone_list[i:i+500]
+                            rows = await conn.fetch('SELECT phone_clean FROM contacts WHERE phone_clean = ANY($1)', chunk)
+                            existing_phones.update({r['phone_clean'] for r in rows})
+                    if emails:
+                        email_list = list(emails)
+                        for i in range(0, len(email_list), 500):
+                            chunk = email_list[i:i+500]
+                            rows = await conn.fetch('SELECT email FROM contacts WHERE email = ANY($1)', chunk)
+                            existing_emails.update({r['email'] for r in rows})
+        except Exception as e:
+            logger.warning(f"Error in bulk deduplication: {e}")
+            return listings
+
+        return [
+            l for l in listings 
+            if (not l.get('phone_clean') or l['phone_clean'] not in existing_phones) and
+               (not l.get('email') or l['email'] not in existing_emails)
+        ]
 
     async def _process_listings(self, listings: List[Dict]) -> List[Dict]:
+        # Filter duplicates in bulk first to avoid thousands of SQL queries
+        listings = await self._filter_duplicates_bulk(listings)
+        
         processed_listings = []
 
         for listing in listings:
@@ -1539,6 +1570,7 @@ class ContactScraper:
             if self.config.enable_enrichment:
                 listing = await DataEnricher.enrich_contact(listing)
 
+            # Final safety check (especially if enricher found a new email/phone)
             is_dup = await self.is_duplicate(listing.get('phone_clean'), listing.get('email'))
             if is_dup:
                 self.stats['duplicates_skipped'] += 1
@@ -1592,7 +1624,13 @@ class ContactScraper:
 
                 batch = [self._format_amfi_listing(record, city) for record in records if record.get('ARNHolderName')]
                 batch = await self._process_listings(batch)
-                all_listings.extend(batch)
+                
+                if batch:
+                    await self.save_to_db(batch, category, city, scraper.source_name, scraper.SEARCH_API_URL)
+                    all_listings.extend(batch)
+                    # For massive batches, clear processed data from memory early
+                    if len(all_listings) > 5000:
+                        all_listings = [] # We've already saved it
 
                 meta = payload.get('meta') or {}
                 total_pages = meta.get('pageCount') or page_num
@@ -1672,7 +1710,13 @@ class ContactScraper:
                         logger.warning(f"No listings found on page {page_num}")
                         break
 
-                    all_listings.extend(await self._process_listings(listings))
+                    processed = await self._process_listings(listings)
+                    if processed:
+                        await self.save_to_db(processed, category, city, scraper.source_name if scraper else 'Unknown', self.page.url)
+                        all_listings.extend(processed)
+                        # Clear memory for long crawls
+                        if len(all_listings) > 2000:
+                            all_listings = []
                     
                     # Update progress after each successful page
                     save_progress(city, category, scraper.source_name if scraper else 'Unknown', page_num + 1)
@@ -1844,9 +1888,9 @@ class ContactScraper:
                 logger.error(f"{scraper.source_name} failed for {category} in {city}: {exc}")
                 continue
             
-            logger.info(f"DEBUG: Got {len(listings)} listings from {scraper.source_name}")
+            logger.info(f"DEBUG: Processed {len(listings)} listings from {scraper.source_name}")
             
-            await self.save_to_db(listings, category, city, scraper.source_name, url)
+            # Note: save_to_db is now called internally within scrape_page/scrape_amfi_api for chunked persistence
             
             self.stats['by_source'][scraper.source_name] = \
                 self.stats['by_source'].get(scraper.source_name, 0) + len(listings)
