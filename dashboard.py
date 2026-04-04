@@ -199,6 +199,7 @@ HTML = '''
         .status-idle { color: #3fb950; }
         .status-running { color: #f0883e; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .pulse { animation: pulse 1.5s ease-in-out infinite; }
         .empty { text-align: center; padding: 60px; color: #8b8fa3; }
         .empty h2 { font-size: 18px; margin-bottom: 8px; color: #c9d1d9; }
@@ -533,6 +534,73 @@ HTML = '''
                 }
             }).catch(()=>{});
         }
+        
+        // Live stats via Server-Sent Events
+        let lastTotal = {{s.total}};
+        try {
+            const evtSource = new EventSource('/api/stream/stats');
+            evtSource.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                
+                // Update stat cards if values changed
+                const totalEl = document.querySelector('.stat:nth-child(1) .val');
+                const phoneEl = document.querySelector('.stat:nth-child(2) .val');
+                const emailEl = document.querySelector('.stat:nth-child(3) .val');
+                
+                if(totalEl) {
+                    const newTotal = parseInt(data.total);
+                    if(newTotal !== lastTotal) {
+                        // Animate change
+                        totalEl.style.color = '#3fb950';
+                        totalEl.style.transform = 'scale(1.2)';
+                        setTimeout(() => {
+                            totalEl.style.color = '';
+                            totalEl.style.transform = '';
+                        }, 500);
+                        
+                        // Show notification
+                        const diff = newTotal - lastTotal;
+                        if(diff > 0) showNotification(`+${diff} new contacts!`);
+                        lastTotal = newTotal;
+                    }
+                    totalEl.textContent = data.total;
+                }
+                if(phoneEl) phoneEl.textContent = data.with_phone;
+                if(emailEl) emailEl.textContent = data.with_email;
+                
+                // Update header count
+                document.querySelector('.header span').textContent = data.total + ' contacts collected';
+            };
+            evtSource.onerror = function() {
+                evtSource.close();
+                // Fallback to polling
+                setInterval(pollStats, 10000);
+            };
+        } catch(e) {
+            console.log('SSE not supported, using polling');
+        }
+        
+        function pollStats() {
+            fetch('/api/stats').then(r=>r.json()).then(data=>{
+                if(data.total !== lastTotal) {
+                    lastTotal = data.total;
+                    showNotification('New data available! <a href="/">Refresh</a>');
+                }
+            }).catch(()=>{});
+        }
+        
+        function showNotification(msg) {
+            const existing = document.getElementById('live-notification');
+            if(existing) existing.remove();
+            
+            const notif = document.createElement('div');
+            notif.id = 'live-notification';
+            notif.innerHTML = msg;
+            notif.style.cssText = 'position:fixed;top:20px;right:20px;background:#238636;color:white;padding:12px 20px;border-radius:8px;z-index:9999;animation:slideIn 0.3s ease';
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 5000);
+        }
+        
         setInterval(pollStatus, 3000);
     </script>
 </body>
@@ -1005,17 +1073,80 @@ def cleanup_low_quality():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/health')
-def health():
+@app.route('/api/stream/stats')
+def stream_stats():
+    """Server-Sent Events endpoint for live stats updates"""
+    import time
+    
+    def generate():
+        last_total = 0
+        last_phone = 0
+        last_email = 0
+        while True:
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                
+                cur.execute('SELECT COUNT(*) as cnt FROM contacts')
+                total = cur.fetchone()['cnt']
+                
+                cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ('',))
+                with_phone = cur.fetchone()['cnt']
+                
+                cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ('',))
+                with_email = cur.fetchone()['cnt']
+                
+                cur.close()
+                conn.close()
+                
+                data = {
+                    'total': total,
+                    'with_phone': with_phone,
+                    'with_email': with_email,
+                    'timestamp': int(time.time())
+                }
+                
+                # Only send if data changed
+                if total != last_total or with_phone != last_phone or with_email != last_email:
+                    yield f"data: {json.dumps(data)}\n\n"
+                    last_total = total
+                    last_phone = with_phone
+                    last_email = with_email
+                    
+            except Exception as e:
+                logger.warning(f"SSE error: {e}")
+            
+            time.sleep(3)  # Check every 3 seconds
+    
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/api/stats')
+def get_stats():
+    """Get current stats for polling fallback"""
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT 1')
+        
+        cur.execute('SELECT COUNT(*) as cnt FROM contacts')
+        total = cur.fetchone()['cnt']
+        
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ('',))
+        with_phone = cur.fetchone()['cnt']
+        
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ('',))
+        with_email = cur.fetchone()['cnt']
+        
         cur.close()
         conn.close()
-        return jsonify({'status': 'ok', 'db': 'connected'})
+        
+        return jsonify({
+            'total': total,
+            'with_phone': with_phone,
+            'with_email': with_email
+        })
     except Exception as e:
-        return jsonify({'status': 'error', 'db': str(e)})
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
