@@ -108,6 +108,25 @@
         .detail-label { color: var(--text-secondary); font-weight: 700; font-size: 13px; text-transform: uppercase; }
         .detail-value { font-weight: 600; color: var(--text-primary); }
         .modal-close { position: absolute; top: 40px; right: 40px; background: none; border: none; color: var(--text-secondary); font-size: 32px; cursor: pointer; }
+
+        /* Responsive Logic */
+        @media (max-width: 1200px) {
+            .main-container { grid-template-columns: 1fr; }
+            .sidebar { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; align-items: end; }
+            .sidebar h2 { grid-column: 1 / -1; margin-bottom: 12px; }
+            .filter-group { margin-bottom: 0; }
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 20px; }
+            .header { flex-direction: column; text-align: center; gap: 20px; }
+            .header div { text-align: center !important; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .table-area { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 20px; }
+            table { min-width: 800px; }
+            .modal { padding: 24px; width: 95%; height: 90%; overflow-y: auto; }
+            .modal-close { top: 20px; right: 20px; font-size: 24px; }
+        }
     </style>
 </head>
 <body>
