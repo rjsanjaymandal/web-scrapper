@@ -233,6 +233,10 @@ HTML = '''
 
     <div class="filters">
         <div>
+            <label>Search</label><br>
+            <input type="text" id="filter-search" placeholder="Name, phone, email..." value="{{search_query}}" style="padding:8px 12px;background:#1c1f2e;border:1px solid #2d3148;border-radius:6px;color:#c9d1d9;font-size:14px;min-width:180px;">
+        </div>
+        <div>
             <label>City</label><br>
             <select id="filter-city" onchange="applyFilters()">
                 <option value="">All Cities</option>
@@ -281,20 +285,25 @@ HTML = '''
     </table>
     {% else %}
     <div class="empty">
+        {% if search_query or selected_city or selected_state or selected_category or selected_source %}
+        <h2>No matching contacts found</h2>
+        <p>Try adjusting your filters or search query.</p>
+        {% else %}
         <h2>No contacts yet</h2>
         <p>Click "Start Scrape" to begin collecting leads from your configured sources.</p>
+        {% endif %}
     </div>
     {% endif %}
 
     {% if total_pages > 1 %}
     <div class="pagination">
-        <a href="/?page=1{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
         
         <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
 
-        <a href="/?page={{ page + 1 }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
+        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
 
@@ -325,12 +334,14 @@ HTML = '''
         }
 
         function applyFilters(){
+            const search = document.getElementById('filter-search').value;
             const city = document.getElementById('filter-city').value;
             const state = document.getElementById('filter-state').value;
             const category = document.getElementById('filter-category').value;
             const source = document.getElementById('filter-source').value;
             
             let params = new URLSearchParams();
+            if(search) params.set('q', search);
             if(city) params.set('city', city);
             if(state) params.set('state', state);
             if(category) params.set('category', category);
@@ -345,12 +356,14 @@ HTML = '''
         }
 
         function exportWithFilters(fmt){
+            const search = document.getElementById('filter-search').value;
             const city = document.getElementById('filter-city').value;
             const state = document.getElementById('filter-state').value;
             const category = document.getElementById('filter-category').value;
             const source = document.getElementById('filter-source').value;
             
             let params = new URLSearchParams();
+            if(search) params.set('q', search);
             if(city) params.set('city', city);
             if(state) params.set('state', state);
             if(category) params.set('category', category);
@@ -397,6 +410,7 @@ def index():
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', page_size, type=int)
         
+        search_query = request.args.get('q', '')
         selected_city = request.args.get('city', '')
         selected_state = request.args.get('state', '')
         selected_category = request.args.get('category', '')
@@ -405,20 +419,24 @@ def index():
         conn = get_db()
         cur = conn.cursor()
         
-        # Build WHERE clause for filters
+        # Build WHERE clause for filters (case-insensitive)
         where_clauses = []
         params = []
+        if search_query:
+            where_clauses.append('(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)')
+            search_pattern = f'%{search_query}%'
+            params.extend([search_pattern, search_pattern, search_pattern])
         if selected_city:
-            where_clauses.append('city = %s')
+            where_clauses.append('city ILIKE %s')
             params.append(selected_city)
         if selected_state:
-            where_clauses.append('state = %s')
+            where_clauses.append('state ILIKE %s')
             params.append(selected_state)
         if selected_category:
-            where_clauses.append('category = %s')
+            where_clauses.append('category ILIKE %s')
             params.append(selected_category)
         if selected_source:
-            where_clauses.append('source = %s')
+            where_clauses.append('source ILIKE %s')
             params.append(selected_source)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
@@ -442,22 +460,22 @@ def index():
         contacts = cur.fetchall()
         
         # Get unique values for filter dropdowns
-        cur.execute('SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city != "" ORDER BY city')
+        cur.execute('SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> %s ORDER BY city', ('',))
         cities = [r['city'] for r in cur.fetchall()]
         
-        cur.execute('SELECT DISTINCT state FROM contacts WHERE state IS NOT NULL AND state != "" ORDER BY state')
+        cur.execute('SELECT DISTINCT state FROM contacts WHERE state IS NOT NULL AND state <> %s ORDER BY state', ('',))
         states = [r['state'] for r in cur.fetchall()]
         
-        cur.execute('SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category != "" ORDER BY category')
+        cur.execute('SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> %s ORDER BY category', ('',))
         categories = [r['category'] for r in cur.fetchall()]
         
-        cur.execute('SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source != "" ORDER BY source')
+        cur.execute('SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> %s ORDER BY source', ('',))
         sources = [r['source'] for r in cur.fetchall()]
         
         # Stats (unfiltered)
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone != ''")
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ('',))
         with_phone = cur.fetchone()['cnt']
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email != ''")
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ('',))
         with_email = cur.fetchone()['cnt']
         cur.execute('SELECT COUNT(DISTINCT city) as cnt FROM contacts')
         city_count = cur.fetchone()['cnt']
@@ -473,6 +491,7 @@ def index():
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
         cities, states, categories, sources = [], [], [], []
         selected_city = selected_state = selected_category = selected_source = ''
+        search_query = ''
 
     return render_template_string(HTML,
         contacts=contacts,
@@ -480,7 +499,8 @@ def index():
         by_source=by_source, by_cat=by_cat,
         page=page, total_pages=total_pages,
         cities=cities, states=states, categories=categories, sources=sources,
-        selected_city=selected_city, selected_state=selected_state, selected_category=selected_category, selected_source=selected_source)
+        selected_city=selected_city, selected_state=selected_state, selected_category=selected_category, selected_source=selected_source,
+        search_query=search_query)
 
 
 @app.route('/api/status')
@@ -529,6 +549,7 @@ def api_contacts():
         offset = (page - 1) * limit
         
         # Filter params
+        search_query = request.args.get('q', '')
         filter_city = request.args.get('city', '')
         filter_state = request.args.get('state', '')
         filter_category = request.args.get('category', '')
@@ -536,17 +557,21 @@ def api_contacts():
         
         where_clauses = []
         params = []
+        if search_query:
+            where_clauses.append('(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)')
+            search_pattern = f'%{search_query}%'
+            params.extend([search_pattern, search_pattern, search_pattern])
         if filter_city:
-            where_clauses.append('city = %s')
+            where_clauses.append('city ILIKE %s')
             params.append(filter_city)
         if filter_state:
-            where_clauses.append('state = %s')
+            where_clauses.append('state ILIKE %s')
             params.append(filter_state)
         if filter_category:
-            where_clauses.append('category = %s')
+            where_clauses.append('category ILIKE %s')
             params.append(filter_category)
         if filter_source:
-            where_clauses.append('source = %s')
+            where_clauses.append('source ILIKE %s')
             params.append(filter_source)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
@@ -571,6 +596,7 @@ def api_contacts():
 @app.route('/export/<fmt>')
 def export(fmt):
     try:
+        search_query = request.args.get('q', '')
         filter_city = request.args.get('city', '')
         filter_state = request.args.get('state', '')
         filter_category = request.args.get('category', '')
@@ -578,17 +604,21 @@ def export(fmt):
         
         where_clauses = []
         params = []
+        if search_query:
+            where_clauses.append('(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)')
+            search_pattern = f'%{search_query}%'
+            params.extend([search_pattern, search_pattern, search_pattern])
         if filter_city:
-            where_clauses.append('city = %s')
+            where_clauses.append('city ILIKE %s')
             params.append(filter_city)
         if filter_state:
-            where_clauses.append('state = %s')
+            where_clauses.append('state ILIKE %s')
             params.append(filter_state)
         if filter_category:
-            where_clauses.append('category = %s')
+            where_clauses.append('category ILIKE %s')
             params.append(filter_category)
         if filter_source:
-            where_clauses.append('source = %s')
+            where_clauses.append('source ILIKE %s')
             params.append(filter_source)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
