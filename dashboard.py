@@ -190,6 +190,15 @@ HTML = '''
         .page-link.active { background: #667eea; color: #fff; border-color: #667eea; }
         .page-link.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
         .page-info { color: #8b8fa3; font-size: 14px; }
+        .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+        .filters label { font-size: 12px; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filters select { padding: 8px 12px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 6px; color: #c9d1d9; font-size: 14px; min-width: 140px; cursor: pointer; }
+        .filters select:hover { border-color: #667eea; }
+        .filters .btn-filter { padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .filters .btn-filter:hover { background: #764ba2; }
+        .filters .btn-clear { padding: 8px 16px; background: transparent; color: #8b8fa3; border: 1px solid #2d3148; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .filters .btn-clear:hover { border-color: #ff7b72; color: #ff7b72; }
+        .filter-stats { margin-left: auto; font-size: 13px; color: #8b8fa3; }
     </style>
 </head>
 <body>
@@ -217,9 +226,45 @@ HTML = '''
     </div>
 
     <div class="actions">
-        <button class="btn btn-export" onclick="window.location.href='/export/csv'">📥 Export CSV</button>
-        <button class="btn btn-export" onclick="window.location.href='/export/json'">📥 Export JSON</button>
+        <button class="btn btn-export" onclick="exportWithFilters('csv')">📥 Export CSV</button>
+        <button class="btn btn-export" onclick="exportWithFilters('json')">📥 Export JSON</button>
         <button class="btn btn-scrape" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
+    </div>
+
+    <div class="filters">
+        <div>
+            <label>City</label><br>
+            <select id="filter-city" onchange="applyFilters()">
+                <option value="">All Cities</option>
+                {% for c in cities %}<option value="{{c}}" {% if selected_city==c %}selected{% endif %}>{{c}}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>State</label><br>
+            <select id="filter-state" onchange="applyFilters()">
+                <option value="">All States</option>
+                {% for s in states %}<option value="{{s}}" {% if selected_state==s %}selected{% endif %}>{{s}}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Category</label><br>
+            <select id="filter-category" onchange="applyFilters()">
+                <option value="">All Categories</option>
+                {% for cat in categories %}<option value="{{cat}}" {% if selected_category==cat %}selected{% endif %}>{{cat}}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Source</label><br>
+            <select id="filter-source" onchange="applyFilters()">
+                <option value="">All Sources</option>
+                {% for src in sources %}<option value="{{src}}" {% if selected_source==src %}selected{% endif %}>{{src}}</option>{% endfor %}
+            </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+            <button class="btn btn-filter" onclick="applyFilters()">Apply</button>
+            <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
+        </div>
+        <div class="filter-stats">Showing {{contacts|length}} of {{s.filtered_total}} results</div>
     </div>
 
     {% if contacts %}
@@ -243,13 +288,13 @@ HTML = '''
 
     {% if total_pages > 1 %}
     <div class="pagination">
-        <a href="/?page=1" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        <a href="/?page=1{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
         
         <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
 
-        <a href="/?page={{ page + 1 }}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
+        <a href="/?page={{ page + 1 }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
 
@@ -277,6 +322,42 @@ HTML = '''
                     btn.innerText = '🚧 Scraping...';
                 }).catch(()=>{ btn.disabled=false; btn.innerText='🚀 Start Scrape'; });
             }
+        }
+
+        function applyFilters(){
+            const city = document.getElementById('filter-city').value;
+            const state = document.getElementById('filter-state').value;
+            const category = document.getElementById('filter-category').value;
+            const source = document.getElementById('filter-source').value;
+            
+            let params = new URLSearchParams();
+            if(city) params.set('city', city);
+            if(state) params.set('state', state);
+            if(category) params.set('category', category);
+            if(source) params.set('source', source);
+            
+            const url = params.toString() ? '?' + params.toString() : '/';
+            window.location.href = url;
+        }
+
+        function clearFilters(){
+            window.location.href = '/';
+        }
+
+        function exportWithFilters(fmt){
+            const city = document.getElementById('filter-city').value;
+            const state = document.getElementById('filter-state').value;
+            const category = document.getElementById('filter-category').value;
+            const source = document.getElementById('filter-source').value;
+            
+            let params = new URLSearchParams();
+            if(city) params.set('city', city);
+            if(state) params.set('state', state);
+            if(category) params.set('category', category);
+            if(source) params.set('source', source);
+            
+            const url = '/export/' + fmt + (params.toString() ? '?' + params.toString() : '');
+            window.location.href = url;
         }
 
         let wasRunning = false;
@@ -316,22 +397,64 @@ def index():
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', page_size, type=int)
         
+        selected_city = request.args.get('city', '')
+        selected_state = request.args.get('state', '')
+        selected_category = request.args.get('category', '')
+        selected_source = request.args.get('source', '')
+        
         conn = get_db()
         cur = conn.cursor()
         
-        # Get count first
+        # Build WHERE clause for filters
+        where_clauses = []
+        params = []
+        if selected_city:
+            where_clauses.append('city = %s')
+            params.append(selected_city)
+        if selected_state:
+            where_clauses.append('state = %s')
+            params.append(selected_state)
+        if selected_category:
+            where_clauses.append('category = %s')
+            params.append(selected_category)
+        if selected_source:
+            where_clauses.append('source = %s')
+            params.append(selected_source)
+        
+        where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
+        
+        # Get total count (unfiltered)
         cur.execute('SELECT COUNT(*) as cnt FROM contacts')
         total = cur.fetchone()['cnt']
-        total_pages = (total + limit - 1) // limit if total > 0 else 1
+        
+        # Get filtered count
+        cur.execute(f'SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}', params)
+        filtered_total = cur.fetchone()['cnt']
+        
+        total_pages = (filtered_total + limit - 1) // limit if filtered_total > 0 else 1
         
         # Clamp page
         if page > total_pages: page = total_pages
         if page < 1: page = 1
         offset = (page - 1) * limit
 
-        cur.execute('SELECT * FROM contacts ORDER BY scraped_at DESC LIMIT %s OFFSET %s', (limit, offset))
+        cur.execute(f'SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s', params + [limit, offset])
         contacts = cur.fetchall()
         
+        # Get unique values for filter dropdowns
+        cur.execute('SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city != "" ORDER BY city')
+        cities = [r['city'] for r in cur.fetchall()]
+        
+        cur.execute('SELECT DISTINCT state FROM contacts WHERE state IS NOT NULL AND state != "" ORDER BY state')
+        states = [r['state'] for r in cur.fetchall()]
+        
+        cur.execute('SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category != "" ORDER BY category')
+        categories = [r['category'] for r in cur.fetchall()]
+        
+        cur.execute('SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source != "" ORDER BY source')
+        sources = [r['source'] for r in cur.fetchall()]
+        
+        # Stats (unfiltered)
         cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone != ''")
         with_phone = cur.fetchone()['cnt']
         cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email != ''")
@@ -346,14 +469,18 @@ def index():
         conn.close()
     except Exception as e:
         logger.error(f"Database error: {e}")
-        contacts, total, with_phone, with_email, city_count = [], 0, 0, 0, 0
+        contacts, total, filtered_total, with_phone, with_email, city_count = [], 0, 0, 0, 0, 0
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
+        cities, states, categories, sources = [], [], [], []
+        selected_city = selected_state = selected_category = selected_source = ''
 
     return render_template_string(HTML,
         contacts=contacts,
-        s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count},
+        s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count, 'filtered_total': filtered_total},
         by_source=by_source, by_cat=by_cat,
-        page=page, total_pages=total_pages)
+        page=page, total_pages=total_pages,
+        cities=cities, states=states, categories=categories, sources=sources,
+        selected_city=selected_city, selected_state=selected_state, selected_category=selected_category, selected_source=selected_source)
 
 
 @app.route('/api/status')
@@ -401,9 +528,32 @@ def api_contacts():
         limit = min(request.args.get('limit', 100, type=int), 1000)
         offset = (page - 1) * limit
         
-        cur.execute('SELECT name, phone, email, city, category, source FROM contacts ORDER BY scraped_at DESC LIMIT %s OFFSET %s', (limit, offset))
+        # Filter params
+        filter_city = request.args.get('city', '')
+        filter_state = request.args.get('state', '')
+        filter_category = request.args.get('category', '')
+        filter_source = request.args.get('source', '')
+        
+        where_clauses = []
+        params = []
+        if filter_city:
+            where_clauses.append('city = %s')
+            params.append(filter_city)
+        if filter_state:
+            where_clauses.append('state = %s')
+            params.append(filter_state)
+        if filter_category:
+            where_clauses.append('category = %s')
+            params.append(filter_category)
+        if filter_source:
+            where_clauses.append('source = %s')
+            params.append(filter_source)
+        
+        where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
+        
+        cur.execute(f'SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s', params + [limit, offset])
         contacts = cur.fetchall()
-        cur.execute('SELECT COUNT(*) as cnt FROM contacts')
+        cur.execute(f'SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}', params)
         total = cur.fetchone()['cnt']
         cur.close()
         conn.close()
@@ -421,9 +571,31 @@ def api_contacts():
 @app.route('/export/<fmt>')
 def export(fmt):
     try:
+        filter_city = request.args.get('city', '')
+        filter_state = request.args.get('state', '')
+        filter_category = request.args.get('category', '')
+        filter_source = request.args.get('source', '')
+        
+        where_clauses = []
+        params = []
+        if filter_city:
+            where_clauses.append('city = %s')
+            params.append(filter_city)
+        if filter_state:
+            where_clauses.append('state = %s')
+            params.append(filter_state)
+        if filter_category:
+            where_clauses.append('category = %s')
+            params.append(filter_category)
+        if filter_source:
+            where_clauses.append('source = %s')
+            params.append(filter_source)
+        
+        where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
+        
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM contacts')
+        cur.execute(f'SELECT * FROM contacts WHERE {where_sql}', params)
         rows = cur.fetchall()
         cur.close()
         conn.close()
