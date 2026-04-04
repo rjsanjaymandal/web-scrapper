@@ -653,7 +653,21 @@ def index():
         if page < 1: page = 1
         offset = (page - 1) * limit
 
-        # Premium Analytics & Stats Caching
+        # 1. Fetch Current Page of Contacts
+        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s", (*params, limit, offset))
+        contacts = cur.fetchall()
+
+        # 2. Fetch Filter Options (Unique values)
+        cur.execute("SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL ORDER BY city")
+        cities = [r['city'] for r in cur.fetchall()]
+        
+        cur.execute("SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL ORDER BY category")
+        categories = [r['category'] for r in cur.fetchall()]
+        
+        cur.execute("SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL ORDER BY source")
+        sources = [r['source'] for r in cur.fetchall()]
+
+        # Premium Analytics & Stats Caching (after data fetch to reuse cursor if needed)
         stats = DashboardStats.get_cached_stats(cur)
         
         cur.close()
