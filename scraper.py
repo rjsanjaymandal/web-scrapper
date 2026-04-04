@@ -1772,10 +1772,24 @@ class ContactScraper:
     async def save_to_db(self, listings: List[Dict], category: str, city: str, source: str, url: str):
         if not listings:
             return
+        
+        # Filter out contacts with no phone AND no email (keep if has at least one)
+        valid_listings = [
+            l for l in listings 
+            if (l.get('phone') and l.get('phone').strip()) or 
+               (l.get('email') and l.get('email').strip())
+        ]
+        
+        skipped = len(listings) - len(valid_listings)
+        if skipped > 0:
+            logger.info(f"Skipped {skipped} listings with no phone or email")
+        
+        if not valid_listings:
+            return
             
         if hasattr(self, 'use_sqlite') and self.use_sqlite:
             cursor = self.sqlite_conn.cursor()
-            for l in listings:
+            for l in valid_listings:
                 cursor.execute('''
                     INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1784,7 +1798,7 @@ class ContactScraper:
                     l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False),
                     l.get('arn'), l.get('license_no'), l.get('membership_no')))
             self.sqlite_conn.commit()
-            logger.info(f"Saved {len(listings)} records to SQLite")
+            logger.info(f"Saved {len(valid_listings)} records to SQLite")
             return
 
         records = [
@@ -1806,7 +1820,7 @@ class ContactScraper:
                 listing.get('license_no'),
                 listing.get('membership_no'),
             )
-            for listing in listings
+            for listing in valid_listings
         ]
 
         async with self.pool.acquire() as conn:

@@ -279,7 +279,29 @@ HTML = '''
         <button class="btn btn-export" onclick="exportWithFilters('json')">📥 Export JSON</button>
         <button class="btn btn-scrape" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
         <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📋 View Logs</button>
+        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🗑️ Clean Empty</button>
+        <button class="btn" style="background:#d29922;" onclick="updateQuality()">📊 Update Quality</button>
     </div>
+
+    <script>
+        function cleanupEmpty(){
+            if(confirm('Delete all contacts with no phone AND no email? This cannot be undone.')){
+                fetch('/api/cleanup/empty', {method: 'DELETE'}).then(r=>r.json()).then(d=>{
+                    alert(d.message || d.error);
+                    if(d.success) location.reload();
+                });
+            }
+        }
+
+        function updateQuality(){
+            if(confirm('Update quality scores for all contacts?')){
+                fetch('/api/cleanup/quality', {method: 'POST'}).then(r=>r.json()).then(d=>{
+                    alert(d.message || d.error);
+                    if(d.success) location.reload();
+                });
+            }
+        }
+    </script>
 
     <div class="filters">
         <div>
@@ -855,6 +877,91 @@ LOGS_HTML = '''
 </body>
 </html>
 '''
+
+@app.route('/api/cleanup/empty', methods=['DELETE'])
+def cleanup_empty_contacts():
+    """Delete contacts that have neither phone nor email"""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Delete contacts with no phone AND no email
+        cur.execute('''
+            DELETE FROM contacts 
+            WHERE (phone IS NULL OR TRIM(phone) = '') 
+            AND (email IS NULL OR TRIM(email) = '')
+        ''')
+        deleted_count = cur.rowcount
+        
+        conn.commit()
+        
+        # Get remaining count
+        cur.execute('SELECT COUNT(*) as cnt FROM contacts')
+        remaining = cur.fetchone()['cnt']
+        
+        cur.close()
+        conn.close()
+        
+        logger.info(f"Cleaned up {deleted_count} empty contacts. Remaining: {remaining}")
+        return jsonify({
+            'success': True, 
+            'deleted': deleted_count,
+            'remaining': remaining,
+            'message': f'Deleted {deleted_count} contacts with no phone or email'
+        })
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cleanup/quality', methods=['POST'])
+def cleanup_low_quality():
+    """Recalculate and update quality scores for all contacts"""
+    try:
+        from data_quality import DataQualityHandler
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Get all contacts
+        cur.execute('SELECT * FROM contacts')
+        contacts = cur.fetchall()
+        
+        updated = 0
+        for contact in contacts:
+            # Process through quality handler
+            processed = DataQualityHandler.process_contact(dict(contact))
+            
+            # Update quality fields
+            cur.execute('''
+                UPDATE contacts 
+                SET phone_clean = %s, 
+                    email_valid = %s, 
+                    quality_score = %s, 
+                    quality_tier = %s
+                WHERE id = %s
+            ''', (
+                processed.get('phone_clean'),
+                processed.get('email_valid', False),
+                processed.get('quality_score', 0),
+                processed.get('quality_tier', 'low'),
+                contact['id']
+            ))
+            updated += 1
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        logger.info(f"Updated quality scores for {updated} contacts")
+        return jsonify({
+            'success': True,
+            'updated': updated,
+            'message': f'Updated quality scores for {updated} contacts'
+        })
+    except Exception as e:
+        logger.error(f"Quality update failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/health')
