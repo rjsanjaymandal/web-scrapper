@@ -109,42 +109,42 @@
         .detail-value { font-weight: 600; color: var(--text-primary); }
         .modal-close { position: absolute; top: 40px; right: 40px; background: none; border: none; color: var(--text-secondary); font-size: 32px; cursor: pointer; }
 
-        /* Responsive Logic */
-        @media (max-width: 1200px) {
-            .main-container { grid-template-columns: 1fr; }
-            .sidebar { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; align-items: end; }
-            .sidebar h2 { grid-column: 1 / -1; margin-bottom: 12px; }
+        /* Mobile-First Responsive Design */
+        @media (max-width: 1100px) {
+            .main-container { grid-template-columns: 1fr; gap: 16px; }
+            .sidebar { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 20px; border-radius: 20px; }
+            .sidebar h2 { grid-column: 1 / -1; margin-bottom: 8px; }
             .filter-group { margin-bottom: 0; }
         }
 
         @media (max-width: 768px) {
-            body { padding: 20px; }
-            .header { flex-direction: column; text-align: center; gap: 20px; }
+            body { padding: 12px; }
+            .header { flex-direction: column; text-align: center; gap: 12px; margin-bottom: 24px; padding: 20px; }
             .header div { text-align: center !important; }
-            .stats-grid { grid-template-columns: 1fr; }
-            .table-area { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 20px; }
-            table { min-width: 800px; }
-            .modal { padding: 24px; width: 95%; height: 90%; overflow-y: auto; }
-            .modal-close { top: 20px; right: 20px; font-size: 24px; }
+            .stats-grid { grid-template-columns: 1fr; gap: 12px; }
+            .table-area { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 16px; margin: 0 -4px; width: calc(100% + 8px); }
+            table { min-width: 700px; }
+            .page-link { padding: 8px 12px; font-size: 11px; }
+            .modal { padding: 20px; width: 95%; max-height: 85vh; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <div>
-            <h1>LEADGEN PRO</h1>
-            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 4px;">Powered by AGENTIC SCALER ENGINE</p>
+            <h1>Dashboard</h1>
+            <p style="color: var(--text-secondary); font-size: 13px;">Enterprise Lead Access</p>
         </div>
         <div style="text-align: right">
-            <div style="font-size: 11px; color: var(--text-secondary); letter-spacing: 1px;">SYSTEM STATUS</div>
-            <div id="engine-status" style="font-weight: 800; color: var(--success);">ONLINE</div>
+            <div style="font-size: 11px; color: var(--text-secondary); letter-spacing: 1.5px;">SYSTEM</div>
+            <div id="engine-status" style="font-weight: 800; color: var(--success); font-size: 14px;">READY</div>
         </div>
     </div>
 
     <div class="main-container">
         <!-- Sidebar Filters -->
         <aside class="sidebar">
-            <h2>Filter Intelligence</h2>
+            <h2 style="font-size: 12px;">Active Filters</h2>
             
             <div class="filter-group">
                 <label>Global Search</label>
