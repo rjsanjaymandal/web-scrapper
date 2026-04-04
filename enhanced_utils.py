@@ -10,15 +10,14 @@ import hashlib
 from typing import Optional, Dict, List
 from datetime import datetime
 from playwright.async_api import Page
-import logging
+from scrapers_registry import BaseScraper, ScraperRegistry
 
 logger = logging.getLogger(__name__)
 
 # ==================== Additional Scrapers ====================
 
-class SulekhaScraper:
-    """Scraper for Sulekha business directory"""
-    source_name = "Sulekha"
+class SulekhaScraper(BaseScraper):
+    source_name = "SULEKHA"
     
     CATEGORY_MAP = {
         'Insurance-Agents': 'insurance-agents',
@@ -78,9 +77,8 @@ class SulekhaScraper:
         return await elem.inner_text() if elem else None
 
 
-class ClickIndiaScraper:
-    """Scraper for ClickIndia business directory"""
-    source_name = "ClickIndia"
+class ClickIndiaScraper(BaseScraper):
+    source_name = "CLICKINDIA"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         cat = category.lower().replace(' ', '-')

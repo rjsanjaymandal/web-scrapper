@@ -80,7 +80,7 @@ def init_tables():
                 state VARCHAR(100),
                 source VARCHAR(100),
                 source_url TEXT,
-                phone_clean VARCHAR(50),
+                phone_clean VARCHAR(50) UNIQUE,
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
                 arn VARCHAR(50),
@@ -92,33 +92,26 @@ def init_tables():
             )
         ''')
 
+        # Individual column checks for existing tables
         required_columns = {
-            'name': 'VARCHAR(255)',
-            'phone': 'VARCHAR(50)',
-            'email': 'VARCHAR(255)',
-            'address': 'TEXT',
-            'category': 'VARCHAR(100)',
-            'city': 'VARCHAR(100)',
-            'area': 'VARCHAR(100)',
-            'state': 'VARCHAR(100)',
-            'source': 'VARCHAR(100)',
-            'source_url': 'TEXT',
-            'phone_clean': 'VARCHAR(50)',
-            'email_valid': 'BOOLEAN',
-            'enriched': 'BOOLEAN',
-            'arn': 'VARCHAR(50)',
-            'license_no': 'VARCHAR(100)',
-            'membership_no': 'VARCHAR(100)',
+            'phone_clean': 'VARCHAR(50) UNIQUE',
             'quality_score': 'INTEGER DEFAULT 0',
-            'quality_tier': 'VARCHAR(20)',
-            'scraped_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+            'quality_tier': 'VARCHAR(20) DEFAULT \'low\'',
+            'enriched': 'BOOLEAN DEFAULT FALSE',
+            'email_valid': 'BOOLEAN DEFAULT FALSE'
         }
 
         for column_name, column_type in required_columns.items():
             try:
-                cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
+                # Add UNIQUE constraint separately if column exists but is not unique
+                if column_name == 'phone_clean':
+                     cur.execute('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)')
+                     cur.execute('ALTER TABLE contacts ADD CONSTRAINT unique_phone UNIQUE (phone_clean)')
+                else:
+                     cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
             except Exception as col_err:
-                logger.warning(f"Column {column_name}: {col_err}")
+                # Ignore errors if constraint already exists
+                pass
 
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')

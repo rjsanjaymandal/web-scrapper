@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
-from abc import ABC, abstractmethod
+from scrapers_registry import BaseScraper, ScraperRegistry
 from pathlib import Path
 
 CITY_STATE_MAP = {
@@ -255,27 +255,13 @@ class DataEnricher:
         return contact
 
 
-class BaseScraper(ABC):
-    @abstractmethod
-    async def extract_listings(self, page: Page, city: str = None, category: str = None) -> List[Dict]:
-        pass
-    
-    @abstractmethod
-    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        pass
-    
-    @abstractmethod
-    async def get_detail_url(self, card) -> Optional[str]:
-        pass
-    
-    @property
-    @abstractmethod
-    def source_name(self) -> str:
-        pass
+class BaseScraperProxy(BaseScraper):
+    # This is a bridge between the old BaseScraper and new BaseScraper
+    pass
 
 
 class JustDialScraper(BaseScraper):
-    source_name = "JustDial"
+    source_name = "JUSTDIAL"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         category_slug = category.lower().replace(' ', '-')
@@ -455,7 +441,7 @@ class JustDialScraper(BaseScraper):
 
 
 class IndiaMartScraper(BaseScraper):
-    source_name = "IndiaMart"
+    source_name = "INDIAMART"
     
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         category_slug = category.lower().replace(' ', '-')
@@ -560,7 +546,6 @@ class ICICIScraper(BaseScraper):
 
 
 class AMFIScraper(BaseScraper):
-    """Scraper for AMFI Mutual Fund Distributor data (amfiindia.com)"""
     source_name = "AMFI"
     
     ARN_BASE_URL = "https://www.amfiindia.com/load-distributor-data"
@@ -1987,3 +1972,10 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
+# Register scrapers
+ScraperRegistry.register(JustDialScraper())
+ScraperRegistry.register(IndiaMartScraper())
+ScraperRegistry.register(ICICIScraper())
+ScraperRegistry.register(AMFIScraper())
+

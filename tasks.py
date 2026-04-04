@@ -129,13 +129,14 @@ def scrape_all_task(source: str = None, use_business: bool = False):
 
 
 @celery_app.task(name="tasks.fast_scrape_task")
-def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = 3):
-    """Fast parallel scraping task"""
+def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = 5):
+    """Enhanced fast parallel scraping task"""
     import yaml
+    import scraper # trigger registration
+    import enhanced_utils # trigger registration
     from fast_scraper import fast_scrape_all
     
     async def _run_fast():
-        # Load config directly instead of using _load_runtime_config
         config_path = Path(__file__).parent / 'config.yaml'
         if config_path.exists():
             with open(config_path) as f:
@@ -156,16 +157,54 @@ def fast_scrape_task(source: str = None, use_business: bool = False, max_concurr
         cities = config.get('cities', [])
         categories = config.get('categories', [])
         
-        set_status(f"🚀 Fast scraping {len(cities)} cities x {len(categories)} categories (concurrency={max_concurrent})")
+        set_status(f"⚡ High-Speed Scrape: {len(cities)} cities x {len(categories)} categories (parallel={max_concurrent})")
         
-        results = await fast_scrape_all(config_dict, cities, categories)
+        total_found = await fast_scrape_all(config_dict, cities, categories)
         
-        ok_count = sum(1 for r in results if isinstance(r, dict) and r.get('status') == 'ok')
-        set_status(f"✅ Fast scrape complete: {ok_count}/{len(results)} successful", False)
-        
-        return {"status": "completed", "jobs": len(results), "successful": ok_count}
+        set_status(f"✅ Fast scrape complete: Found {total_found} leads", False)
+        return {"status": "completed", "total_found": total_found}
     
     return asyncio.run(_run_fast())
+
+@celery_app.task(name="tasks.enrich_leads_task")
+def enrich_leads_task():
+    """Periodic task to re-score and enrich all leads in the DB."""
+    from quality_pipeline import DataQualityPipeline
+    from scraper import load_config
+    import asyncpg
+    
+    async def _run_enrich():
+        config = load_config()
+        db_url = os.environ.get('DATABASE_URL')
+        if db_url and db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+            
+        set_status("💎 Enriching and scoring all leads...")
+        
+        conn = await asyncpg.connect(dsn=db_url)
+        try:
+            contacts = await conn.fetch('SELECT id, name, phone, email, address, city, area, source FROM contacts WHERE enriched = FALSE OR quality_score = 0')
+            
+            count = 0
+            for c in contacts:
+                contact_dict = dict(c)
+                enriched = DataQualityPipeline.enrich_contact(contact_dict)
+                
+                await conn.execute('''
+                    UPDATE contacts SET 
+                        phone_clean = $1, email_valid = $2, quality_score = $3, 
+                        quality_tier = $4, enriched = TRUE 
+                    WHERE id = $5
+                ''', enriched['phone_clean'], enriched['email_valid'], 
+                     enriched['quality_score'], enriched['quality_tier'], c['id'])
+                count += 1
+                
+            set_status(f"✅ Enriched {count} leads", False)
+            return {"status": "completed", "enriched_count": count}
+        finally:
+            await conn.close()
+
+    return asyncio.run(_run_enrich())
 
 
 @celery_app.task(name="tasks.validate_all_contacts_task")
