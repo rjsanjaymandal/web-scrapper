@@ -110,12 +110,15 @@ def init_tables():
             'license_no': 'VARCHAR(100)',
             'membership_no': 'VARCHAR(100)',
             'quality_score': 'INTEGER DEFAULT 0',
-            'quality_tier': 'VARCHAR(20) DEFAULT low',
+            'quality_tier': 'VARCHAR(20)',
             'scraped_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
         }
 
         for column_name, column_type in required_columns.items():
-            cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
+            try:
+                cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
+            except Exception as col_err:
+                logger.warning(f"Column {column_name}: {col_err}")
 
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
@@ -550,7 +553,7 @@ def index():
             where_clauses.append('source ILIKE %s')
             params.append(selected_source)
         if selected_quality:
-            where_clauses.append('quality_tier = %s')
+            where_clauses.append('(quality_tier = %s OR quality_tier IS NULL)')
             params.append(selected_quality)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
