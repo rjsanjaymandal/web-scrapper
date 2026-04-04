@@ -8,6 +8,19 @@ logger = logging.getLogger(__name__)
 class DataQualityPipeline:
     """Standardizes data quality and leads scoring."""
 
+    TRUSTED_DOMAINS = {
+        'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
+        'rediffmail.com', 'icloud.com', 'protonmail.com', 'aol.com',
+        'mail.com', 'ymail.com', 'live.com', 'msn.com'
+    }
+    
+    DISPOSABLE_DOMAINS = {
+        'tempmail.com', '10minutemail.com', 'guerrillamail.com',
+        'mailinator.com', 'throwaway.email', 'fakeinbox.com',
+        'yopmail.com', 'trashmail.com', 'getnada.com', 'sharklasers.com',
+        'grr.la', 'maildrop.cc', 'throwemail.com', 'mintemail.com'
+    }
+
     @staticmethod
     def normalize_phone(phone: str) -> Optional[str]:
         if not phone: return None
@@ -25,7 +38,14 @@ class DataQualityPipeline:
     @staticmethod
     def is_valid_email(email: str) -> bool:
         if not email: return False
-        return bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email.strip()))
+        email = email.strip().lower()
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return False
+        
+        domain = email.split('@')[1] if '@' in email else ''
+        if domain in DataQualityPipeline.DISPOSABLE_DOMAINS:
+            return False
+        return True
 
     @staticmethod
     def calculate_score(contact: Dict) -> int:

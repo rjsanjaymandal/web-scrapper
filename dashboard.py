@@ -953,7 +953,7 @@ def cleanup_empty_contacts():
 def cleanup_low_quality():
     """Recalculate and update quality scores for all contacts"""
     try:
-        from data_quality import DataQualityHandler
+        from quality_pipeline import DataQualityPipeline
         
         conn = get_db()
         cur = conn.cursor()
@@ -964,8 +964,8 @@ def cleanup_low_quality():
         
         updated = 0
         for contact in contacts:
-            # Process through quality handler
-            processed = DataQualityHandler.process_contact(dict(contact))
+            # Process through unified quality pipeline
+            processed = DataQualityPipeline.enrich_contact(dict(contact))
             
             # Update quality fields
             cur.execute('''
