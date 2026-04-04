@@ -278,12 +278,31 @@ HTML = '''
         <button class="btn btn-export" onclick="exportWithFilters('csv')">📥 Export CSV</button>
         <button class="btn btn-export" onclick="exportWithFilters('json')">📥 Export JSON</button>
         <button class="btn btn-scrape" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
+        <button class="btn" style="background:#238636;" onclick="startFastScrape()">⚡ Fast Scrape</button>
         <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📋 View Logs</button>
         <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🗑️ Clean Empty</button>
         <button class="btn" style="background:#d29922;" onclick="updateQuality()">📊 Update Quality</button>
     </div>
 
     <script>
+        function startFastScrape(){
+            if(confirm('Start FAST parallel scrape? This will run multiple cities concurrently.')){
+                const btn = document.getElementById('scrape-btn');
+                const fastBtn = document.querySelector('button[onclick="startFastScrape()"]');
+                fastBtn.disabled = true;
+                fastBtn.innerText = '⏳ Running...';
+                
+                fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>{
+                    alert(d.message || d.error);
+                    fastBtn.innerText = '⚡ Fast Scrape';
+                    fastBtn.disabled = false;
+                }).catch(()=>{ 
+                    fastBtn.innerText = '⚡ Fast Scrape';
+                    fastBtn.disabled = false;
+                });
+            }
+        }
+
         function cleanupEmpty(){
             if(confirm('Delete all contacts with no phone AND no email? This cannot be undone.')){
                 fetch('/api/cleanup/empty', {method: 'DELETE'}).then(r=>r.json()).then(d=>{
@@ -730,6 +749,29 @@ def trigger_scrape():
         'pairs': pair_count,
         'source_type': source_type,
         'use_business': use_business
+    })
+
+
+@app.route('/api/trigger/fast-scrape', methods=['POST'])
+def trigger_fast_scrape():
+    """Trigger fast parallel scraping with higher concurrency"""
+    from tasks import fast_scrape_task
+    from tasks import _load_runtime_config
+    
+    config = _load_runtime_config()
+    cities = config.get('cities', [])
+    categories = config.get('categories', [])
+    pair_count = len(cities) * len(categories)
+    
+    max_concurrent = request.args.get('concurrency', 3, type=int)
+    
+    fast_scrape_task.delay(source=None, use_business=False, max_concurrent=max_concurrent)
+    
+    return jsonify({
+        'message': f'⚡ Fast scrape queued! {pair_count} jobs with concurrency={max_concurrent}',
+        'type': 'fast_parallel',
+        'jobs': pair_count,
+        'concurrency': max_concurrent
     })
 
 

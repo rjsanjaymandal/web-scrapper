@@ -127,6 +127,47 @@ def scrape_all_task(source: str = None, use_business: bool = False):
 
     return asyncio.run(_run_batch())
 
+
+@celery_app.task(name="tasks.fast_scrape_task")
+def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = 3):
+    """Fast parallel scraping task"""
+    import yaml
+    from fast_scraper import fast_scrape_all
+    
+    async def _run_fast():
+        # Load config directly instead of using _load_runtime_config
+        config_path = Path(__file__).parent / 'config.yaml'
+        if config_path.exists():
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+        else:
+            config = {}
+        
+        config_dict = {
+            'db_host': os.environ.get('DB_HOST', config.get('db_host')),
+            'db_port': int(os.environ.get('DB_PORT', config.get('db_port', 5432))),
+            'db_name': os.environ.get('DB_NAME', config.get('db_name')),
+            'db_user': os.environ.get('DB_USER', config.get('db_user')),
+            'db_password': os.environ.get('DB_PASSWORD', config.get('db_password')),
+            'cities': config.get('cities', []),
+            'categories': config.get('categories', []),
+        }
+        
+        cities = config.get('cities', [])
+        categories = config.get('categories', [])
+        
+        set_status(f"🚀 Fast scraping {len(cities)} cities x {len(categories)} categories (concurrency={max_concurrent})")
+        
+        results = await fast_scrape_all(config_dict, cities, categories)
+        
+        ok_count = sum(1 for r in results if isinstance(r, dict) and r.get('status') == 'ok')
+        set_status(f"✅ Fast scrape complete: {ok_count}/{len(results)} successful", False)
+        
+        return {"status": "completed", "jobs": len(results), "successful": ok_count}
+    
+    return asyncio.run(_run_fast())
+
+
 @celery_app.task(name="tasks.validate_all_contacts_task")
 def validate_all_contacts_task():
     from scraper import ContactScraper
