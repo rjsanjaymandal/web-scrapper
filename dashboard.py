@@ -87,6 +87,7 @@ def init_tables():
                 license_no VARCHAR(100),
                 membership_no VARCHAR(100),
                 quality_score INTEGER DEFAULT 0,
+                quality_tier VARCHAR(20) DEFAULT 'low',
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -109,6 +110,7 @@ def init_tables():
             'license_no': 'VARCHAR(100)',
             'membership_no': 'VARCHAR(100)',
             'quality_score': 'INTEGER DEFAULT 0',
+            'quality_tier': 'VARCHAR(20) DEFAULT low',
             'scraped_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
         }
 
@@ -245,16 +247,20 @@ HTML = '''
             <div class="label">Filtered Results</div>
         </div>
         <div class="stat-card">
-            <div class="value">{{s.phone}}</div>
-            <div class="label">With Phone</div>
+            <div class="value">{{s.quality_high}}</div>
+            <div class="label" style="color:#3fb950;">High Quality</div>
         </div>
         <div class="stat-card">
-            <div class="value">{{s.email}}</div>
-            <div class="label">With Email</div>
+            <div class="value">{{s.quality_medium}}</div>
+            <div class="label" style="color:#d29922;">Medium Quality</div>
         </div>
         <div class="stat-card">
-            <div class="value">{{s.cities}}</div>
-            <div class="label">Cities</div>
+            <div class="value">{{s.quality_low}}</div>
+            <div class="label" style="color:#f85149;">Low Quality</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{s.avg_quality}}</div>
+            <div class="label">Avg Quality Score</div>
         </div>
     </div>
 
@@ -315,6 +321,15 @@ HTML = '''
                 <option value="100" {% if limit==100 %}selected{% endif %}>100</option>
             </select>
         </div>
+        <div>
+            <label>Quality</label><br>
+            <select id="filter-quality" onchange="applyFilters()">
+                <option value="">All Quality</option>
+                <option value="high" {% if selected_quality=='high' %}selected{% endif %}>High</option>
+                <option value="medium" {% if selected_quality=='medium' %}selected{% endif %}>Medium</option>
+                <option value="low" {% if selected_quality=='low' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
         <div style="display:flex;gap:8px;align-items:flex-end;">
             <button class="btn btn-filter" onclick="applyFilters()">Apply</button>
             <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
@@ -348,13 +363,13 @@ HTML = '''
 
     {% if total_pages > 1 %}
     <div class="pagination">
-        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
         
         <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
 
-        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
+        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
 
@@ -409,6 +424,8 @@ HTML = '''
             if(source) params.set('source', source);
             if(sortBy) params.set('sort', sortBy);
             if(limit && limit != 50) params.set('limit', limit);
+            const quality = document.getElementById('filter-quality').value;
+            if(quality) params.set('quality', quality);
             
             const url = params.toString() ? '?' + params.toString() : '/';
             window.location.href = url;
@@ -501,6 +518,7 @@ def index():
         selected_city = request.args.get('city', '')
         selected_category = request.args.get('category', '')
         selected_source = request.args.get('source', '')
+        selected_quality = request.args.get('quality', '')
         sort_by = request.args.get('sort', 'date')
         
         conn = get_db()
@@ -531,6 +549,9 @@ def index():
         if selected_source:
             where_clauses.append('source ILIKE %s')
             params.append(selected_source)
+        if selected_quality:
+            where_clauses.append('quality_tier = %s')
+            params.append(selected_quality)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
         
@@ -569,6 +590,17 @@ def index():
         with_email = cur.fetchone()['cnt']
         cur.execute('SELECT COUNT(DISTINCT city) as cnt FROM contacts')
         city_count = cur.fetchone()['cnt']
+        
+        # Quality stats
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'high'")
+        quality_high = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'medium'")
+        quality_medium = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'low'")
+        quality_low = cur.fetchone()['cnt']
+        cur.execute('SELECT AVG(quality_score) as avg FROM contacts')
+        avg_quality = round(cur.fetchone()['avg'] or 0, 1)
+        
         cur.execute('SELECT source, COUNT(*) as c FROM contacts GROUP BY source')
         by_source = {r['source']: r['c'] for r in cur.fetchall()}
         cur.execute('SELECT category, COUNT(*) as c FROM contacts GROUP BY category')
@@ -581,17 +613,21 @@ def index():
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
         cities, categories, sources = [], [], []
         selected_city = selected_category = selected_source = ''
+        selected_quality = ''
         search_query = ''
         sort_by = 'date'
         limit = page_size
+        quality_high = quality_medium = quality_low = 0
+        avg_quality = 0
 
     return render_template_string(HTML,
         contacts=contacts,
-        s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count, 'filtered_total': filtered_total},
+        s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count, 'filtered_total': filtered_total, 'quality_high': quality_high, 'quality_medium': quality_medium, 'quality_low': quality_low, 'avg_quality': avg_quality},
         by_source=by_source, by_cat=by_cat,
         page=page, total_pages=total_pages,
         cities=cities, categories=categories, sources=sources,
         selected_city=selected_city, selected_category=selected_category, selected_source=selected_source,
+        selected_quality=selected_quality,
         search_query=search_query, sort_by=sort_by, limit=limit)
 
 
