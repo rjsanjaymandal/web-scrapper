@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadGen Pro | Enterprise Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0e14;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-bg: rgba(23, 27, 38, 0.6);
+            --accent: #6366f1;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            --success: #10b981;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--bg); 
+            color: var(--text-primary); 
+            padding: 40px; 
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.1) 0px, transparent 50%);
+        }
+
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 48px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            padding: 24px 32px;
+            border-radius: 24px;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -1px; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 40px; }
+        .stat-card { 
+            background: var(--card-bg); 
+            padding: 32px; 
+            border-radius: 28px; 
+            border: 1px solid var(--card-border);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+        }
+        .stat-card:hover { transform: translateY(-10px); border-color: rgba(99, 102, 241, 0.4); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+        .stat-card h3 { color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 700; }
+        .stat-card .val { font-size: 42px; font-weight: 800; letter-spacing: -2px; margin-bottom: 8px; }
+        .stat-card .desc { color: var(--text-secondary); font-size: 14px; }
+
+        .analytics-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-bottom: 40px; }
+        .chart-box { background: var(--card-bg); padding: 32px; border-radius: 32px; border: 1px solid var(--card-border); }
+        .chart-box h3 { margin-bottom: 24px; font-size: 18px; font-weight: 700; color: var(--text-secondary); }
+
+        .btn { padding: 12px 24px; border-radius: 16px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; display: flex; align-items: center; gap: 10px; }
+        .btn-primary { background: var(--accent-gradient); color: white; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3); }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4); }
+        .btn-secondary { background: rgba(255,255,255,0.03); color: var(--text-primary); border-color: var(--card-border); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); }
+
+        .control-panel { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+
+        .table-area { background: var(--card-bg); border-radius: 32px; border: 1px solid var(--card-border); overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,0.5); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: rgba(255,255,255,0.02); text-align: left; padding: 24px; color: var(--text-secondary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 24px; border-bottom: 1px solid var(--card-border); font-size: 15px; }
+        tr:hover td { background: rgba(255,255,255,0.01); }
+
+        .pill { padding: 6px 14px; border-radius: 100px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        .pill-high { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .pill-med { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .pill-low { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .pulse { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>LEADGEN PRO</h1>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 4px;">Powered by AGENTIC SCALER ENGINE</p>
+        </div>
+        <div style="text-align: right">
+            <div style="font-size: 11px; color: var(--text-secondary); letter-spacing: 1px;">SYSTEM STATUS</div>
+            <div id="engine-status" style="font-weight: 800; color: var(--success);">ONLINE</div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Unified Repository</h3>
+            <div class="val">{{stats.total}}</div>
+            <div class="desc">Verified Leads Identified</div>
+        </div>
+        <div class="stat-card">
+            <h3>Engine Velocity</h3>
+            <div class="val">{{ "%.1f"|format(stats.velocity) }}<span style="font-size: 20px; margin-left: 8px;">LPM</span></div>
+            <div class="desc">Leads Per Minute Processing</div>
+        </div>
+        <div class="stat-card">
+            <h3>Data Quality Score</h3>
+            <div class="val">{{ "%.1f"|format((stats.quality.high or 0) / stats.total * 100 if stats.total > 0 else 0) }}%</div>
+            <div class="desc">High-Fidelity Lead Ratio</div>
+        </div>
+    </div>
+
+    <div class="analytics-grid">
+        <div class="chart-box">
+            <h3>Vertical Distribution</h3>
+            <canvas id="mainChart" style="height: 300px;"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Source Intelligence</h3>
+            <canvas id="sourceChart" style="height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <button class="btn btn-primary" onclick="startFastScrape()">⚡ START PRO ENGINE</button>
+        <button class="btn btn-secondary" onclick="exportData('csv')">📥 Export CSV</button>
+        <button class="btn btn-secondary" onclick="exportData('json')">📥 Export JSON</button>
+        <div style="flex-grow: 1;"></div>
+        <button class="btn btn-secondary" onclick="window.location.reload()">🔄 Refresh Hub</button>
+    </div>
+
+    <div class="table-area">
+        <table>
+            <thead>
+                <tr>
+                    <th>Target Entity</th>
+                    <th>Clean Contact</th>
+                    <th>Identity Verf.</th>
+                    <th>Vertical</th>
+                    <th>Quality</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in contacts %}
+                <tr>
+                    <td style="font-weight: 700;">{{c.name}}</td>
+                    <td>{{c.phone_clean or '-'}}</td>
+                    <td>
+                        {% if c.email_valid %}<span style="color: var(--success); font-weight: 700">✓ Verified</span>
+                        {% elif c.email %}<span style="opacity: 0.6">{{c.email}}</span>
+                        {% else %}<span style="opacity: 0.3">-</span>{% endif %}
+                    </td>
+                    <td><span style="color: var(--accent); font-weight: 600">{{c.category}}</span></td>
+                    <td><span class="pill pill-{{c.quality_tier[:3] if c.quality_tier else 'low'}}">{{c.quality_tier or 'low'}}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script type="application/json" id="dash-stats">{{ stats | tojson | safe }}</script>
+    <script>
+        const dashData = JSON.parse(document.getElementById('dash-stats').textContent);
+        
+        // Distribution Chart
+        new Chart(document.getElementById('mainChart'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(dashData.heatmap).slice(0, 10),
+                datasets: [{
+                    data: Object.values(dashData.heatmap).map(v => v.count),
+                    backgroundColor: 'rgba(99, 102, 241, 0.4)',
+                    borderColor: '#6366f1',
+                    borderWidth: 2,
+                    borderRadius: 12
+                }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
+        });
+
+        // Source Chart
+        new Chart(document.getElementById('sourceChart'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(dashData.heatmap),
+                datasets: [{
+                    data: Object.values(dashData.heatmap).map(v => v.score),
+                    backgroundColor: ['#6366f1', '#a855f7', '#10b981', '#f59e0b'],
+                    borderWidth: 0
+                }]
+            },
+            options: { cutout: '80%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } } } }
+        });
+
+        function startFastScrape() {
+            if(confirm('Ignite Multi-Engine Parallel Scraper?')) {
+                fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>alert(d.message));
+            }
+        }
+        
+        function exportData(fmt) { window.location.href = `/api/export/${fmt}`; }
+
+        function pollStatus() {
+            fetch('/api/status').then(r=>r.json()).then(d => {
+                const el = document.getElementById('engine-status');
+                if(d.running) {
+                    el.innerText = 'PROCESSING';
+                    el.style.color = '#f59e0b';
+                    el.classList.add('pulse');
+                } else {
+                    el.innerText = 'ONLINE';
+                    el.style.color = 'var(--success)';
+                    el.classList.remove('pulse');
+                }
+            });
+        }
+        setInterval(pollStatus, 3000);
+    </script>
+</body>
+</html>
