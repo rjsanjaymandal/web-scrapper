@@ -154,15 +154,24 @@ def init_tables():
 
         for column_name, column_type in required_columns.items():
             try:
-                # Add UNIQUE constraint separately if column exists but is not unique
+                # Add columns one by one
+                cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type.replace(" UNIQUE", "")}')
+                
+                # If it's phone_clean, try adding the unique constraint separately
                 if column_name == 'phone_clean':
-                     cur.execute('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)')
-                     cur.execute('ALTER TABLE contacts ADD CONSTRAINT unique_phone UNIQUE (phone_clean)')
-                else:
-                     cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
+                    try:
+                        # Check for duplicates first to avoid hard crash
+                        cur.execute("SELECT phone_clean, COUNT(*) FROM contacts WHERE phone_clean IS NOT NULL AND phone_clean != '' GROUP BY phone_clean HAVING COUNT(*) > 1 LIMIT 5")
+                        dupes = cur.fetchall()
+                        if dupes:
+                            logger.warning(f"⚠️ Duplicate contacts detected: {dupes}. Skipping unique constraint to prevent crash.")
+                        else:
+                            # Standard unique index instead of constraint for better performance & flexibility
+                            cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone_unique ON contacts(phone_clean) WHERE phone_clean IS NOT NULL AND phone_clean != \'\'')
+                    except Exception as idx_err:
+                        logger.warning(f"Could not enforce uniqueness on phone_clean: {idx_err}")
             except Exception as col_err:
-                # Ignore errors if constraint already exists
-                pass
+                logger.error(f"Error adding column {column_name}: {col_err}")
 
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
