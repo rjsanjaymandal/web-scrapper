@@ -244,13 +244,6 @@ HTML = '''
             </select>
         </div>
         <div>
-            <label>State</label><br>
-            <select id="filter-state" onchange="applyFilters()">
-                <option value="">All States</option>
-                {% for s in states %}<option value="{{s}}" {% if selected_state==s %}selected{% endif %}>{{s}}</option>{% endfor %}
-            </select>
-        </div>
-        <div>
             <label>Category</label><br>
             <select id="filter-category" onchange="applyFilters()">
                 <option value="">All Categories</option>
@@ -285,7 +278,7 @@ HTML = '''
     </table>
     {% else %}
     <div class="empty">
-        {% if search_query or selected_city or selected_state or selected_category or selected_source %}
+        {% if search_query or selected_city or selected_category or selected_source %}
         <h2>No matching contacts found</h2>
         <p>Try adjusting your filters or search query.</p>
         {% else %}
@@ -297,13 +290,13 @@ HTML = '''
 
     {% if total_pages > 1 %}
     <div class="pagination">
-        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
         
         <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
 
-        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_state %}&state={{selected_state}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
+        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
 
@@ -336,14 +329,12 @@ HTML = '''
         function applyFilters(){
             const search = document.getElementById('filter-search').value;
             const city = document.getElementById('filter-city').value;
-            const state = document.getElementById('filter-state').value;
             const category = document.getElementById('filter-category').value;
             const source = document.getElementById('filter-source').value;
             
             let params = new URLSearchParams();
             if(search) params.set('q', search);
             if(city) params.set('city', city);
-            if(state) params.set('state', state);
             if(category) params.set('category', category);
             if(source) params.set('source', source);
             
@@ -358,14 +349,12 @@ HTML = '''
         function exportWithFilters(fmt){
             const search = document.getElementById('filter-search').value;
             const city = document.getElementById('filter-city').value;
-            const state = document.getElementById('filter-state').value;
             const category = document.getElementById('filter-category').value;
             const source = document.getElementById('filter-source').value;
             
             let params = new URLSearchParams();
             if(search) params.set('q', search);
             if(city) params.set('city', city);
-            if(state) params.set('state', state);
             if(category) params.set('category', category);
             if(source) params.set('source', source);
             
@@ -412,7 +401,6 @@ def index():
         
         search_query = request.args.get('q', '')
         selected_city = request.args.get('city', '')
-        selected_state = request.args.get('state', '')
         selected_category = request.args.get('category', '')
         selected_source = request.args.get('source', '')
         
@@ -429,9 +417,6 @@ def index():
         if selected_city:
             where_clauses.append('city ILIKE %s')
             params.append(selected_city)
-        if selected_state:
-            where_clauses.append('state ILIKE %s')
-            params.append(selected_state)
         if selected_category:
             where_clauses.append('category ILIKE %s')
             params.append(selected_category)
@@ -463,9 +448,6 @@ def index():
         cur.execute('SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> %s ORDER BY city', ('',))
         cities = [r['city'] for r in cur.fetchall()]
         
-        cur.execute('SELECT DISTINCT state FROM contacts WHERE state IS NOT NULL AND state <> %s ORDER BY state', ('',))
-        states = [r['state'] for r in cur.fetchall()]
-        
         cur.execute('SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> %s ORDER BY category', ('',))
         categories = [r['category'] for r in cur.fetchall()]
         
@@ -489,8 +471,8 @@ def index():
         logger.error(f"Database error: {e}")
         contacts, total, filtered_total, with_phone, with_email, city_count = [], 0, 0, 0, 0, 0
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
-        cities, states, categories, sources = [], [], [], []
-        selected_city = selected_state = selected_category = selected_source = ''
+        cities, categories, sources = [], [], []
+        selected_city = selected_category = selected_source = ''
         search_query = ''
 
     return render_template_string(HTML,
@@ -498,8 +480,8 @@ def index():
         s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count, 'filtered_total': filtered_total},
         by_source=by_source, by_cat=by_cat,
         page=page, total_pages=total_pages,
-        cities=cities, states=states, categories=categories, sources=sources,
-        selected_city=selected_city, selected_state=selected_state, selected_category=selected_category, selected_source=selected_source,
+        cities=cities, categories=categories, sources=sources,
+        selected_city=selected_city, selected_category=selected_category, selected_source=selected_source,
         search_query=search_query)
 
 
@@ -551,7 +533,6 @@ def api_contacts():
         # Filter params
         search_query = request.args.get('q', '')
         filter_city = request.args.get('city', '')
-        filter_state = request.args.get('state', '')
         filter_category = request.args.get('category', '')
         filter_source = request.args.get('source', '')
         
@@ -564,9 +545,6 @@ def api_contacts():
         if filter_city:
             where_clauses.append('city ILIKE %s')
             params.append(filter_city)
-        if filter_state:
-            where_clauses.append('state ILIKE %s')
-            params.append(filter_state)
         if filter_category:
             where_clauses.append('category ILIKE %s')
             params.append(filter_category)
@@ -598,7 +576,6 @@ def export(fmt):
     try:
         search_query = request.args.get('q', '')
         filter_city = request.args.get('city', '')
-        filter_state = request.args.get('state', '')
         filter_category = request.args.get('category', '')
         filter_source = request.args.get('source', '')
         
@@ -611,9 +588,6 @@ def export(fmt):
         if filter_city:
             where_clauses.append('city ILIKE %s')
             params.append(filter_city)
-        if filter_state:
-            where_clauses.append('state ILIKE %s')
-            params.append(filter_state)
         if filter_category:
             where_clauses.append('category ILIKE %s')
             params.append(filter_category)
