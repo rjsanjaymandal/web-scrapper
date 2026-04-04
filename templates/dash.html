@@ -42,7 +42,7 @@
             border: 1px solid var(--card-border);
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
-        .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -1px; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -1px; background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
         
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 40px; }
         .stat-card { 
@@ -83,6 +83,31 @@
 
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         .pulse { animation: pulse 2s infinite; }
+
+        /* NEW: Layout and Sidebar */
+        .main-container { display: grid; grid-template-columns: 320px 1fr; gap: 32px; }
+        .sidebar { position: sticky; top: 40px; height: fit-content; background: var(--card-bg); backdrop-filter: blur(20px); padding: 32px; border-radius: 32px; border: 1px solid var(--card-border); box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        .sidebar h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-secondary); margin-bottom: 24px; font-weight: 800; border-bottom: 1px solid var(--card-border); padding-bottom: 12px; }
+        
+        .filter-group { margin-bottom: 24px; }
+        .filter-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-group select, .filter-group input { width: 100%; padding: 14px 18px; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 16px; color: var(--text-primary); font-size: 14px; font-weight: 500; transition: all 0.3s; }
+        .filter-group select:focus, .filter-group input:focus { border-color: var(--accent); background: rgba(255,255,255,0.06); }
+        
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 24px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--card-border); }
+        .page-link { padding: 10px 20px; border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--text-primary); text-decoration: none; font-weight: 700; font-size: 13px; transition: all 0.2s; border: 1px solid var(--card-border); }
+        .page-link:hover { background: var(--accent-gradient); transform: translateY(-2px); border-color: transparent; }
+        .page-link.disabled { opacity: 0.2; pointer-events: none; }
+        .page-info { color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 1000; align-items: center; justify-content: center; }
+        .modal { background: var(--bg); border: 1px solid var(--card-border); border-radius: 32px; padding: 48px; max-width: 700px; width: 90%; box-shadow: 0 50px 100px rgba(0,0,0,0.8); }
+        .modal h2 { font-size: 24px; font-weight: 800; margin-bottom: 32px; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .detail-row { display: flex; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid var(--card-border); }
+        .detail-label { color: var(--text-secondary); font-weight: 700; font-size: 13px; text-transform: uppercase; }
+        .detail-value { font-weight: 600; color: var(--text-primary); }
+        .modal-close { position: absolute; top: 40px; right: 40px; background: none; border: none; color: var(--text-secondary); font-size: 32px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -97,70 +122,154 @@
         </div>
     </div>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <h3>Unified Repository</h3>
-            <div class="val">{{stats.total}}</div>
-            <div class="desc">Verified Leads Identified</div>
-        </div>
-        <div class="stat-card">
-            <h3>Engine Velocity</h3>
-            <div class="val">{{ "%.1f"|format(stats.velocity) }}<span style="font-size: 20px; margin-left: 8px;">LPM</span></div>
-            <div class="desc">Leads Per Minute Processing</div>
-        </div>
-        <div class="stat-card">
-            <h3>Data Quality Score</h3>
-            <div class="val">{{ "%.1f"|format((stats.quality.high or 0) / stats.total * 100 if stats.total > 0 else 0) }}%</div>
-            <div class="desc">High-Fidelity Lead Ratio</div>
-        </div>
+    <div class="main-container">
+        <!-- Sidebar Filters -->
+        <aside class="sidebar">
+            <h2>Filter Intelligence</h2>
+            
+            <div class="filter-group">
+                <label>Global Search</label>
+                <input type="text" id="filter-search" placeholder="Name, phone, email..." value="{{search_query}}">
+            </div>
+
+            <div class="filter-group">
+                <label>Region / City</label>
+                <select id="filter-city">
+                    <option value="">All Regions</option>
+                    {% for c in cities %}<option value="{{c}}" {% if selected_city==c %}selected{% endif %}>{{c}}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Lead Category</label>
+                <select id="filter-category">
+                    <option value="">All Verticals</option>
+                    {% for cat in categories %}<option value="{{cat}}" {% if selected_category==cat %}selected{% endif %}>{{cat}}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Data Source</label>
+                <select id="filter-source">
+                    <option value="">All Sources</option>
+                    {% for src in sources %}<option value="{{src}}" {% if selected_source==src %}selected{% endif %}>{{src}}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Quality Threshold</label>
+                <select id="filter-quality">
+                    <option value="">All Tiers</option>
+                    <option value="high" {% if selected_quality=='high' %}selected{% endif %}>Elite (High)</option>
+                    <option value="medium" {% if selected_quality=='medium' %}selected{% endif %}>Standard (Mid)</option>
+                    <option value="low" {% if selected_quality=='low' %}selected{% endif %}>Raw (Low)</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Sort Preference</label>
+                <select id="sort-by">
+                    <option value="date" {% if sort_by=='date' %}selected{% endif %}>Recent First</option>
+                    <option value="name" {% if sort_by=='name' %}selected{% endif %}>Alphabetical</option>
+                    <option value="city" {% if sort_by=='city' %}selected{% endif %}>Geographic</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 12px;" onclick="applyFilters()">APPLY INTELLIGENCE</button>
+            <button class="btn btn-secondary" style="width: 100%; justify-content: center; margin-top: 12px;" onclick="clearFilters()">RESET ALL</button>
+        </aside>
+
+        <!-- Main Dashboard Area -->
+        <main>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Repository</h3>
+                    <div class="val">{{stats.total}}</div>
+                    <div class="desc">Verified Entities Identified</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Velocity</h3>
+                    <div class="val">{{ "%.1f"|format(stats.velocity) }}<span style="font-size: 20px; margin-left: 8px;">LPM</span></div>
+                    <div class="desc">Lead Processing Speed</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Filtered Efficiency</h3>
+                    <div class="val">{{ s.filtered_total }}</div>
+                    <div class="desc">Matches Current Query</div>
+                </div>
+            </div>
+
+            <div class="analytics-grid">
+                <div class="chart-box">
+                    <h3>Vertical Distribution</h3>
+                    <canvas id="mainChart" style="height: 300px;"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>Lead Quality Index</h3>
+                    <canvas id="sourceChart" style="height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <button class="btn btn-primary" onclick="startFastScrape()">⚡ PRO ENGINE</button>
+                <button class="btn btn-secondary" onclick="exportData('csv')">📥 Export CSV</button>
+                <button class="btn btn-secondary" onclick="exportData('json')">📥 Export JSON</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/logs'">📋 System Logs</button>
+            </div>
+
+            <div class="table-area">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Target Entity</th>
+                            <th>Contact Signature</th>
+                            <th>Verif. Status</th>
+                            <th>Vertical</th>
+                            <th>Tier</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in contacts %}
+                        <tr style="cursor: pointer" data-id="{{c.id}}" onclick="showContactDetail(this)">
+                            <td style="font-weight: 700;">{{c.name}}</td>
+                            <td>{{c.phone_clean or c.phone or '-'}}</td>
+                            <td>
+                                {% if c.email_valid %}<span style="color: var(--success); font-weight: 700">✓ Verified</span>
+                                {% elif c.email %}<span style="opacity: 0.6">{{c.email}}</span>
+                                {% else %}<span style="opacity: 0.3">-</span>{% endif %}
+                            </td>
+                            <td><span style="color: var(--accent); font-weight: 600">{{c.category}}</span></td>
+                            <td><span class="pill pill-{{c.quality_tier[:3] if c.quality_tier else 'low'}}">{{c.quality_tier or 'low'}}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <!-- Pagination Bar -->
+                {% if total_pages > 1 %}
+                <div class="pagination">
+                    <a href="{{ url_for('index', page=1, q=search_query, city=selected_city, category=selected_category, source=selected_source, quality=selected_quality, sort=sort_by, limit=limit) }}" class="page-link {% if page == 1 %}disabled{% endif %}">«</a>
+                    <a href="{{ url_for('index', page=page-1, q=search_query, city=selected_city, category=selected_category, source=selected_source, quality=selected_quality, sort=sort_by, limit=limit) }}" class="page-link {% if page == 1 %}disabled{% endif %}">PREV</a>
+                    
+                    <span class="page-info">PAGE {{ page }} OF {{ total_pages }}</span>
+
+                    <a href="{{ url_for('index', page=page+1, q=search_query, city=selected_city, category=selected_category, source=selected_source, quality=selected_quality, sort=sort_by, limit=limit) }}" class="page-link {% if page == total_pages %}disabled{% endif %}">NEXT</a>
+                    <a href="{{ url_for('index', page=total_pages, q=search_query, city=selected_city, category=selected_category, source=selected_source, quality=selected_quality, sort=sort_by, limit=limit) }}" class="page-link {% if page == total_pages %}disabled{% endif %}">»</a>
+                </div>
+                {% endif %}
+            </div>
+        </main>
     </div>
 
-    <div class="analytics-grid">
-        <div class="chart-box">
-            <h3>Vertical Distribution</h3>
-            <canvas id="mainChart" style="height: 300px;"></canvas>
+    <!-- Contact Detail Modal -->
+    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h2>Intelligence Record</h2>
+            <div id="modal-content">
+                <!-- Loaded via JS -->
+            </div>
         </div>
-        <div class="chart-box">
-            <h3>Source Intelligence</h3>
-            <canvas id="sourceChart" style="height: 300px;"></canvas>
-        </div>
-    </div>
-
-    <div class="control-panel">
-        <button class="btn btn-primary" onclick="startFastScrape()">⚡ START PRO ENGINE</button>
-        <button class="btn btn-secondary" onclick="exportData('csv')">📥 Export CSV</button>
-        <button class="btn btn-secondary" onclick="exportData('json')">📥 Export JSON</button>
-        <div style="flex-grow: 1;"></div>
-        <button class="btn btn-secondary" onclick="window.location.reload()">🔄 Refresh Hub</button>
-    </div>
-
-    <div class="table-area">
-        <table>
-            <thead>
-                <tr>
-                    <th>Target Entity</th>
-                    <th>Clean Contact</th>
-                    <th>Identity Verf.</th>
-                    <th>Vertical</th>
-                    <th>Quality</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for c in contacts %}
-                <tr>
-                    <td style="font-weight: 700;">{{c.name}}</td>
-                    <td>{{c.phone_clean or '-'}}</td>
-                    <td>
-                        {% if c.email_valid %}<span style="color: var(--success); font-weight: 700">✓ Verified</span>
-                        {% elif c.email %}<span style="opacity: 0.6">{{c.email}}</span>
-                        {% else %}<span style="opacity: 0.3">-</span>{% endif %}
-                    </td>
-                    <td><span style="color: var(--accent); font-weight: 600">{{c.category}}</span></td>
-                    <td><span class="pill pill-{{c.quality_tier[:3] if c.quality_tier else 'low'}}">{{c.quality_tier or 'low'}}</span></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
     </div>
 
     <script type="application/json" id="dash-stats">{{ stats | tojson | safe }}</script>
@@ -198,8 +307,56 @@
         });
 
         function startFastScrape() {
-            if(confirm('Ignite Multi-Engine Parallel Scraper?')) {
+            if(confirm('Ignite Multi-Engine Parallel Scrapper?')) {
                 fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>alert(d.message));
+            }
+        }
+        
+        function applyFilters() {
+            const search = document.getElementById('filter-search').value;
+            const city = document.getElementById('filter-city').value;
+            const category = document.getElementById('filter-category').value;
+            const source = document.getElementById('filter-source').value;
+            const quality = document.getElementById('filter-quality').value;
+            const sort = document.getElementById('sort-by').value;
+            
+            const params = new URLSearchParams({
+                q: search,
+                city: city,
+                category: category,
+                source: source,
+                quality: quality,
+                sort: sort
+            });
+            window.location.href = '/?' + params.toString();
+        }
+
+        function clearFilters() { window.location.href = '/'; }
+
+        function showContactDetail(el) {
+            const id = el.dataset.id;
+            fetch('/api/contact/' + id).then(r=>r.json()).then(c => {
+                const content = document.getElementById('modal-content');
+                content.innerHTML = `
+                    <div class="detail-row"><span class="detail-label">Entity Name</span><span class="detail-value">${c.name || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Clean Phone</span><span class="detail-value">${c.phone_clean || c.phone || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Email Signature</span><span class="detail-value">${c.email || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Email Verified</span><span class="detail-value" style="color: ${c.email_valid ? 'var(--success)' : 'inherit'}">${c.email_valid ? 'YES' : 'NO'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Vertical</span><span class="detail-value">${c.category || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Geography</span><span class="detail-value">${c.city || '-'}${c.area ? ', ' + c.area : ''}</span></div>
+                    <div class="detail-row"><span class="detail-label">Data Origin</span><span class="detail-value">${c.source || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Quality Score</span><span class="detail-value">${c.quality_score || 0}</span></div>
+                    <div class="detail-row"><span class="detail-label">Quality Tier</span><span class="detail-value" style="text-transform: uppercase">${c.quality_tier || 'low'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Scrape Timestamp</span><span class="detail-value">${c.scraped_at || '-'}</span></div>
+                    <div class="detail-row" style="border:none; margin-top:20px;"><span class="detail-label">External Lead Info</span><span class="detail-value" style="font-size:11px; opacity:0.6">${c.address || 'No additional address data'}</span></div>
+                `;
+                document.getElementById('modal').style.display = 'flex';
+            });
+        }
+
+        function closeModal(e) {
+            if(!e || e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
+                document.getElementById('modal').style.display = 'none';
             }
         }
         

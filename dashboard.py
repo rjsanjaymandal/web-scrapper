@@ -44,7 +44,12 @@ class DashboardStats:
         
         # 3. Source Breakdown (Heatmap)
         cur.execute('SELECT source, AVG(quality_score) as avg_score, COUNT(*) as cnt FROM contacts GROUP BY source')
-        source_heatmap = {row['source']: {'score': float(row['avg_score']), 'count': row['cnt']} for row in cur.fetchall()}
+        source_heatmap = {}
+        for row in cur.fetchall():
+            src_name = row['source'] if row['source'] else 'Unknown'
+            # Robust None-guard for avg_score
+            avg_score = float(row['avg_score']) if row['avg_score'] is not None else 0.0
+            source_heatmap[src_name] = {'score': avg_score, 'count': row['cnt']}
         
         stats = {
             'total': total,
