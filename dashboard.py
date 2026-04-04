@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response, send_file
+from flask import Flask, render_template_string, request, jsonify, Response, send_file
 import psycopg2
 import psycopg2.extras
 import yaml
@@ -10,57 +10,6 @@ import json
 from datetime import datetime
 from openpyxl import Workbook
 from pathlib import Path
-import redis
-
-# Redis for Real-time Stats & Caching
-r = redis.from_url(os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
-
-class DashboardStats:
-    """Calculates and caches premium dashboard metrics."""
-    
-    @staticmethod
-    def get_velocity() -> float:
-        """Calculate Leads Per Minute (LPM) from the last 5 minutes."""
-        try:
-            keys = r.keys("lead_count:*")
-            return len(keys) / 5.0 if keys else 0.0
-        except: return 0.0
-
-    @staticmethod
-    def get_cached_stats(cur):
-        """Get or calculate stats with short-term caching."""
-        cache_key = "dashboard:stats"
-        cached = r.get(cache_key)
-        if cached:
-            return json.loads(cached)
-            
-        # 1. Total Leads
-        cur.execute('SELECT COUNT(*) as cnt FROM contacts')
-        total = cur.fetchone()['cnt']
-        
-        # 2. Quality Breakdown
-        cur.execute('SELECT quality_tier, COUNT(*) as cnt FROM contacts GROUP BY quality_tier')
-        quality = {row['quality_tier']: row['cnt'] for row in cur.fetchall()}
-        
-        # 3. Source Breakdown (Heatmap)
-        cur.execute('SELECT source, AVG(quality_score) as avg_score, COUNT(*) as cnt FROM contacts GROUP BY source')
-        source_heatmap = {}
-        for row in cur.fetchall():
-            src_name = row['source'] if row['source'] else 'Unknown'
-            # Robust None-guard for avg_score
-            avg_score = float(row['avg_score']) if row['avg_score'] is not None else 0.0
-            source_heatmap[src_name] = {'score': avg_score, 'count': row['cnt']}
-        
-        stats = {
-            'total': total,
-            'quality': quality,
-            'heatmap': source_heatmap,
-            'velocity': DashboardStats.get_velocity(),
-            'updated_at': datetime.now().strftime('%H:%M:%S')
-        }
-        
-        r.setex(cache_key, 60, json.dumps(stats)) # Cache for 60s
-        return stats
 
 app = Flask(__name__)
 
@@ -154,24 +103,15 @@ def init_tables():
 
         for column_name, column_type in required_columns.items():
             try:
-                # Add columns one by one
-                cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type.replace(" UNIQUE", "")}')
-                
-                # If it's phone_clean, try adding the unique constraint separately
+                # Add UNIQUE constraint separately if column exists but is not unique
                 if column_name == 'phone_clean':
-                    try:
-                        # Check for duplicates first to avoid hard crash
-                        cur.execute("SELECT phone_clean, COUNT(*) FROM contacts WHERE phone_clean IS NOT NULL AND phone_clean != '' GROUP BY phone_clean HAVING COUNT(*) > 1 LIMIT 5")
-                        dupes = cur.fetchall()
-                        if dupes:
-                            logger.warning(f"⚠️ Duplicate contacts detected: {dupes}. Skipping unique constraint to prevent crash.")
-                        else:
-                            # Standard unique index instead of constraint for better performance & flexibility
-                            cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone_unique ON contacts(phone_clean) WHERE phone_clean IS NOT NULL AND phone_clean != \'\'')
-                    except Exception as idx_err:
-                        logger.warning(f"Could not enforce uniqueness on phone_clean: {idx_err}")
+                     cur.execute('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)')
+                     cur.execute('ALTER TABLE contacts ADD CONSTRAINT unique_phone UNIQUE (phone_clean)')
+                else:
+                     cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
             except Exception as col_err:
-                logger.error(f"Error adding column {column_name}: {col_err}")
+                # Ignore errors if constraint already exists
+                pass
 
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
@@ -667,47 +607,65 @@ def index():
         if page < 1: page = 1
         offset = (page - 1) * limit
 
-        # 1. Fetch Current Page of Contacts
-        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s", (*params, limit, offset))
+        cur.execute(f'SELECT * FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s', params + [limit, offset])
         contacts = cur.fetchall()
-
-        # 2. Fetch Filter Options (Unique values)
-        cur.execute("SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL ORDER BY city")
+        
+        # Get unique values for filter dropdowns
+        cur.execute('SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> %s ORDER BY city', ('',))
         cities = [r['city'] for r in cur.fetchall()]
         
-        cur.execute("SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL ORDER BY category")
+        cur.execute('SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> %s ORDER BY category', ('',))
         categories = [r['category'] for r in cur.fetchall()]
         
-        cur.execute("SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL ORDER BY source")
+        cur.execute('SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> %s ORDER BY source', ('',))
         sources = [r['source'] for r in cur.fetchall()]
-
-        # Premium Analytics & Stats Caching (after data fetch to reuse cursor if needed)
-        stats = DashboardStats.get_cached_stats(cur)
         
+        # Stats (unfiltered)
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ('',))
+        with_phone = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ('',))
+        with_email = cur.fetchone()['cnt']
+        cur.execute('SELECT COUNT(DISTINCT city) as cnt FROM contacts')
+        city_count = cur.fetchone()['cnt']
+        
+        # Quality stats
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'high'")
+        quality_high = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'medium'")
+        quality_medium = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'low'")
+        quality_low = cur.fetchone()['cnt']
+        cur.execute('SELECT AVG(quality_score) as avg FROM contacts')
+        avg_quality = round(cur.fetchone()['avg'] or 0, 1)
+        
+        cur.execute('SELECT source, COUNT(*) as c FROM contacts GROUP BY source')
+        by_source = {r['source']: r['c'] for r in cur.fetchall()}
+        cur.execute('SELECT category, COUNT(*) as c FROM contacts GROUP BY category')
+        by_cat = {r['category']: r['c'] for r in cur.fetchall()}
         cur.close()
         conn.close()
-        
-        return render_template('dash.html', 
-            contacts=contacts,
-            total=total,
-            page=page,
-            total_pages=total_pages,
-            search_query=search_query,
-            selected_city=selected_city,
-            selected_category=selected_category,
-            selected_source=selected_source,
-            selected_quality=selected_quality,
-            sort_by=sort_by,
-            limit=limit,
-            cities=cities,
-            categories=categories,
-            sources=sources,
-            stats=stats,
-            s={'filtered_total': filtered_total}
-        )
     except Exception as e:
         logger.error(f"Database error: {e}")
-        return jsonify({"error": str(e)}), 500
+        contacts, total, filtered_total, with_phone, with_email, city_count = [], 0, 0, 0, 0, 0
+        by_source, by_cat, total_pages, page = {}, {}, 1, 1
+        cities, categories, sources = [], [], []
+        selected_city = selected_category = selected_source = ''
+        selected_quality = ''
+        search_query = ''
+        sort_by = 'date'
+        limit = page_size
+        quality_high = quality_medium = quality_low = 0
+        avg_quality = 0
+
+    return render_template_string(HTML,
+        contacts=contacts,
+        s={'total': total, 'phone': with_phone, 'email': with_email, 'cities': city_count, 'filtered_total': filtered_total, 'quality_high': quality_high, 'quality_medium': quality_medium, 'quality_low': quality_low, 'avg_quality': avg_quality},
+        by_source=by_source, by_cat=by_cat,
+        page=page, total_pages=total_pages,
+        cities=cities, categories=categories, sources=sources,
+        selected_city=selected_city, selected_category=selected_category, selected_source=selected_source,
+        selected_quality=selected_quality,
+        search_query=search_query, sort_by=sort_by, limit=limit)
 
 
 @app.route('/api/status')
@@ -739,25 +697,15 @@ def get_contact(contact_id):
         return jsonify({'error': str(e)}), 500
 
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/logs')
 def view_logs():
     try:
         log_files = []
         if LOGS_DIR.exists():
             for f in LOGS_DIR.glob('*.log'):
-                mtime = f.stat().st_mtime
-                log_files.append({
-                    'name': f.name, 
-                    'size': f.stat().st_size, 
-                    'modified': mtime,
-                    'modified_str': datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-                })
+                log_files.append({'name': f.name, 'size': f.stat().st_size, 'modified': f.stat().st_mtime})
         log_files.sort(key=lambda x: x['modified'], reverse=True)
-        return render_template('logs.html', logs=log_files[:20])
+        return render_template_string(LOGS_HTML, logs=log_files[:20])
     except Exception as e:
         return f"Error reading logs: {e}"
 
@@ -933,7 +881,37 @@ def export(fmt):
     return 'Invalid format', 400
 
 
-# Routes for cleanup and quality updates continue below...
+LOGS_HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scraper Logs</title>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+        h1 { color: #fff; }
+        .log-list { list-style: none; padding: 0; }
+        .log-list li { padding: 10px; border-bottom: 1px solid #2d3148; }
+        .log-list a { color: #58a6ff; text-decoration: none; }
+        .log-list a:hover { text-decoration: underline; }
+        .log-content { background: #161824; padding: 20px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 12px; max-height: 70vh; }
+        .back { color: #8b8fa3; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Scraper Logs</h1>
+    <a class="back" href="/">← Back to Dashboard</a>
+    {% if logs %}
+    <ul class="log-list">
+    {% for log in logs %}
+        <li><a href="/logs/{{log.name}}">{{log.name}}</a> - {{(log.size/1024)|round(1)}} KB</li>
+    {% endfor %}
+    </ul>
+    {% else %}
+    <p>No logs found.</p>
+    {% endif %}
+</body>
+</html>
+'''
 
 @app.route('/api/cleanup/empty', methods=['DELETE'])
 def cleanup_empty_contacts():

@@ -7,7 +7,6 @@ import asyncio
 import re
 import aiohttp
 import hashlib
-import logging
 from typing import Optional, Dict, List
 from datetime import datetime
 from playwright.async_api import Page

@@ -1778,11 +1778,6 @@ class ContactScraper:
                 cursor.execute('''
                     INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(phone_clean) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        email = COALESCE(contacts.email, EXCLUDED.email),
-                        address = COALESCE(contacts.address, EXCLUDED.address),
-                        scraped_at = CURRENT_TIMESTAMP
                 ''', (l.get('name'), l.get('phone'), l.get('email'), l.get('address'),
                     category, city, l.get('area'), l.get('state'), source, url, 
                     l.get('phone_clean'), l.get('email_valid', False), l.get('enriched', False),
@@ -1818,11 +1813,6 @@ class ContactScraper:
                 await conn.executemany('''
                     INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                    ON CONFLICT (phone_clean) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        email = COALESCE(contacts.email, EXCLUDED.email),
-                        address = COALESCE(contacts.address, EXCLUDED.address),
-                        scraped_at = CURRENT_TIMESTAMP
                 ''', records)
         
         logger.info(f"Saved {len(listings)} records to database")
