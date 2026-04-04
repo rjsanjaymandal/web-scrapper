@@ -177,6 +177,27 @@ HTML = '''
         .tag { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
         .tag-source { background: rgba(56,139,253,0.15); color: #58a6ff; }
         .tag-cat { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .badge-valid { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .badge-invalid { background: rgba(248,81,73,0.15); color: #f85149; }
+        .badge-empty { background: rgba(139,143,163,0.15); color: #8b8fa3; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: #1c1f2e; padding: 16px; border-radius: 10px; border: 1px solid #2d3148; text-align: center; }
+        .stat-card .value { font-size: 24px; font-weight: 700; color: #c9d1d9; }
+        .stat-card .label { font-size: 12px; color: #8b8fa3; text-transform: uppercase; margin-top: 4px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; }
+        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+        .modal { background: #1c1f2e; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #2d3148; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { color: #c9d1d9; margin: 0; }
+        .modal-close { background: none; border: none; color: #8b8fa3; font-size: 24px; cursor: pointer; }
+        .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid #2d3148; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { width: 120px; color: #8b8fa3; font-size: 13px; }
+        .detail-value { color: #c9d1d9; font-size: 14px; }
+        .sort-select, .limit-select { padding: 8px 12px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+        tr.clickable { cursor: pointer; }
+        tr.clickable:hover { background: rgba(102,126,234,0.1); }
         .status-card { border: 2px solid #667eea; }
         .status-idle { color: #3fb950; }
         .status-running { color: #f0883e; }
@@ -218,6 +239,25 @@ HTML = '''
         </div>
     </div>
 
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="value">{{s.filtered_total}}</div>
+            <div class="label">Filtered Results</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{s.phone}}</div>
+            <div class="label">With Phone</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{s.email}}</div>
+            <div class="label">With Email</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{s.cities}}</div>
+            <div class="label">Cities</div>
+        </div>
+    </div>
+
     <div class="card">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;">
             <div><h3>By Source</h3><canvas id="c1"></canvas></div>
@@ -229,12 +269,22 @@ HTML = '''
         <button class="btn btn-export" onclick="exportWithFilters('csv')">📥 Export CSV</button>
         <button class="btn btn-export" onclick="exportWithFilters('json')">📥 Export JSON</button>
         <button class="btn btn-scrape" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
+        <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📋 View Logs</button>
     </div>
 
     <div class="filters">
         <div>
             <label>Search</label><br>
             <input type="text" id="filter-search" placeholder="Name, phone, email..." value="{{search_query}}" style="padding:8px 12px;background:#1c1f2e;border:1px solid #2d3148;border-radius:6px;color:#c9d1d9;font-size:14px;min-width:180px;">
+        </div>
+        <div>
+            <label>Sort By</label><br>
+            <select id="sort-by" class="sort-select" onchange="applyFilters()">
+                <option value="date" {% if sort_by=='date' %}selected{% endif %}>Date Scraped</option>
+                <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name</option>
+                <option value="city" {% if sort_by=='city' %}selected{% endif %}>City</option>
+                <option value="source" {% if sort_by=='source' %}selected{% endif %}>Source</option>
+            </select>
         </div>
         <div>
             <label>City</label><br>
@@ -257,6 +307,14 @@ HTML = '''
                 {% for src in sources %}<option value="{{src}}" {% if selected_source==src %}selected{% endif %}>{{src}}</option>{% endfor %}
             </select>
         </div>
+        <div>
+            <label>Per Page</label><br>
+            <select id="limit" class="limit-select" onchange="applyFilters()">
+                <option value="25" {% if limit==25 %}selected{% endif %}>25</option>
+                <option value="50" {% if limit==50 %}selected{% endif %}>50</option>
+                <option value="100" {% if limit==100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
         <div style="display:flex;gap:8px;align-items:flex-end;">
             <button class="btn btn-filter" onclick="applyFilters()">Apply</button>
             <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
@@ -267,7 +325,7 @@ HTML = '''
     {% if contacts %}
     <table>
         <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th></tr></thead>
-        <tbody>{% for c in contacts %}<tr>
+        <tbody>{% for c in contacts %}<tr class="clickable" onclick="showContactDetail({{c.id}})">
             <td>{{c.name or '-'}}</td>
             <td>{{c.phone or '-'}}</td>
             <td>{{c.email or '-'}}</td>
@@ -290,15 +348,25 @@ HTML = '''
 
     {% if total_pages > 1 %}
     <div class="pagination">
-        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
+        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
+        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
         
         <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
 
-        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
+        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
+        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
     </div>
     {% endif %}
+
+    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>Contact Details</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-content"></div>
+        </div>
+    </div>
 
     <script>
         Chart.defaults.color = '#8b8fa3';
@@ -331,12 +399,16 @@ HTML = '''
             const city = document.getElementById('filter-city').value;
             const category = document.getElementById('filter-category').value;
             const source = document.getElementById('filter-source').value;
+            const sortBy = document.getElementById('sort-by').value;
+            const limit = document.getElementById('limit').value;
             
             let params = new URLSearchParams();
             if(search) params.set('q', search);
             if(city) params.set('city', city);
             if(category) params.set('category', category);
             if(source) params.set('source', source);
+            if(sortBy) params.set('sort', sortBy);
+            if(limit && limit != 50) params.set('limit', limit);
             
             const url = params.toString() ? '?' + params.toString() : '/';
             window.location.href = url;
@@ -344,6 +416,32 @@ HTML = '''
 
         function clearFilters(){
             window.location.href = '/';
+        }
+
+        function showContactDetail(id){
+            fetch('/api/contact/' + id).then(r=>r.json()).then(data=>{
+                if(data.error){ alert(data.error); return; }
+                const c = data;
+                document.getElementById('modal-content').innerHTML = `
+                    <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${c.name || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${c.phone || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${c.email || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">City</span><span class="detail-value">${c.city || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Area</span><span class="detail-value">${c.area || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${c.address || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Category</span><span class="detail-value">${c.category || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Source</span><span class="detail-value">${c.source || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">ARN/License</span><span class="detail-value">${c.arn || c.license_no || c.membership_no || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Scraped At</span><span class="detail-value">${c.scraped_at || '-'}</span></div>
+                `;
+                document.getElementById('modal').classList.add('active');
+            });
+        }
+
+        function closeModal(e){
+            if(!e || e.target.id === 'modal'){
+                document.getElementById('modal').classList.remove('active');
+            }
         }
 
         function exportWithFilters(fmt){
@@ -403,9 +501,19 @@ def index():
         selected_city = request.args.get('city', '')
         selected_category = request.args.get('category', '')
         selected_source = request.args.get('source', '')
+        sort_by = request.args.get('sort', 'date')
         
         conn = get_db()
         cur = conn.cursor()
+        
+        # Sort mapping
+        sort_map = {
+            'date': 'scraped_at DESC',
+            'name': 'name ASC',
+            'city': 'city ASC',
+            'source': 'source ASC'
+        }
+        order_by = sort_map.get(sort_by, 'scraped_at DESC')
         
         # Build WHERE clause for filters (case-insensitive)
         where_clauses = []
@@ -441,7 +549,7 @@ def index():
         if page < 1: page = 1
         offset = (page - 1) * limit
 
-        cur.execute(f'SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s', params + [limit, offset])
+        cur.execute(f'SELECT * FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s', params + [limit, offset])
         contacts = cur.fetchall()
         
         # Get unique values for filter dropdowns
@@ -474,6 +582,8 @@ def index():
         cities, categories, sources = [], [], []
         selected_city = selected_category = selected_source = ''
         search_query = ''
+        sort_by = 'date'
+        limit = page_size
 
     return render_template_string(HTML,
         contacts=contacts,
@@ -482,7 +592,7 @@ def index():
         page=page, total_pages=total_pages,
         cities=cities, categories=categories, sources=sources,
         selected_city=selected_city, selected_category=selected_category, selected_source=selected_source,
-        search_query=search_query)
+        search_query=search_query, sort_by=sort_by, limit=limit)
 
 
 @app.route('/api/status')
@@ -496,6 +606,48 @@ def get_status():
     except Exception:
         pass
     return jsonify({"message": "Idle", "running": False})
+
+
+@app.route('/api/contact/<int:contact_id>')
+def get_contact(contact_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM contacts WHERE id = %s', (contact_id,))
+        contact = cur.fetchone()
+        cur.close()
+        conn.close()
+        if contact:
+            return jsonify(dict(contact))
+        return jsonify({'error': 'Contact not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/logs')
+def view_logs():
+    try:
+        log_files = []
+        if LOGS_DIR.exists():
+            for f in LOGS_DIR.glob('*.log'):
+                log_files.append({'name': f.name, 'size': f.stat().st_size, 'modified': f.stat().st_mtime})
+        log_files.sort(key=lambda x: x['modified'], reverse=True)
+        return render_template_string(LOGS_HTML, logs=log_files[:20])
+    except Exception as e:
+        return f"Error reading logs: {e}"
+
+
+@app.route('/logs/<name>')
+def get_log(name):
+    try:
+        log_file = LOGS_DIR / name
+        if log_file.exists():
+            content = log_file.read_text()
+            lines = content.split('\n')
+            return jsonify({'name': name, 'lines': lines[-500:]})
+        return jsonify({'error': 'Log not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/trigger/scrape')
@@ -631,6 +783,39 @@ def export(fmt):
         out.seek(0)
         return send_file(out, download_name='contacts.xlsx', as_attachment=True)
     return 'Invalid format', 400
+
+
+LOGS_HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scraper Logs</title>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+        h1 { color: #fff; }
+        .log-list { list-style: none; padding: 0; }
+        .log-list li { padding: 10px; border-bottom: 1px solid #2d3148; }
+        .log-list a { color: #58a6ff; text-decoration: none; }
+        .log-list a:hover { text-decoration: underline; }
+        .log-content { background: #161824; padding: 20px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 12px; max-height: 70vh; }
+        .back { color: #8b8fa3; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Scraper Logs</h1>
+    <a class="back" href="/">← Back to Dashboard</a>
+    {% if logs %}
+    <ul class="log-list">
+    {% for log in logs %}
+        <li><a href="/logs/{{log.name}}">{{log.name}}</a> - {{(log.size/1024)|round(1)}} KB</li>
+    {% endfor %}
+    </ul>
+    {% else %}
+    <p>No logs found.</p>
+    {% endif %}
+</body>
+</html>
+'''
 
 
 @app.route('/health')
