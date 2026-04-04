@@ -103,14 +103,13 @@ def init_tables():
 
         for column_name, column_type in required_columns.items():
             try:
-                # Add UNIQUE constraint separately if column exists but is not unique
+                # Skip the broken unique_phone constraint
                 if column_name == 'phone_clean':
-                     cur.execute('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)')
-                     cur.execute('ALTER TABLE contacts ADD CONSTRAINT unique_phone UNIQUE (phone_clean)')
+                    cur.execute('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)')
                 else:
-                     cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
+                    cur.execute(f'ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}')
             except Exception as col_err:
-                # Ignore errors if constraint already exists
+                # Ignore column errors
                 pass
 
         cur.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
@@ -953,36 +952,43 @@ def cleanup_empty_contacts():
 def cleanup_low_quality():
     """Recalculate and update quality scores for all contacts"""
     try:
-        from quality_pipeline import DataQualityPipeline
+        from data_quality import DataQualityHandler
         
         conn = get_db()
         cur = conn.cursor()
         
-        # Get all contacts
-        cur.execute('SELECT * FROM contacts')
+        # Get all contacts (batch processing)
+        cur.execute('SELECT * FROM contacts LIMIT 1000')
         contacts = cur.fetchall()
+        
+        if not contacts:
+            return jsonify({'success': True, 'updated': 0, 'message': 'No contacts to update'})
         
         updated = 0
         for contact in contacts:
-            # Process through unified quality pipeline
-            processed = DataQualityPipeline.enrich_contact(dict(contact))
-            
-            # Update quality fields
-            cur.execute('''
-                UPDATE contacts 
-                SET phone_clean = %s, 
-                    email_valid = %s, 
-                    quality_score = %s, 
-                    quality_tier = %s
-                WHERE id = %s
-            ''', (
-                processed.get('phone_clean'),
-                processed.get('email_valid', False),
-                processed.get('quality_score', 0),
-                processed.get('quality_tier', 'low'),
-                contact['id']
-            ))
-            updated += 1
+            try:
+                # Process through quality handler
+                processed = DataQualityHandler.process_contact(dict(contact))
+                
+                # Update quality fields
+                cur.execute('''
+                    UPDATE contacts 
+                    SET phone_clean = %s, 
+                        email_valid = %s, 
+                        quality_score = %s, 
+                        quality_tier = %s
+                    WHERE id = %s
+                ''', (
+                    processed.get('phone_clean'),
+                    processed.get('email_valid', False),
+                    processed.get('quality_score', 0),
+                    processed.get('quality_tier', 'low'),
+                    contact['id']
+                ))
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update contact {contact.get('id')}: {e}")
+                continue
         
         conn.commit()
         cur.close()

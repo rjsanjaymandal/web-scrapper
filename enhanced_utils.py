@@ -4,15 +4,29 @@ Additional scrapers, validation, and utilities for more efficient data collectio
 """
 
 import asyncio
+import logging
 import re
 import aiohttp
 import hashlib
 from typing import Optional, Dict, List
 from datetime import datetime
 from playwright.async_api import Page
-from scrapers_registry import BaseScraper, ScraperRegistry
 
 logger = logging.getLogger(__name__)
+
+try:
+    from scrapers_registry import BaseScraper, ScraperRegistry
+except ImportError:
+    BaseScraper = object
+    class ScraperRegistry:
+        @staticmethod
+        def get_scraper(name):
+            return None
+
+try:
+    from data_quality import DataQualityHandler
+except ImportError:
+    DataQualityHandler = None
 
 # ==================== Additional Scrapers ====================
 

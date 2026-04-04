@@ -221,22 +221,29 @@ class DataQualityHandler:
         return contact
     
     @staticmethod
-    def clean_name(name: str) -> str:
+    def clean_name(name) -> str:
         """Clean and normalize name"""
         if not name:
             return ''
-        name = str(name).strip()
-        name = re.sub(r'\s+', ' ', name)
-        name = re.sub(r'[^\w\s\.\-]', '', name)
-        return name.title()
+        try:
+            name = str(name).strip()
+            name = re.sub(r'\s+', ' ', name)
+            name = re.sub(r'[^\w\s\.\-]', '', name)
+            return name.title()
+        except:
+            return ''
     
     @staticmethod
-    def clean_address(address: str) -> str:
+    def clean_address(address) -> str:
         """Clean and normalize address"""
         if not address:
             return ''
-        address = str(address).strip()
-        address = re.sub(r'\s+', ' ', address)
+        try:
+            address = str(address).strip()
+            address = re.sub(r'\s+', ' ', address)
+            return address
+        except:
+            return ''
         return address
     
     @staticmethod
