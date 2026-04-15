@@ -19,9 +19,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Force Playwright install to the specific path
-RUN playwright install chromium
+RUN playwright install chromium && playwright install-deps chromium
+
 
 # Create a non-root user
+# Note: In Railway, the PORT environment variable is injected.
+# We bind to 0.0.0.0:$PORT so the service is reachable.
 RUN useradd -m scraper
 COPY . .
 RUN chown -R scraper:scraper /app
@@ -29,8 +32,9 @@ RUN chown -R scraper:scraper /app
 # Switch to non-root user
 USER scraper
 
-# Default port
+# Default port documentation
 EXPOSE 8080
 
-# Start the web server by default (Railway can override this for the worker service)
-CMD ["gunicorn", "dashboard:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120"]
+# Use shell form for CMD to allow environment variable expansion ($PORT)
+CMD gunicorn dashboard:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120
+
