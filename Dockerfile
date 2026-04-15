@@ -33,6 +33,5 @@ RUN chown -R scraper:scraper /app
 USER scraper
 
 # Use simple shell form for CMD to ensure Railway's $PORT expansion is handled by gunicorn
-CMD gunicorn dashboard:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
-
+CMD gunicorn dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile -
 

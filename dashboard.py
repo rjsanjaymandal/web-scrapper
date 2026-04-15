@@ -7,6 +7,7 @@ import re
 import os
 import logging
 import json
+import time
 from datetime import datetime
 from openpyxl import Workbook
 from pathlib import Path
@@ -44,6 +45,13 @@ except Exception:
     redis_client = None
 
 
+DB_INIT_READY = False
+DB_INIT_IN_PROGRESS = False
+DB_INIT_LAST_ATTEMPT = 0.0
+DB_INIT_LAST_ERROR = None
+DB_INIT_RETRY_SECONDS = int(os.environ.get("DATABASE_INIT_RETRY_SECONDS", "15"))
+
+
 def get_db_url():
     """Build the database URL from environment variables."""
     db_url = os.environ.get("DATABASE_URL")
@@ -59,21 +67,63 @@ def get_db_url():
     return f"postgresql://{user}:{pw}@{host}:{port}/{name}"
 
 
-def get_db():
-    """Get a fresh database connection. Simple, reliable, no pool issues."""
+def _connect_db():
+    """Open a database connection with a short timeout so web boot stays responsive."""
     url = get_db_url()
     # Railway may use postgres:// — psycopg2 needs postgresql://
     if url and url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
-    conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+    connect_timeout = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "5"))
+    conn = psycopg2.connect(
+        url,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        connect_timeout=connect_timeout,
+        application_name="dashboard",
+    )
     conn.autocommit = True
     return conn
 
 
+def ensure_db_initialized(force=False):
+    """Initialize schema lazily so the web process can boot before Postgres is ready."""
+    global DB_INIT_LAST_ATTEMPT
+
+    if DB_INIT_READY:
+        return True
+
+    now = time.monotonic()
+    if (
+        not force
+        and DB_INIT_LAST_ERROR
+        and (now - DB_INIT_LAST_ATTEMPT) < DB_INIT_RETRY_SECONDS
+    ):
+        raise RuntimeError(f"Database not ready yet: {DB_INIT_LAST_ERROR}")
+
+    if not init_tables():
+        raise RuntimeError(
+            f"Database initialization failed: {DB_INIT_LAST_ERROR or 'unknown error'}"
+        )
+
+    return True
+
+
+def get_db():
+    """Get a fresh database connection after lazy schema initialization."""
+    ensure_db_initialized()
+    return _connect_db()
+
+
 def init_tables():
     """Create tables if they don't exist."""
+    global DB_INIT_READY, DB_INIT_IN_PROGRESS, DB_INIT_LAST_ATTEMPT, DB_INIT_LAST_ERROR
+
+    if DB_INIT_IN_PROGRESS:
+        return DB_INIT_READY
+
+    DB_INIT_IN_PROGRESS = True
+    DB_INIT_LAST_ATTEMPT = time.monotonic()
     try:
-        conn = get_db()
+        conn = _connect_db()
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
@@ -102,24 +152,25 @@ def init_tables():
 
         # Individual column checks for existing tables
         required_columns = {
+            "area": "VARCHAR(100)",
+            "state": "VARCHAR(100)",
+            "source_url": "TEXT",
             "phone_clean": "VARCHAR(50)",
+            "email_valid": "BOOLEAN DEFAULT FALSE",
+            "enriched": "BOOLEAN DEFAULT FALSE",
+            "arn": "VARCHAR(50)",
+            "license_no": "VARCHAR(100)",
+            "membership_no": "VARCHAR(100)",
             "quality_score": "INTEGER DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
-            "enriched": "BOOLEAN DEFAULT FALSE",
-            "email_valid": "BOOLEAN DEFAULT FALSE",
+            "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         }
 
         for column_name, column_type in required_columns.items():
             try:
-                # Skip the broken unique_phone constraint
-                if column_name == "phone_clean":
-                    cur.execute(
-                        "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone_clean VARCHAR(50)"
-                    )
-                else:
-                    cur.execute(
-                        f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
-                    )
+                cur.execute(
+                    f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+                )
             except Exception as col_err:
                 # Ignore column errors
                 pass
@@ -137,11 +188,17 @@ def init_tables():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)")
         cur.close()
         conn.close()
+        DB_INIT_READY = True
+        DB_INIT_LAST_ERROR = None
         logger.info("Database tables ready!")
         return True
     except Exception as e:
-        logger.error(f"Database init failed: {e}")
+        DB_INIT_READY = False
+        DB_INIT_LAST_ERROR = str(e)
+        logger.warning(f"Database init deferred: {e}")
         return False
+    finally:
+        DB_INIT_IN_PROGRESS = False
 
 
 def load_config():
@@ -152,12 +209,7 @@ def load_config():
         return {}
 
 
-# Initialize tables on startup
-try:
-    init_tables()
-    logger.info("Connected to PostgreSQL!")
-except Exception as e:
-    logger.warning(f"Could not connect to DB on startup: {e}")
+logger.info("Database bootstrap deferred until the first database-backed request")
 
 
 HTML = """
