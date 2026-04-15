@@ -13,7 +13,9 @@ from playwright.async_api import async_playwright, Page, Browser, Playwright
 from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
 from scrapers_registry import BaseScraper, ScraperRegistry
+from stealth_utils import StealthManager
 from pathlib import Path
+
 
 CITY_STATE_MAP = {
     "mumbai": "MAHARASHTRA",
@@ -847,6 +849,8 @@ class AMFIScraper(BaseScraper):
 
             # Try multiple row selectors
             row_selectors = [
+                ".MuiBox-root.css-ds3kc",  # New MUI-based grid rows
+                "div.MuiBox-root.css-1oi5t4f > div:not(:first-child)", # Alternative MUI container
                 "table tbody tr",
                 ".distributor-list .distributor-item",
                 ".result-row, .result-item",
@@ -861,15 +865,19 @@ class AMFIScraper(BaseScraper):
             ]
 
             rows = []
+            active_selector = None
             for selector in row_selectors:
                 rows = await page.query_selector_all(selector)
                 if rows:
+                    active_selector = selector
                     logger.info(
                         f"AMFI: Found {len(rows)} rows with selector: {selector}"
                     )
                     break
 
             if not rows:
+                # ... (JS fallback logic remains)
+
                 logger.warning("AMFI: No rows found with standard selectors!")
 
                 # Try using JavaScript to get all content
@@ -973,43 +981,43 @@ class AMFIScraper(BaseScraper):
             # Extract data from rows
             for row in rows:
                 try:
-                    cols = await row.query_selector_all('td, .col, [class*="cell"]')
+                    # In MUI grid, children are divs. In tables, children are tds.
+                    cols = await row.query_selector_all('> div, td, .col, [class*="cell"]')
 
                     if not cols or len(cols) < 2:
                         continue
 
-                    if len(cols) >= 2:
+                    # If it's the new MUI grid (usually ~11 columns)
+                    if len(cols) >= 10 and "MuiBox-root" in active_selector:
+                        # Based on research: ARN=1, Name=2, City=7 (1-based, so 0, 1, 6)
+                        arn_result = await cols[0].inner_text()
+                        name = await cols[1].inner_text()
+                        city_result = await cols[6].inner_text() if len(cols) > 6 else city
+                        state_result = None # Might be in there too
+                    else:
+                        # Standard table fallback
                         name = await cols[0].inner_text()
-                        arn_result = (
-                            await cols[1].inner_text() if len(cols) > 1 else None
-                        )
-                        city_result = (
-                            await cols[2].inner_text() if len(cols) > 2 else city
-                        )
-                        state_result = (
-                            await cols[3].inner_text() if len(cols) > 3 else None
-                        )
+                        arn_result = await cols[1].inner_text() if len(cols) > 1 else None
+                        city_result = await cols[2].inner_text() if len(cols) > 2 else city
+                        state_result = await cols[3].inner_text() if len(cols) > 3 else None
 
-                        if name and arn_result and len(name.strip()) > 1:
-                            listings.append(
-                                {
-                                    "name": name.strip(),
-                                    "arn": arn_result.strip(),
-                                    "city": city_result.strip()
-                                    if city_result
-                                    else city,
-                                    "state": state_result.strip()
-                                    if state_result
-                                    else None,
-                                    "phone": None,
-                                    "address": None,
-                                    "area": None,
-                                    "detail_url": None,
-                                }
-                            )
+                    if name and arn_result and len(name.strip()) > 1:
+                        listings.append(
+                            {
+                                "name": name.strip(),
+                                "arn": arn_result.strip(),
+                                "city": city_result.strip() if city_result else city,
+                                "state": state_result.strip() if state_result else None,
+                                "phone": None,
+                                "address": None,
+                                "area": None,
+                                "detail_url": None,
+                            }
+                        )
                 except Exception as e:
                     logger.debug(f"AMFI: Row parse error: {e}")
                     continue
+
 
             logger.info(f"AMFI: Total listings extracted: {len(listings)}")
 
@@ -1088,14 +1096,21 @@ class IRDAIScraper(BaseScraper):
             state_selected = False
             for sel, elem_type in selectors_to_try:
                 try:
-                    elem = await page.query_selector(sel)
+                    elem = await page.wait_for_selector(sel, state="visible", timeout=5000)
                     if elem:
-                        await elem.select_option(label=state)
+                        # Try selecting by label first, then by value if label fails
+                        try:
+                            await elem.select_option(label=state)
+                        except:
+                            # Many Indian govt sites use uppercase values
+                            await elem.select_option(value=state.upper())
+                        
                         state_selected = True
-                        logger.info(f"IRDAI: Selected state using selector: {sel}")
+                        logger.info(f"IRDAI: Selected state ({state}) using selector: {sel}")
                         break
                 except Exception:
                     continue
+
 
             if state_selected:
                 await asyncio.sleep(1)
@@ -2245,8 +2260,13 @@ class ContactScraper:
                     headless=self.config.headless, args=launch_args
                 )
 
+                # Get dynamic User-Agent and modern headers
+                user_agent = StealthManager.get_random_ua()
+                extra_headers = StealthManager.get_modern_headers(user_agent)
+                
                 context_kwargs = {
-                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "user_agent": user_agent,
+                    "extra_http_headers": extra_headers,
                     "viewport": {"width": 1920, "height": 1080},
                     "ignore_https_errors": True,
                 }
@@ -2254,16 +2274,15 @@ class ContactScraper:
                     context_kwargs["proxy"] = proxy_dict
 
                 self.context = await self.browser.new_context(**context_kwargs)
+                
+                # Apply advanced stealth patches
+                await StealthManager.apply_stealth(self.context)
+                
                 self.page = await self.context.new_page()
 
-                await self.page.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                """)
-
-                logger.info("Browser initialized")
+                logger.info(f"Browser initialized with dynamic UA: {user_agent[:40]}...")
                 return
+
             except Exception as exc:
                 await self._close_browser()
 
@@ -2436,12 +2455,12 @@ class ContactScraper:
         page_num = 1
         page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "10000"))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
+        
+        user_agent = StealthManager.get_random_ua()
+        headers = StealthManager.get_modern_headers(user_agent)
 
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+
             while True:
                 params = scraper.get_search_params(
                     city=city, page=page_num, page_size=page_size

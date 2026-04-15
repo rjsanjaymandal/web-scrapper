@@ -7,6 +7,8 @@ from playwright.async_api import async_playwright, Browser, BrowserContext
 import asyncpg
 from scrapers_registry import ScraperRegistry
 from quality_pipeline import DataQualityPipeline
+from stealth_utils import StealthManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +56,20 @@ class ParallelScraper:
         if self.pool: await self.pool.close()
 
     async def _setup_context(self) -> BrowserContext:
+        user_agent = StealthManager.get_random_ua()
+        extra_headers = StealthManager.get_modern_headers(user_agent)
+        
         context = await self.browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            user_agent=user_agent,
+            extra_http_headers=extra_headers,
             viewport={'width': 1280, 'height': 720}
         )
         
+        # Apply advanced stealth patches
+        await StealthManager.apply_stealth(context)
+        
         # Block heavy resources
+
         if self.config.block_resources:
             async def block_aggressively(route):
                 if route.request.resource_type in ["image", "stylesheet", "font", "media"]:
