@@ -32,9 +32,7 @@ RUN chown -R scraper:scraper /app
 # Switch to non-root user
 USER scraper
 
-# Default port documentation
-EXPOSE 8080
+# Use simple shell form for CMD to ensure Railway's $PORT expansion is handled by gunicorn
+CMD gunicorn dashboard:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 
-# Use shell form for CMD to allow environment variable expansion ($PORT)
-CMD gunicorn dashboard:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120
 

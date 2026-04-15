@@ -24,6 +24,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log environment for Railway diagnostics
+PORT = os.environ.get("PORT", "5000")
+RAILWAY_SERVICE = os.environ.get("RAILWAY_SERVICE_NAME", "Unknown")
+logger.info(f"BOOTSTRAP: Railway Service: {RAILWAY_SERVICE} | Port: {PORT}")
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "healthy", "service": RAILWAY_SERVICE, "port": PORT}), 200
+
+
 # Redis for live status (optional)
 try:
     import redis
