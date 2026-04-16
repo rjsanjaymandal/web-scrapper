@@ -3,7 +3,11 @@ import sys
 import time
 import subprocess
 import traceback
+import socket
+import threading
 from urllib.parse import urlparse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from dashboard import init_tables, logger
 
 # Global diagnostic wrapper to catch early import errors
 try:
@@ -14,6 +18,21 @@ except ImportError as e:
 
 def log(msg):
     print(f"🚀 [BOOTSTRAP] {msg}", flush=True)
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        return
+
+def start_health_server(port):
+    def run_server():
+        server = HTTPServer(('0.0.0.0', int(port)), HealthCheckHandler)
+        server.serve_forever()
+    thread = threading.Thread(target=run_server, daemon=True)
+    thread.start()
 
 def wait_for_db():
     try:
@@ -115,29 +134,44 @@ def main():
                 log("❌ CRITICAL: 'gunicorn' command not found in PATH!")
                 sys.exit(1)
 
-            log(f"Handoff to Gunicorn (0.0.0.0:{port})...")
-            
+            # Use execvp for web process to give it full control
             cmd = [
-                "gunicorn", "dashboard:app",
+                "gunicorn",
                 "--bind", f"0.0.0.0:{port}",
                 "--workers", "1",
-                "--threads", "4",
-                "--timeout", "120",
-                "--preload",
+                "--threads", "8",
+                "--timeout", "300",
                 "--access-logfile", "-",
-                "--error-logfile", "-"
+                "--error-logfile", "-",
+                "dashboard:app"
             ]
+            log(f"🚀 Handoff to Gunicorn (0.0.0.0:{port})...")
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            log("Handoff to Celery Worker...")
+            port = os.environ.get("PORT", "8080")
+            log("Starting Healthcheck server for Worker...")
+            start_health_server(port)
+            log("🚀 Handoff to Celery Worker...")
+            # Run Celery as subprocess to keep the healthcheck thread alive
             cmd = [
-                "celery", "-A", "tasks.celery_app", "worker",
+                "celery",
+                "-A", "tasks",
+                "worker",
                 "--loglevel=info",
-                "--pool=solo",
-                "--concurrency=1"
+                "--concurrency=1",
+                "--pool=solo"
             ]
-            os.execvp(cmd[0], cmd)
+            
+            try:
+                # Use subprocess.run to block until worker exits
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                log("Worker received interrupt, shutting down...")
+                sys.exit(0)
+            except Exception as e:
+                log(f"❌ Worker crashed: {e}")
+                sys.exit(1)
         
         else:
             log(f"❌ Unknown PROCESS_TYPE: {process_type}")
