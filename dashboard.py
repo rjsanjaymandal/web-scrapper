@@ -859,31 +859,26 @@ def index():
         )
         sources = [r["source"] for r in cur.fetchall()]
 
-        # Stats (unfiltered)
-        cur.execute(
-            "SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s",
-            ("",),
-        )
-        with_phone = cur.fetchone()["cnt"]
-        cur.execute(
-            "SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s",
-            ("",),
-        )
-        with_email = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(DISTINCT city) as cnt FROM contacts")
-        city_count = cur.fetchone()["cnt"]
-
-        # Quality stats
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'high'")
-        quality_high = cur.fetchone()["cnt"]
-        cur.execute(
-            "SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'medium'"
-        )
-        quality_medium = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE quality_tier = 'low'")
-        quality_low = cur.fetchone()["cnt"]
-        cur.execute("SELECT AVG(quality_score) as avg FROM contacts")
-        avg_quality = round(cur.fetchone()["avg"] or 0, 1)
+        # Optimized Stats: Combine all 7+ counts into a single efficient database pass
+        cur.execute("""
+            SELECT 
+                COUNT(*) FILTER (WHERE phone_clean IS NOT NULL AND phone_clean <> '') as with_phone,
+                COUNT(*) FILTER (WHERE email IS NOT NULL AND email <> '') as with_email,
+                COUNT(DISTINCT city) as city_count,
+                COUNT(*) FILTER (WHERE quality_tier = 'high') as q_high,
+                COUNT(*) FILTER (WHERE quality_tier = 'medium') as q_medium,
+                COUNT(*) FILTER (WHERE quality_tier = 'low') as q_low,
+                AVG(quality_score) as avg_score
+            FROM contacts
+        """)
+        stats_row = cur.fetchone()
+        with_phone = stats_row["with_phone"]
+        with_email = stats_row["with_email"]
+        city_count = stats_row["city_count"]
+        quality_high = stats_row["q_high"]
+        quality_medium = stats_row["q_medium"]
+        quality_low = stats_row["q_low"]
+        avg_quality = round(stats_row["avg_score"] or 0, 1)
 
         cur.execute("SELECT source, COUNT(*) as c FROM contacts GROUP BY source")
         by_source = {r["source"]: r["c"] for r in cur.fetchall()}

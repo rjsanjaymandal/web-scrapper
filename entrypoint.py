@@ -71,11 +71,24 @@ def init_tables():
 
 def main():
     try:
-        # Check command line flags first, fallback to env var
-        is_worker = "--worker" in sys.argv
-        process_type = "worker" if is_worker else os.environ.get("PROCESS_TYPE", "web")
+        # Detect service type
+        # 1. Check command line flags (highest priority)
+        # 2. Check explicitly set PROCESS_TYPE env var
+        # 3. Auto-detect from RAILWAY_SERVICE_NAME
+        is_worker_flag = "--worker" in sys.argv
+        env_process_type = os.environ.get("PROCESS_TYPE")
+        railway_service = os.environ.get("RAILWAY_SERVICE_NAME", "").lower()
+
+        if is_worker_flag:
+            process_type = "worker"
+        elif env_process_type:
+            process_type = env_process_type
+        elif "worker" in railway_service:
+            process_type = "worker"
+        else:
+            process_type = "web"
         
-        log(f"Starting {process_type} process sequence...")
+        log(f"Starting {process_type} process sequence (Detected service: {railway_service})...")
 
         # Shared DB Check
         if not wait_for_db():
