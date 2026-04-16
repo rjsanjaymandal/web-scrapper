@@ -2518,7 +2518,15 @@ class ContactScraper:
 
             processed_listings.append(listing)
 
-        return processed_listings
+        # FINAL QUALITY GATE: Only keep contacts with at least one valid method (Phone or Email)
+        final_listings = ProcessingHandler.filter_valid(processed_listings)
+        
+        skipped_junk = len(processed_listings) - len(final_listings)
+        if skipped_junk > 0:
+            logger.info(f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email")
+            self.stats["skipped_junk"] = self.stats.get("skipped_junk", 0) + skipped_junk
+
+        return final_listings
 
     def _format_amfi_listing(self, record: Dict, city: str) -> Dict:
         phone = record.get("TelephoneNumber_O") or record.get("TelephoneNumber_R")
@@ -2821,17 +2829,12 @@ class ContactScraper:
         if not listings:
             return
 
-        # Filter out contacts with no phone AND no email (keep if has at least one)
-        valid_listings = [
-            l
-            for l in listings
-            if (l.get("phone") and l.get("phone").strip())
-            or (l.get("email") and l.get("email").strip())
-        ]
+        # Use Unified Processing Handler to ensure only valid data is stored
+        valid_listings = ProcessingHandler.filter_valid(listings)
 
         skipped = len(listings) - len(valid_listings)
         if skipped > 0:
-            logger.info(f"Skipped {skipped} listings with no phone or email")
+            logger.info(f"🛡️ Skipped {skipped} listings with invalid data during DB save")
 
         if not valid_listings:
             return

@@ -37,8 +37,14 @@ class ProcessingHandler:
         'tempmail.com', '10minutemail.com', 'guerrillamail.com',
         'mailinator.com', 'throwaway.email', 'fakeinbox.com',
         'yopmail.com', 'trashmail.com', 'getnada.com', 'sharklasers.com',
-        'grr.la', 'maildrop.cc', 'throwemail.com', 'mintemail.com'
+        'grr.la', 'maildrop.cc', 'throwemail.com', 'mintemail.com',
+        'example.com', 'sample.com', 'test.com'
     }
+
+    JUNK_EMAIL_PATTERNS = [
+        r'^test@', r'^abc@', r'^noreply@', r'^no-reply@',
+        r'^placeholder@', r'^dummy@', r'^example@'
+    ]
 
     @staticmethod
     def normalize_phone(phone: Any) -> Optional[str]:
@@ -80,6 +86,11 @@ class ProcessingHandler:
         if domain in ProcessingHandler.DISPOSABLE_DOMAINS:
             return False
             
+        # Check against junk patterns (test@..., etc)
+        for pattern in ProcessingHandler.JUNK_EMAIL_PATTERNS:
+            if re.match(pattern, email):
+                return False
+                
         return True
 
     @staticmethod
@@ -137,12 +148,22 @@ class ProcessingHandler:
         Performs full cleaning, normalization, and scoring on a single contact record.
         """
         # 1. Clean Phone
-        contact['phone_clean'] = cls.normalize_phone(contact.get('phone'))
+        phone_clean = cls.normalize_phone(contact.get('phone'))
+        contact['phone_clean'] = phone_clean
+        # DESTRUCTIVE CLEAN: Overwrite raw phone with the cleaned version (or None if junk)
+        contact['phone'] = phone_clean
         
         # 2. Validate Email
         email = str(contact.get('email') or '').strip().lower()
-        contact['email'] = email if email else None
-        contact['email_valid'] = cls.is_valid_email(email)
+        if email:
+            is_valid = cls.is_valid_email(email)
+            contact['email_valid'] = is_valid
+            if not is_valid:
+                # DESTRUCTIVE CLEAN: Wipe the email field if it is junk
+                contact['email'] = None
+        else:
+            contact['email'] = None
+            contact['email_valid'] = False
         
         # 3. Normalize Strings
         for field in ['name', 'address', 'area', 'city', 'category']:

@@ -490,7 +490,8 @@ HTML = """
         <button class="btn btn-scrape" id="scrape-btn" onclick="startScraperPool()">🚀 Start Business Scraper</button>
         <button class="btn" style="background:#238636;" onclick="startFastScrape()">⚡ Fast Scrape (Parallel)</button>
         <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📂 Raw HTML Logs</button>
-        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🗑️ Cleanup</button>
+        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🧹 Basic Clean</button>
+        <button class="btn" style="background:#9e1c1c;" onclick="deepCleanDB()">🧨 Deep Clean DB</button>
     </div>
 
     <div id="notification" class="notification"></div>
@@ -600,6 +601,22 @@ HTML = """
                 fastBtn.innerText = '⚡ Fast Scrape';
                 fastBtn.disabled = false;
             });
+        }
+
+        function deepCleanDB() {
+            if (!confirm("⚠️ CAUTION: Deep Clean will permanently delete all records with invalid phone AND email data. Proceed?")) return;
+            
+            showNotification("🔍 Deep cleaning database... this may take a moment.");
+            fetch('/api/cleanup/deep', {method: 'POST'})
+                .then(r=>r.json())
+                .then(d=>{
+                    if (d.success) {
+                        showNotification(`✅ Success! Deleted ${d.deleted} junk records and updated ${d.updated} legacy rows.`);
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                        showNotification("❌ Cleanup failed: " + d.error, true);
+                    }
+                });
         }
 
         function cleanupEmpty(){
@@ -1099,6 +1116,63 @@ def get_status():
     except Exception:
         pass
     return jsonify({"message": "Idle", "running": False})
+
+
+@app.route("/api/cleanup/deep", methods=["POST"])
+def api_deep_clean():
+    """Trigger the deep logic-based cleanup"""
+    try:
+        # Import the cleanup logic (using the scratch script path as reference or direct implementation)
+        # For production use, we'll implement it directly here to ensure stability.
+        from tasks import set_status
+        set_status({"running": True, "message": "🧹 Deep cleaning database..."})
+        
+        # We'll use the logic from the scratch script but as an integrated function
+        def run_clean():
+            try:
+                # We reuse the logic already defined in the scratch script but implemented locally
+                # for the sake of the dashboard's context
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM contacts")
+                rows = cur.fetchall()
+                
+                deleted = 0
+                updated = 0
+                for row in rows:
+                    contact = dict(row)
+                    contact_id = contact['id']
+                    
+                    # Run through ProcessingHandler
+                    from processing import ProcessingHandler
+                    cleaned = ProcessingHandler.process_contact(contact)
+                    
+                    if not cleaned.get('phone_clean') and not (cleaned.get('email') and cleaned.get('email_valid')):
+                        cur.execute("DELETE FROM contacts WHERE id = %s", (contact_id,))
+                        deleted += 1
+                        continue
+                        
+                    if cleaned.get('phone') != row['phone'] or cleaned.get('email') != row['email']:
+                        cur.execute(
+                            "UPDATE contacts SET phone = %s, phone_clean = %s, email = %s, email_valid = %s WHERE id = %s",
+                            (cleaned.get('phone'), cleaned.get('phone_clean'), cleaned.get('email'), cleaned.get('email_valid'), contact_id)
+                        )
+                        updated += 1
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                set_status({"running": False, "message": "Idle"})
+                return deleted, updated
+            except Exception as e:
+                set_status({"running": False, "message": "Idle"})
+                raise e
+
+        deleted, updated = run_clean()
+        return jsonify({"success": True, "deleted": deleted, "updated": updated})
+    except Exception as e:
+        logger.error(f"Deep clean failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/contact/<int:contact_id>")
