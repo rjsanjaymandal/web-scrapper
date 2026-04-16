@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext
 import asyncpg
 from scrapers_registry import ScraperRegistry
-from quality_pipeline import DataQualityPipeline
+from processing import ProcessingHandler
 from stealth_utils import StealthManager
 
 
@@ -97,10 +97,12 @@ class ParallelScraper:
                 listings = await scraper.extract_listings(page, city, category)
                 
                 if listings:
-                    # Enrich via pipeline
-                    enriched = DataQualityPipeline.enrich_batch(listings)
-                    await self._batch_insert(enriched, category, city, source_name)
-                    return len(enriched)
+                    # Filter and Process via unified handler
+                    processed = ProcessingHandler.process_batch(listings)
+                    valid = ProcessingHandler.filter_valid(processed)
+                    if valid:
+                        await self._batch_insert(valid, category, city, source_name)
+                    return len(valid)
                 return 0
             except Exception as e:
                 logger.error(f"Job failed: {source_name} | {city}/{category} | Error: {e}")
@@ -144,11 +146,13 @@ class ParallelScraper:
                     membership_no, quality_score, quality_tier
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-                ON CONFLICT (phone_clean) DO UPDATE SET
+                ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
+                DO UPDATE SET
                     quality_score = EXCLUDED.quality_score,
                     quality_tier = EXCLUDED.quality_tier,
+                    scraped_at = EXCLUDED.scraped_at,
                     enriched = TRUE
-                WHERE contacts.quality_score < EXCLUDED.quality_score
+                WHERE EXCLUDED.quality_score >= contacts.quality_score
             ''', records)
 
     async def run_parallel_suite(self, jobs: List[tuple]):

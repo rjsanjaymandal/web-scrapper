@@ -22,14 +22,23 @@ logger = logging.getLogger(__name__)
 redis_url = os.environ.get('REDIS_URL')
 redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
-def set_status(msg, is_running=True):
+def set_status(msg, is_running=True, stats=None):
+    """
+    Update Redis with current task status and optional stats for the dashboard.
+    stats format: {"leads": 123, "page": 2, "total_pages": 10, "source": "JUSTDIAL"}
+    """
     if redis_client:
         try:
-            data = {"message": msg, "running": is_running, "time": datetime.now().strftime("%H:%M:%S")}
+            data = {
+                "message": msg, 
+                "running": is_running, 
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "stats": stats or {}
+            }
             redis_client.set("scraper_status", json.dumps(data), ex=3600)
         except Exception as e:
             logger.error(f"Redis status update failed: {e}")
-    logger.info(f"STATUS UPDATE: {msg}")
+    logger.info(f"STATUS UPDATE: {msg} {stats if stats else ''}")
 
 if not redis_url:
     logger.warning("REDIS_URL not found. Celery tasks will run locally (always_eager).")
@@ -166,10 +175,8 @@ def fast_scrape_task(source: str = None, use_business: bool = False, max_concurr
     
     return asyncio.run(_run_fast())
 
-@celery_app.task(name="tasks.enrich_leads_task")
-def enrich_leads_task():
     """Periodic task to re-score and enrich all leads in the DB."""
-    from quality_pipeline import DataQualityPipeline
+    from processing import ProcessingHandler
     from scraper import load_config
     import asyncpg
     
@@ -188,16 +195,20 @@ def enrich_leads_task():
             count = 0
             for c in contacts:
                 contact_dict = dict(c)
-                enriched = DataQualityPipeline.enrich_contact(contact_dict)
+                # Use unified processing handler
+                enriched = ProcessingHandler.process_contact(contact_dict)
                 
                 await conn.execute('''
                     UPDATE contacts SET 
                         phone_clean = $1, email_valid = $2, quality_score = $3, 
                         quality_tier = $4, enriched = TRUE 
                     WHERE id = $5
-                ''', enriched['phone_clean'], enriched['email_valid'], 
-                     enriched['quality_score'], enriched['quality_tier'], c['id'])
+                ''', enriched.get('phone_clean'), enriched.get('email_valid'), 
+                     enriched.get('quality_score'), enriched.get('quality_tier'), c['id'])
                 count += 1
+                
+                if count % 10 == 0:
+                    set_status(f"💎 Enriched {count} leads...")
                 
             set_status(f"✅ Enriched {count} leads", False)
             return {"status": "completed", "enriched_count": count}

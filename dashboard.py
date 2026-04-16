@@ -189,16 +189,24 @@ def init_tables():
                 # Ignore column errors
                 pass
 
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)"
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)")
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)"
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)"
-        )
+        # Cleanup existing duplicates before adding UNIQUE constraint
+        # This keeps the LATEST record for each phone/email pair
+        cur.execute("""
+            DELETE FROM contacts 
+            WHERE id NOT IN (
+                SELECT MAX(id) 
+                FROM contacts 
+                GROUP BY COALESCE(phone_clean, phone, ''), COALESCE(email, '')
+            )
+        """)
+
+        # Constraints for Deduplication (UPSERT support)
+        # Note: We use UNIQUE INDEX instead of CONSTRAINT for better "IF NOT EXISTS" support in some PG versions
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_unique_phone ON contacts(phone_clean) WHERE phone_clean IS NOT NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_unique_email ON contacts(email) WHERE email IS NOT NULL")
+        
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)")
         cur.close()
         conn.close()
@@ -367,6 +375,36 @@ HTML = """
     </div>
 
     <script>
+        // Update SSE logic to handle status and stats
+        const source = new EventSource('/api/stream/stats');
+        source.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            // Update quick stats
+            const stats = document.querySelectorAll('.stat .val');
+            if (stats.length >= 3) {
+                stats[0].innerText = data.total;
+                stats[1].innerText = data.with_phone;
+                stats[2].innerText = data.with_email;
+            }
+
+            // Update status card
+            const statusEl = document.getElementById('live-status');
+            const statusData = data.scraper_status || {};
+            
+            if (statusData.running) {
+                statusEl.innerText = statusData.message || 'Scraping...';
+                statusEl.className = 'val status-running pulse';
+                document.getElementById('scrape-btn').disabled = true;
+                document.getElementById('scrape-btn').innerText = '🚧 Scraping...';
+            } else {
+                statusEl.innerText = 'Idle';
+                statusEl.className = 'val status-idle';
+                document.getElementById('scrape-btn').disabled = false;
+                document.getElementById('scrape-btn').innerText = '🚀 Start Scrape';
+            }
+        };
+
         function startFastScrape(){
             if(confirm('Start FAST parallel scrape? This will run multiple cities concurrently.')){
                 const btn = document.getElementById('scrape-btn');
@@ -1193,7 +1231,7 @@ def cleanup_empty_contacts():
 def cleanup_low_quality():
     """Recalculate and update quality scores for all contacts"""
     try:
-        from data_quality import DataQualityHandler
+        from processing import ProcessingHandler
 
         conn = get_db()
         cur = conn.cursor()
@@ -1211,7 +1249,7 @@ def cleanup_low_quality():
         for contact in contacts:
             try:
                 # Process through quality handler
-                processed = DataQualityHandler.process_contact(dict(contact))
+                processed = ProcessingHandler.process_contact(dict(contact))
 
                 # Update quality fields
                 cur.execute(
@@ -1285,18 +1323,28 @@ def stream_stats():
                 cur.close()
                 conn.close()
 
+                # Get scraper status from Redis
+                status_data = {}
+                if redis_client:
+                    raw_status = redis_client.get("scraper_status")
+                    if raw_status:
+                        status_data = json.loads(raw_status)
+
                 data = {
                     "total": total,
                     "with_phone": with_phone,
                     "with_email": with_email,
                     "timestamp": int(time.time()),
+                    "scraper_status": status_data
                 }
 
-                # Only send if data changed
+                # Send if data changed OR if scraper is running (to update progress)
+                is_running = status_data.get("running", False)
                 if (
                     total != last_total
                     or with_phone != last_phone
                     or with_email != last_email
+                    or is_running
                 ):
                     yield f"data: {json.dumps(data)}\n\n"
                     last_total = total

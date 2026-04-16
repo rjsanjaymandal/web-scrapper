@@ -40,21 +40,17 @@ CITY_STATE_MAP = {
     "vadodara": "GUJARAT",
 }
 
-# Import enhanced utilities
 try:
+    from processing import ProcessingHandler
     from enhanced_utils import (
         SulekhaScraper,
         ClickIndiaScraper,
-        EmailValidator,
-        PhoneFormatter,
-        FuzzyDeduplicator,
-        QualityScorer,
-        RetryQueue,
-        ScraperScheduler,
-        SelectorManager,
     )
-except ImportError:
-    pass
+    # Register enhanced scrapers
+    ScraperRegistry.register(SulekhaScraper())
+    ScraperRegistry.register(ClickIndiaScraper())
+except ImportError as e:
+    logger.warning(f"Failed to import/register enhanced scrapers: {e}")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -2401,20 +2397,21 @@ class ContactScraper:
         ]
 
     async def _process_listings(self, listings: List[Dict]) -> List[Dict]:
+        """Process and clean listings using the unified ProcessingHandler."""
         # Filter duplicates in bulk first to avoid thousands of SQL queries
         listings = await self._filter_duplicates_bulk(listings)
 
         processed_listings = []
 
         for listing in listings:
-            if self.config.enable_email_extraction and listing.get("detail_url"):
+            if self.config.enable_email_extraction and listing.get("detail_url") and not listing.get("email"):
                 email = await self.extract_email_from_detail(listing["detail_url"])
                 listing["email"] = email
 
-            if self.config.enable_enrichment:
-                listing = await DataEnricher.enrich_contact(listing)
+            # Use Unified Processing Handler
+            listing = ProcessingHandler.process_contact(listing)
 
-            # Final safety check (especially if enricher found a new email/phone)
+            # Final safety check against DB (especially if cleaning changed the phone)
             is_dup = await self.is_duplicate(
                 listing.get("phone_clean"), listing.get("email")
             )
@@ -2759,12 +2756,22 @@ class ContactScraper:
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
+                # UPSERT logic: If phone_clean or email exists, update the timestamp and source if newer
+                # We use the clean phone as preferred unique key
                 await conn.executemany(
                     """
-                    INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                    INSERT INTO contacts (
+                        name, phone, email, address, category, city, area, state, 
+                        source, source_url, phone_clean, email_valid, enriched, 
+                        arn, license_no, membership_no, quality_score, quality_tier
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                    ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
+                    DO UPDATE SET
+                        scraped_at = EXCLUDED.scraped_at,
+                        source = CASE WHEN EXCLUDED.quality_score > contacts.quality_score THEN EXCLUDED.source ELSE contacts.source END
                 """,
-                    records,
+                    [r + (listing.get('quality_score', 0), listing.get('quality_tier', 'low')) for r, listing in zip(records, valid_listings)],
                 )
 
         logger.info(f"Saved {len(listings)} records to database")
