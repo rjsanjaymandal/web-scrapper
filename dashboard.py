@@ -58,11 +58,28 @@ except Exception:
     redis_client = None
 
 
+# Global state for caching heavy queries
 DB_INIT_READY = False
 DB_INIT_IN_PROGRESS = False
 DB_INIT_LAST_ATTEMPT = 0.0
 DB_INIT_LAST_ERROR = None
 DB_INIT_RETRY_SECONDS = int(os.environ.get("DATABASE_INIT_RETRY_SECONDS", "15"))
+FILTER_CACHE = {}  # Stores { 'cities': (data, timestamp), ... }
+FILTER_CACHE_TTL = 300  # 5 minutes
+
+
+def get_cached_filter(key, query, cur):
+    """Get filter values with a 5-minute TTL to prevent heavy DB scans."""
+    now = time.time()
+    if key in FILTER_CACHE:
+        val, ts = FILTER_CACHE[key]
+        if (now - ts) < FILTER_CACHE_TTL:
+            return val
+    
+    cur.execute(query, ("",))
+    data = [r[next(iter(r.keys()))] for r in cur.fetchall()]
+    FILTER_CACHE[key] = (data, now)
+    return data
 
 
 def get_db_url():
@@ -835,29 +852,27 @@ def index():
         offset = (page - 1) * limit
 
         cur.execute(
-            f"SELECT * FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s",
+            f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s",
             params + [limit, offset],
         )
         contacts = cur.fetchall()
 
-        # Get unique values for filter dropdowns
-        cur.execute(
+        # Get unique values for filter dropdowns (CACHED)
+        cities = get_cached_filter(
+            "cities",
             "SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> %s ORDER BY city",
-            ("",),
+            cur
         )
-        cities = [r["city"] for r in cur.fetchall()]
-
-        cur.execute(
+        categories = get_cached_filter(
+            "categories",
             "SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> %s ORDER BY category",
-            ("",),
+            cur
         )
-        categories = [r["category"] for r in cur.fetchall()]
-
-        cur.execute(
+        sources = get_cached_filter(
+            "sources",
             "SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> %s ORDER BY source",
-            ("",),
+            cur
         )
-        sources = [r["source"] for r in cur.fetchall()]
 
         # Optimized Stats: Combine all 7+ counts into a single efficient database pass
         cur.execute("""
