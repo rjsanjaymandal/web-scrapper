@@ -454,39 +454,35 @@ HTML = """
         };
 
         function startFastScrape(){
-            if(confirm('Start FAST parallel scrape? This will run multiple cities concurrently.')){
-                const btn = document.getElementById('scrape-btn');
-                const fastBtn = document.querySelector('button[onclick="startFastScrape()"]');
-                fastBtn.disabled = true;
-                fastBtn.innerText = '⏳ Running...';
-                
-                fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>{
-                    alert(d.message || d.error);
-                    fastBtn.innerText = '⚡ Fast Scrape';
-                    fastBtn.disabled = false;
-                }).catch(()=>{ 
-                    fastBtn.innerText = '⚡ Fast Scrape';
-                    fastBtn.disabled = false;
-                });
-            }
+            const btn = document.getElementById('scrape-btn');
+            const fastBtn = document.querySelector('button[onclick="startFastScrape()"]');
+            fastBtn.disabled = true;
+            fastBtn.innerText = '⏳ Running...';
+            
+            fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>{
+                showNotification(d.message || d.error);
+                fastBtn.innerText = '⚡ Fast Scrape';
+                fastBtn.disabled = false;
+            }).catch(()=>{ 
+                fastBtn.innerText = '⚡ Fast Scrape';
+                fastBtn.disabled = false;
+            });
         }
 
         function cleanupEmpty(){
             if(confirm('Delete all contacts with no phone AND no email? This cannot be undone.')){
                 fetch('/api/cleanup/empty', {method: 'DELETE'}).then(r=>r.json()).then(d=>{
-                    alert(d.message || d.error);
-                    if(d.success) location.reload();
+                    showNotification(d.message || d.error);
+                    if(d.success) setTimeout(() => location.reload(), 2000);
                 });
             }
         }
 
         function updateQuality(){
-            if(confirm('Update quality scores for all contacts?')){
-                fetch('/api/cleanup/quality', {method: 'POST'}).then(r=>r.json()).then(d=>{
-                    alert(d.message || d.error);
-                    if(d.success) location.reload();
-                });
-            }
+            fetch('/api/cleanup/quality', {method: 'POST'}).then(r=>r.json()).then(d=>{
+                showNotification(d.message || d.error);
+                if(d.success) setTimeout(() => location.reload(), 2000);
+            });
         }
     </script>
 
@@ -610,15 +606,13 @@ HTML = """
         }
 
         function startScrape(){
-            if(confirm('Start scraping for all configured cities and categories?')){
-                const btn = document.getElementById('scrape-btn');
-                btn.disabled = true;
-                btn.innerText = '🚧 Starting...';
-                fetch('/api/trigger/scrape').then(r=>r.json()).then(d=>{
-                    alert(d.message || d.error);
-                    btn.innerText = '🚧 Scraping...';
-                }).catch(()=>{ btn.disabled=false; btn.innerText='🚀 Start Scrape'; });
-            }
+            const btn = document.getElementById('scrape-btn');
+            btn.disabled = true;
+            btn.innerText = '🚧 Starting...';
+            fetch('/api/trigger/scrape').then(r=>r.json()).then(d=>{
+                showNotification(d.message || d.error);
+                btn.innerText = '🚧 Scraping...';
+            }).catch(()=>{ btn.disabled=false; btn.innerText='🚀 Start Scrape'; });
         }
 
         function applyFilters(){
