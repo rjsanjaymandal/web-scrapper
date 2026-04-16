@@ -99,32 +99,32 @@ class ScraperRegistry:
 
         # Financial Services - multiple sources
         if "mutual" in cat_lower:
-            sources = ["AMFI"]
+            sources = ["AMFI", "FOOTPRINT"]
         elif "insurance" in cat_lower:
-            sources = ["IRDAI", "YELLOWPAGES", "JUSTDIAL"]
+            sources = ["IRDAI", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
         elif "advisor" in cat_lower or "adviser" in cat_lower or "sebi" in cat_lower:
-            sources = ["SEBI", "YELLOWPAGES"]
+            sources = ["SEBI", "YELLOWPAGES", "FOOTPRINT"]
         elif "tax" in cat_lower:
-            sources = ["ICAI", "YELLOWPAGES", "JUSTDIAL"]
+            sources = ["ICAI", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
         elif "chartered" in cat_lower or "ca" in cat_lower:
-            sources = ["ICAI", "YELLOWPAGES", "JUSTDIAL"]
+            sources = ["ICAI", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
         elif "company" in cat_lower or "secretary" in cat_lower:
-            sources = ["ICSI", "YELLOWPAGES"]
+            sources = ["ICSI", "YELLOWPAGES", "FOOTPRINT"]
         elif "stock" in cat_lower or "broker" in cat_lower:
-            sources = ["NSE", "BSE", "YELLOWPAGES"]
+            sources = ["NSE", "BSE", "YELLOWPAGES", "FOOTPRINT"]
         elif "gst" in cat_lower:
-            sources = ["GST", "YELLOWPAGES"]
+            sources = ["GST", "YELLOWPAGES", "FOOTPRINT"]
         elif "rbi" in cat_lower or "bank" in cat_lower or "nbfc" in cat_lower:
-            sources = ["RBI", "YELLOWPAGES"]
+            sources = ["RBI", "YELLOWPAGES", "FOOTPRINT"]
         elif (
             "financial" in cat_lower
             or "wealth" in cat_lower
             or "investment" in cat_lower
         ):
-            sources = ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL"]
+            sources = ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
 
         # Business/Professional - multiple directories
         else:
-            sources = ["YELLOWPAGES", "JUSTDIAL", "INDIAMART", "TRADEINDIA"]
+            sources = ["YELLOWPAGES", "JUSTDIAL", "INDIAMART", "TRADEINDIA", "FOOTPRINT"]
 
-        return sources if sources else ["YELLOWPAGES"]
+        return sources if sources else ["YELLOWPAGES", "FOOTPRINT"]

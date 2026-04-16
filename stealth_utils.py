@@ -74,10 +74,10 @@ class StealthManager:
     async def apply_stealth_to_page(cls, page: Page):
         """Apply stealth patches to a specific page."""
         await page.add_init_script("""
-            // Redundantly hide webdriver
+            // 1. Hide Webdriver
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             
-            // Fix plugins
+            // 2. Fix Plugins & MimeTypes
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [
                     { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
@@ -86,17 +86,36 @@ class StealthManager:
                 ]
             });
 
-            // Add languages
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            // 3. Mask Hardware signatures (Hide 8vCPU/8GB server profile)
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             
-            // Fix chrome object
+            // 4. Canvas Fingerprint Jitter
+            const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+            CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
+                const imageData = originalGetImageData.apply(this, arguments);
+                // Subtly jitter one pixel to change the resulting hash without breaking UI
+                if (imageData.data.length > 0) {
+                    imageData.data[0] = imageData.data[0] + (Math.random() > 0.5 ? 1 : -1);
+                }
+                return imageData;
+            };
+
+            // 5. Fix Chrome Runtime & Permissions
             window.chrome = { runtime: {} };
-            
-            // Fix permissions
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications' ?
                 Promise.resolve({ state: Notification.permission }) :
                 originalQuery(parameters)
             );
+            
+            // 6. Audio Context Spoofing
+            const originalGetByteFrequencyData = AudioAnalyserNode.prototype.getByteFrequencyData;
+            AudioAnalyserNode.prototype.getByteFrequencyData = function(array) {
+                originalGetByteFrequencyData.apply(this, arguments);
+                for (let i = 0; i < 5; i++) {
+                    array[i] = array[i] + (Math.random() > 0.5 ? 1 : -1);
+                }
+            };
         """)

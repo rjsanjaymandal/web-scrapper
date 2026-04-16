@@ -1,3 +1,4 @@
+import random
 import asyncio
 import logging
 import os
@@ -24,7 +25,7 @@ class FastScraperConfig:
         if self.db_url and self.db_url.startswith("postgres://"):
             self.db_url = self.db_url.replace("postgres://", "postgresql://", 1)
 
-        self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 5))
+        self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 20))
         self.headless = os.environ.get("HEADLESS", "true").lower() == "true"
         self.timeout = int(os.environ.get("TIMEOUT", 60000))
         self.block_resources = True
@@ -47,17 +48,23 @@ class ParallelScraper:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=self.config.headless,
-            args=["--disable-dev-shm-usage", "--no-sandbox"],
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+            ],
         )
 
         if self.config.db_url:
             self.pool = await asyncpg.create_pool(
-                dsn=self.config.db_url, min_size=5, max_size=20
+                dsn=self.config.db_url, min_size=5, max_size=self.config.max_concurrent + 5
             )
         else:
             logger.error("No DATABASE_URL found for parallel scraper pool.")
 
-        logger.info(f"Parallel engine ready: Concurrency={self.config.max_concurrent}")
+        logger.info(f"Parallel Engine V2 ready: Concurrency={self.config.max_concurrent}")
 
     async def close(self):
         if self.browser:
@@ -75,23 +82,39 @@ class ParallelScraper:
             user_agent=user_agent,
             extra_http_headers=extra_headers,
             viewport={"width": 1280, "height": 720},
+            device_scale_factor=random.choice([1, 2]),
+            has_touch=random.choice([True, False]),
+            ignore_https_errors=True,
         )
 
         # Apply advanced stealth patches
         await StealthManager.apply_stealth(context)
 
-        # Block heavy resources
-
+        # Block heavy and tracking resources
         if self.config.block_resources:
+            # Domain blocklist for trackers/analytics
+            block_domains = [
+                "google-analytics.com",
+                "googletagmanager.com",
+                "facebook.net",
+                "hotjar.com",
+                "clarity.ms",
+                "doubleclick.net",
+                "adnxs.com",
+            ]
 
             async def block_aggressively(route):
+                url = route.request.url.lower()
                 if route.request.resource_type in [
                     "image",
-                    "stylesheet",
                     "font",
                     "media",
-                ]:
+                ] or any(domain in url for domain in block_domains):
                     await route.abort()
+                elif route.request.resource_type == "stylesheet":
+                    # Only block large sheets or non-critical ones? 
+                    # For now, allow CSS to avoid layout break detection by some sites
+                    await route.continue_()
                 else:
                     await route.continue_()
 
@@ -116,11 +139,22 @@ class ParallelScraper:
                     url, timeout=self.config.timeout, wait_until="domcontentloaded"
                 )
                 listings = await scraper.extract_listings(page, city, category)
+                logger.info(f"Job: {source_name} | Raw Extracted: {len(listings)} leads")
+
+                if not listings:
+                    # Debug: Why was it 0?
+                    title = await page.title()
+                    body = await page.inner_text("body")
+                    logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {title} | Body Snippet: {body[:200].replace('\\n', ' ')}")
 
                 if listings:
                     # Filter and Process via unified handler
                     processed = ProcessingHandler.process_batch(listings)
+                    logger.info(f"Job: {source_name} | Processed: {len(processed)} leads")
+                    
                     valid = ProcessingHandler.filter_valid(processed)
+                    logger.info(f"Job: {source_name} | Valid: {len(valid)} leads")
+                    
                     if valid:
                         await self._batch_insert(valid, category, city, source_name)
                     return len(valid)

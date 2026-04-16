@@ -52,26 +52,11 @@ class ProcessingHandler:
         if not phone:
             return None
         
-        digits = re.sub(r'[^\d]', '', str(phone))
-        
-        # Handle different Indian formats
-        if len(digits) == 10:
-            clean = digits
-        elif len(digits) == 11 and digits.startswith('0'):
-            clean = digits[1:]
-        elif len(digits) == 12 and digits.startswith('91'):
-            clean = digits[2:]
-        elif len(digits) > 10:
-            clean = digits[-10:]
-        else:
-            return None
-
-        # Validate Indian format (Mobile 6-9, Landline 0/any for business)
-        # We allow 0-9 to accommodate business landlines while ensuring 10-digit length
-        if len(clean) < 10:
-            return None
-            
-        return clean
+        phone_str = str(phone)
+        digits = re.sub(r'[^\d]', '', phone_str)
+        if len(digits) >= 10:
+            return digits[-10:]
+        return digits if len(digits) >= 6 else None
 
     @staticmethod
     def is_valid_email(email: Any) -> bool:

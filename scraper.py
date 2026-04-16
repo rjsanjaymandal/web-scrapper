@@ -1,6 +1,8 @@
 import asyncio
 import random
 import yaml
+
+from dorking_scraper import GoogleDorkScraper
 import asyncpg
 import csv
 import logging
@@ -62,6 +64,7 @@ try:
     ScraperRegistry.register(NSEScraper())
     ScraperRegistry.register(GoogleMapsScraper())
     ScraperRegistry.register(LinkedInGoogleScraper())
+    ScraperRegistry.register(GoogleDorkScraper())
 except ImportError as e:
     logger.warning(f"Failed to import/register enhanced scrapers: {e}")
 
@@ -2443,6 +2446,7 @@ class ContactScraper:
             LinkedInGoogleScraper(),
             YellowPagesScraper(),
             TradeIndiaScraper(),
+            GoogleDorkScraper(),
         ]
 
         self.stats = {
@@ -3049,18 +3053,21 @@ class ContactScraper:
                         f"Page loaded - Title: {page_title}, URL: {page_url_final}"
                     )
 
+                    # 1. Human-like interaction (vCPU optimized)
+                    await self.human_scroll(self.page)
+
                     page_text = await self.page.inner_text("body")
-                    logger.info(
-                        f"Page text preview (first 500 chars): {page_text[:500]}"
-                    )
                     page_text_lower = page_text.lower()
 
                     if (
                         "captcha" in page_text_lower
                         or "verify" in page_text_lower
                         or "robot" in page_text_lower
+                        or "unusual activity" in page_text_lower
                     ):
-                        logger.warning("CAPTCHA or bot detection detected!")
+                        logger.warning("🛡️ Detection: CAPTCHA or bot detection detected!")
+                        # Rotate proxy profile on next retry
+                        self.proxy_manager.get_proxy() 
                         break
 
                     error_signatures = [
@@ -3166,6 +3173,26 @@ class ContactScraper:
                 logger.error(f"Failed after {self.config.max_retries} retries")
 
         return all_listings
+
+    async def human_scroll(self, page: Page):
+        """Perform human-like scrolling to trigger lazy loading and evade detection."""
+        try:
+            # 1. Randomized scroll steps
+            for _ in range(random.randint(2, 5)):
+                amount = random.randint(300, 700)
+                await page.evaluate(f"window.scrollBy(0, {amount})")
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            # 2. Scroll to bottom sometimes
+            if random.random() > 0.7:
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+            
+            # 3. Scroll back up slightly
+            await page.evaluate("window.scrollBy(0, -200)")
+            await asyncio.sleep(random.uniform(0.3, 0.8))
+        except Exception as e:
+            logger.debug(f"Behavioral simulation error: {e}")
 
     async def _extract_current_page(
         self,
@@ -3501,3 +3528,4 @@ ScraperRegistry.register(GSTPractitionerScraper())
 ScraperRegistry.register(RBIRegulatedScraper())
 ScraperRegistry.register(YellowPagesScraper())
 ScraperRegistry.register(TradeIndiaScraper())
+ScraperRegistry.register(GoogleDorkScraper())
