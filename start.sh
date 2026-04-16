@@ -86,6 +86,7 @@ with dashboard.app.app_context():
         --workers 1 \
         --threads 4 \
         --timeout 120 \
+        --preload \
         --access-logfile - \
         --error-logfile -
 

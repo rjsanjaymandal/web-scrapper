@@ -32,7 +32,8 @@ logger.info(f"BOOTSTRAP: Railway Service: {RAILWAY_SERVICE} | Port: {PORT}")
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "healthy", "service": RAILWAY_SERVICE, "port": PORT}), 200
+    """Ultra-low latency health check for Railway."""
+    return "OK", 200
 
 
 # Redis for live status (optional)
@@ -216,9 +217,9 @@ def load_config():
 
 
 # Note: In production, start.sh handles eager bootstrap.
-# This message remains for local/lazy development contexts.
-if not DB_INIT_READY:
-    logger.info("Database bootstrap deferred until the first database-backed request or manual init")
+# We suppress the deferred message if RAILWAY_SERVICE is set to avoid log noise.
+if not DB_INIT_READY and RAILWAY_SERVICE == "Unknown":
+    logger.info("Database bootstrap deferred (Local/Lazy mode)")
 
 
 HTML = """
