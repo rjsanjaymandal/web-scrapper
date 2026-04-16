@@ -437,7 +437,11 @@ HTML = """
             const statusData = data.scraper_status || {};
             
             if (statusData.running) {
-                statusEl.innerText = statusData.message || 'Scraping...';
+                let msg = statusData.message || 'Scraping...';
+                if (statusData.stats && statusData.stats.leads !== undefined) {
+                    msg += `<br><span style="font-size:12px;opacity:0.8;color:#58a6ff;">✨ ${statusData.stats.leads} leads found on this page</span>`;
+                }
+                statusEl.innerHTML = msg;
                 statusEl.className = 'val status-running pulse';
                 document.getElementById('scrape-btn').disabled = true;
                 document.getElementById('scrape-btn').innerText = '🚧 Scraping...';
@@ -690,14 +694,19 @@ HTML = """
             fetch('/api/status').then(r=>r.json()).then(data=>{
                 const el = document.getElementById('live-status');
                 const btn = document.getElementById('scrape-btn');
-                el.innerText = data.message || 'Idle';
-
+                
                 if (data.running) {
+                    let msg = data.message || 'Scraping...';
+                    if (data.stats && data.stats.leads !== undefined) {
+                        msg += `<br><span style="font-size:12px;opacity:0.8;color:#58a6ff;">✨ ${data.stats.leads} leads found on this page</span>`;
+                    }
+                    el.innerHTML = msg;
                     el.className = 'val status-running pulse';
                     btn.disabled = true;
                     btn.innerText = '🚧 Scraping...';
                     wasRunning = true;
                 } else {
+                    el.innerText = 'Idle';
                     el.className = 'val status-idle';
                     btn.disabled = false;
                     btn.innerText = '🚀 Start Scrape';

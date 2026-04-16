@@ -81,8 +81,14 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         config = _load_runtime_config()
         scraper = ContactScraper(config)
         await scraper.init_db()
+        
+        # Progress callback to update Redis in real-time
+        def on_progress(stats):
+            msg = f"🔍 Page {stats['page']}/{stats['total_pages']} on {stats['source']}..."
+            set_status(msg, True, stats)
+
         try:
-            await scraper.scrape_category(city, category, source, use_business)
+            await scraper.scrape_category(city, category, source, use_business, on_progress=on_progress)
             set_status(f"✅ Finished: {category} in {city}", False)
             return {"status": "completed", "city": city, "category": category, "source": source, "use_business": use_business}
         except Exception as e:

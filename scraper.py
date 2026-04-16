@@ -2468,7 +2468,7 @@ class ContactScraper:
         }
 
     async def scrape_amfi_api(
-        self, scraper: AMFIScraper, city: str, category: str
+        self, scraper: AMFIScraper, city: str, category: str, on_progress=None
     ) -> List[Dict]:
         all_listings = []
         page_num = 1
@@ -2524,6 +2524,14 @@ class ContactScraper:
                     logger.info(
                         f"AMFI API total for {city}: {meta.get('total', len(records))} records across {total_pages} page(s) with pageSize={page_size}"
                     )
+                if on_progress:
+                    on_progress({
+                        "page": page_num,
+                        "total_pages": total_pages,
+                        "leads": len(batch),
+                        "source": scraper.source_name
+                    })
+
                 if page_num >= total_pages:
                     break
 
@@ -2542,6 +2550,7 @@ class ContactScraper:
         category: str = None,
         scraper: Optional[BaseScraper] = None,
         max_pages: Optional[int] = None,
+        on_progress=None,
     ) -> List[Dict]:
         all_listings = []
         limit = max_pages or self.config.max_pages
@@ -2654,6 +2663,15 @@ class ContactScraper:
                             self.page.url,
                         )
                         all_listings.extend(processed)
+                        
+                        if on_progress:
+                            on_progress({
+                                "page": page_num,
+                                "total_pages": limit,
+                                "leads": len(processed),
+                                "source": scraper.source_name if scraper else "Unknown"
+                            })
+
                         # Clear memory for long crawls
                         if len(all_listings) > 2000:
                             all_listings = []
@@ -2888,6 +2906,7 @@ class ContactScraper:
         category: str,
         source_name: Optional[str] = None,
         use_business: bool = False,
+        on_progress=None,
     ):
         logger.info(f"\n>>> Scraping: {category} in {city}")
 
@@ -2900,10 +2919,10 @@ class ContactScraper:
             self.stats["total_scrape"] += 1
             try:
                 if isinstance(scraper, AMFIScraper):
-                    listings = await self.scrape_amfi_api(scraper, city, category)
+                    listings = await self.scrape_amfi_api(scraper, city, category, on_progress=on_progress)
                 else:
                     listings = await self.scrape_page(
-                        url, city, category, scraper=scraper
+                        url, city, category, scraper=scraper, on_progress=on_progress
                     )
             except Exception as exc:
                 self.stats["failed"] += 1
