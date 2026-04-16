@@ -1,12 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "🚀 [BOOTSTRAP] Starting Contact Scraper Deployment..."
+# Detect Process Type (Default: web)
+TYPE=${PROCESS_TYPE:-web}
 
-# Ensure current directory is in PYTHONPATH for dashboard import
+echo "🚀 [BOOTSTRAP] Starting $TYPE Deployment..."
+
+# Ensure current directory is in PYTHONPATH for dashboard/tasks import
 export PYTHONPATH=$PYTHONPATH:.
 
-# 1. Wait for Database Connectivity
+# 1. Wait for Database Connectivity (Universal for both Web and Worker)
 echo "⏳ [BOOTSTRAP] Waiting for database connectivity..."
 python3 -c "
 import os
@@ -44,16 +47,25 @@ def wait_for_db():
         except Exception as e:
             print(f'⏳ [BOOTSTRAP] Still waiting for database... ({e})')
             time.sleep(2)
-    print('❌ [BOOTSTRAP] Timeout waiting for database after 45s')
+    print('❌ [BOOTSTRAP] Timeout waiting for database after 90s')
     return False
 
 if not wait_for_db():
     exit(1)
 "
 
-# 2. Run Database Initializations
-echo "📂 [BOOTSTRAP] Running eager database initialization..."
-python3 -c "
+# 2. Start logic based on PROCESS_TYPE
+if [ "$TYPE" = "worker" ]; then
+    echo "👷 [BOOTSTRAP] Initializing Celery Worker..."
+    # Execute Celery (Note: tasks.celery_app matches your Procfile)
+    exec celery -A tasks.celery_app worker \
+        --loglevel=info \
+        --pool=solo \
+        --concurrency=1
+
+elif [ "$TYPE" = "web" ]; then
+    echo "📂 [BOOTSTRAP] Running eager database initialization..."
+    python3 -c "
 import os
 import sys
 import dashboard
@@ -64,17 +76,20 @@ with dashboard.app.app_context():
         sys.exit(1)
     print('✅ [BOOTSTRAP] Database tables ready!')
 "
+    
+    PORT=${PORT:-8080}
+    echo "🌐 [BOOTSTRAP] Starting Gunicorn on 0.0.0.0:$PORT"
+    echo "🔍 [BOOTSTRAP] Health Check Path: /health"
 
-# 3. Start Gunicorn
-# Binding to 0.0.0.0:$PORT is critical for Railway
-PORT=${PORT:-8080}
-echo "🌐 [BOOTSTRAP] Starting Gunicorn on 0.0.0.0:$PORT"
-echo "🔍 [BOOTSTRAP] Health Check Path: /health"
+    exec gunicorn dashboard:app \
+        --bind 0.0.0.0:$PORT \
+        --workers 1 \
+        --threads 4 \
+        --timeout 120 \
+        --access-logfile - \
+        --error-logfile -
 
-exec gunicorn dashboard:app \
-    --bind 0.0.0.0:$PORT \
-    --workers 1 \
-    --threads 4 \
-    --timeout 120 \
-    --access-logfile - \
-    --error-logfile -
+else
+    echo "❌ [BOOTSTRAP] Unknown PROCESS_TYPE: $TYPE"
+    exit 1
+fi
