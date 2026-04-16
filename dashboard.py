@@ -109,7 +109,13 @@ def ensure_db_initialized(force=False):
 
 def get_db():
     """Get a fresh database connection after lazy schema initialization."""
-    ensure_db_initialized()
+    # If not already ready, try to initialize it now
+    if not DB_INIT_READY:
+        try:
+            ensure_db_initialized()
+        except Exception as e:
+            logger.error(f"Failed to initialize database on request: {e}")
+            raise
     return _connect_db()
 
 
@@ -209,7 +215,10 @@ def load_config():
         return {}
 
 
-logger.info("Database bootstrap deferred until the first database-backed request")
+# Note: In production, start.sh handles eager bootstrap.
+# This message remains for local/lazy development contexts.
+if not DB_INIT_READY:
+    logger.info("Database bootstrap deferred until the first database-backed request or manual init")
 
 
 HTML = """

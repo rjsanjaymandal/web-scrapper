@@ -1,61 +1,74 @@
 #!/bin/bash
 set -e
 
-echo "Starting Contact Scraper..."
+echo "🚀 [BOOTSTRAP] Starting Contact Scraper Deployment..."
 
-# Wait for database
-echo "Waiting for database..."
-while ! nc -z $DATABASE_HOST $DATABASE_PORT; do
-  sleep 1
-done
-echo "Database is ready!"
-
-# Run database migrations
-echo "Initializing database..."
-python -c "
-import asyncio
-import asyncpg
+# 1. Wait for Database Connectivity
+echo "⏳ [BOOTSTRAP] Waiting for database connectivity..."
+python3 -c "
 import os
+import time
+import psycopg2
+from urllib.parse import urlparse
 
-async def init_db():
-    pool = await asyncpg.create_pool(
-        host=os.getenv('DATABASE_HOST'),
-        port=int(os.getenv('DATABASE_PORT', 5432)),
-        database=os.getenv('DATABASE_NAME'),
-        user=os.getenv('DATABASE_USER'),
-        password=os.getenv('DATABASE_PASSWORD')
-    )
-    async with pool.acquire() as conn:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255),
-                phone VARCHAR(50),
-                email VARCHAR(255),
-                address TEXT,
-                category VARCHAR(100),
-                city VARCHAR(100),
-                area VARCHAR(100),
-                state VARCHAR(100),
-                source VARCHAR(100),
-                source_url TEXT,
-                phone_clean VARCHAR(50),
-                email_valid BOOLEAN,
-                enriched BOOLEAN,
-                arn VARCHAR(50),
-                license_no VARCHAR(100),
-                membership_no VARCHAR(100),
-                scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+def wait_for_db():
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        if db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        url = urlparse(db_url)
+        host, port = url.hostname, url.port or 5432
+    else:
+        host = os.environ.get('DATABASE_HOST', 'localhost')
+        port = int(os.environ.get('DATABASE_PORT', 5432))
+    
+    start_time = time.time()
+    timeout = 30
+    while time.time() - start_time < timeout:
+        try:
+            conn = psycopg2.connect(
+                dsn=db_url if os.environ.get('DATABASE_URL') else None,
+                host=None if os.environ.get('DATABASE_URL') else host,
+                port=None if os.environ.get('DATABASE_URL') else port,
+                user=os.environ.get('DATABASE_USER'),
+                password=os.environ.get('DATABASE_PASSWORD'),
+                database=os.environ.get('DATABASE_NAME'),
+                connect_timeout=3
             )
-        ''')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_clean)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
-    await pool.close()
-    print('Database initialized!')
+            conn.close()
+            print(f'✅ [BOOTSTRAP] Database at {host}:{port} is reachable!')
+            return True
+        except Exception as e:
+            print(f'⏳ [BOOTSTRAP] Still waiting for database... ({e})')
+            time.sleep(2)
+    print('❌ [BOOTSTRAP] Timeout waiting for database')
+    return False
 
-asyncio.run(init_db())
+if not wait_for_db():
+    exit(1)
 "
 
-# Start the application
-echo "Starting dashboard..."
-exec python dashboard.py
+# 2. Run Database Initializations
+echo "📂 [BOOTSTRAP] Initializing database tables..."
+python3 -c "
+import os
+import dashboard
+with dashboard.app.app_context():
+    success = dashboard.init_tables()
+    if not success:
+        print('❌ [BOOTSTRAP] Database initialization failed')
+        exit(1)
+    print('✅ [BOOTSTRAP] Database tables ready!')
+"
+
+# 3. Start Gunicorn
+# Binding to 0.0.0.0:$PORT is critical for Railway
+PORT=${PORT:-8080}
+echo "🌐 [BOOTSTRAP] Starting Gunicorn on port $PORT..."
+exec gunicorn dashboard:app \
+    --bind 0.0.0.0:$PORT \
+    --workers 1 \
+    --threads 4 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -

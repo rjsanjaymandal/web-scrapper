@@ -32,6 +32,9 @@ RUN chown -R scraper:scraper /app
 # Switch to non-root user
 USER scraper
 
-# Use simple shell form for CMD to ensure Railway's $PORT expansion is handled by gunicorn
-CMD gunicorn dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile -
+# Ensure start.sh is executable
+RUN chmod +x start.sh
+
+# Use start.sh as the entrypoint/CMD
+CMD ["./start.sh"]
 
