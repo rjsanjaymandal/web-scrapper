@@ -26,7 +26,7 @@ def wait_for_db():
         port = int(os.environ.get('DATABASE_PORT', 5432))
     
     start_time = time.time()
-    timeout = 45
+    timeout = 90
     while time.time() - start_time < timeout:
         try:
             conn = psycopg2.connect(
