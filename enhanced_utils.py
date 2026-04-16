@@ -11,6 +11,7 @@ import hashlib
 from typing import Optional, Dict, List
 from datetime import datetime
 from playwright.async_api import Page
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -52,28 +53,47 @@ class SulekhaScraper(BaseScraper):
             pass
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         listings = []
         try:
-            await page.wait_for_selector('.business-list, .search-results', timeout=10000)
-            cards = await page.query_selector_all('.business-card, .listing-item')
-            
-            for card in cards:
-                try:
-                    name = await self._get_text(card, '.business-name, .title')
-                    phone = await self._get_text(card, '.phone, .contact-phone')
-                    address = await self._get_text(card, '.address, .location')
-                    detail_url = await self.get_detail_url(card)
-                    
-                    if name:
-                        listings.append({
-                            'name': name.strip(),
-                            'phone': self._clean_phone(phone),
-                            'address': address.strip() if address else None,
-                            'detail_url': detail_url
-                        })
-                except:
-                    continue
+            if html_content:
+                # Use BeautifulSoup for faster/cleaner parsing from raw HTML
+                soup = BeautifulSoup(html_content, 'lxml')
+                cards = soup.select('.business-card, .listing-item, div[data-listing]')
+                for card in cards:
+                    try:
+                        name = card.select_one('.business-name, .title, h3')
+                        phone = card.select_one('.phone, .contact-phone, .contact-number')
+                        addr = card.select_one('.address, .location, span.loc')
+                        link = card.select_one('a.business-name, .title a')
+                        
+                        if name:
+                            listings.append({
+                                'name': name.get_text(strip=True),
+                                'phone': self._clean_phone(phone.get_text(strip=True)) if phone else None,
+                                'address': addr.get_text(strip=True) if addr else None,
+                                'detail_url': link.get('href') if link else None
+                            })
+                    except:
+                        continue
+            else:
+                # Fallback to Playwright if no HTML content provided
+                await page.wait_for_selector('.business-list, .search-results', timeout=10000)
+                cards = await page.query_selector_all('.business-card, .listing-item')
+                for card in cards:
+                    try:
+                        name = await self._get_text(card, '.business-name, .title')
+                        phone = await self._get_text(card, '.phone, .contact-phone')
+                        address = await self._get_text(card, '.address, .location')
+                        detail_url = await self.get_detail_url(card)
+                        if name:
+                            listings.append({
+                                'name': name.strip(),
+                                'phone': self._clean_phone(phone),
+                                'address': address.strip() if address else None,
+                                'detail_url': detail_url
+                            })
+                    except: continue
         except Exception as e:
             logger.warning(f"Sulekha extraction error: {e}")
         return listings
@@ -107,28 +127,47 @@ class ClickIndiaScraper(BaseScraper):
             pass
         return None
     
-    async def extract_listings(self, page: Page) -> List[Dict]:
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         listings = []
         try:
-            await page.wait_for_selector('.listings, .search-results', timeout=10000)
-            cards = await page.query_selector_all('.listing-item, .result-item')
-            
-            for card in cards:
-                try:
-                    name = await self._get_text(card, 'h3, .title, .listing-title')
-                    phone = await self._get_text(card, '.phone, .contact-no')
-                    address = await self._get_text(card, '.address, .location')
-                    detail_url = await self.get_detail_url(card)
-                    
-                    if name:
-                        listings.append({
-                            'name': name.strip(),
-                            'phone': self._clean_phone(phone),
-                            'address': address.strip() if address else None,
-                            'detail_url': detail_url
-                        })
-                except:
-                    continue
+            if html_content:
+                # Use BeautifulSoup for faster/cleaner parsing
+                soup = BeautifulSoup(html_content, 'lxml')
+                cards = soup.select('.listing-item, .result-item, .listing-card')
+                for card in cards:
+                    try:
+                        name = card.select_one('h3, .title, .listing-title')
+                        phone = card.select_one('.phone, .contact-no, span.contact')
+                        addr = card.select_one('.address, .location, .city')
+                        link = card.select_one('h3 a, .listing-title a, a.title')
+                        
+                        if name:
+                            listings.append({
+                                'name': name.get_text(strip=True),
+                                'phone': self._clean_phone(phone.get_text(strip=True)) if phone else None,
+                                'address': addr.get_text(strip=True) if addr else None,
+                                'detail_url': link.get('href') if link else None
+                            })
+                    except:
+                        continue
+            else:
+                # Fallback to Playwright
+                await page.wait_for_selector('.listings, .search-results', timeout=10000)
+                cards = await page.query_selector_all('.listing-item, .result-item')
+                for card in cards:
+                    try:
+                        name = await self._get_text(card, 'h3, .title, .listing-title')
+                        phone = await self._get_text(card, '.phone, .contact-no')
+                        address = await self._get_text(card, '.address, .location')
+                        detail_url = await self.get_detail_url(card)
+                        if name:
+                            listings.append({
+                                'name': name.strip(),
+                                'phone': self._clean_phone(phone),
+                                'address': address.strip() if address else None,
+                                'detail_url': detail_url
+                            })
+                    except: continue
         except Exception as e:
             logger.warning(f"ClickIndia extraction error: {e}")
         return listings
@@ -144,6 +183,113 @@ class ClickIndiaScraper(BaseScraper):
     async def _get_text(self, card, selector: str) -> Optional[str]:
         elem = await card.query_selector(selector)
         return await elem.inner_text() if elem else None
+
+
+class GrotalScraper(BaseScraper):
+    source_name = "GROTAL"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        cat = category.replace(' ', '-')
+        return f"https://www.grotal.com/{city.title()}/{cat}"
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        listings = []
+        try:
+            if html_content:
+                soup = BeautifulSoup(html_content, 'lxml')
+                cards = soup.select('.listing-item, div[id*="div_"], .result-box')
+                for card in cards:
+                    try:
+                        name = card.select_one('h2, .title, .name')
+                        phone = card.select_one('.contact, .mobile, .phone')
+                        addr = card.select_one('.address, .location')
+                        
+                        if name and name.get_text(strip=True):
+                            listings.append({
+                                'name': name.get_text(strip=True),
+                                'phone': self._clean_phone(phone.get_text(strip=True)) if phone else None,
+                                'address': addr.get_text(strip=True) if addr else None,
+                                'detail_url': None
+                            })
+                    except: continue
+            else:
+                cards = await page.query_selector_all('.listing-item, .result-box')
+                for card in cards:
+                    name = await card.query_selector('h2')
+                    if name:
+                        listings.append({
+                            'name': await name.inner_text(),
+                            'phone': None,
+                            'address': None
+                        })
+        except Exception as e:
+            logger.warning(f"Grotal extraction error: {e}")
+        return listings
+
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone: return None
+        digits = re.sub(r'[^\d]', '', phone)
+        return digits[-10:] if len(digits) >= 10 else digits
+
+
+class SEBIScraper(BaseScraper):
+    """Specialized scraper for SEBI Registered Investment Advisors."""
+    source_name = "SEBI"
+    
+    SEARCH_URL = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFpi=yes&intmId=13"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return self.SEARCH_URL
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        listings = []
+        try:
+            soup = BeautifulSoup(html_content or await page.content(), 'lxml')
+            table = soup.select_one('table.table-striped, #sample_1')
+            if table:
+                rows = table.select('tr')[1:]
+                for row in rows:
+                    cols = row.select('td')
+                    if len(cols) >= 3:
+                        listings.append({
+                            'name': cols[1].get_text(strip=True),
+                            'phone': None,
+                            'address': cols[2].get_text(strip=True),
+                            'arn': cols[0].get_text(strip=True)
+                        })
+        except Exception as e:
+            logger.warning(f"SEBI extraction error: {e}")
+        return listings
+
+
+class NSEScraper(BaseScraper):
+    """Specialized scraper for NSE Authorized Persons."""
+    source_name = "NSE"
+    
+    SEARCH_URL = "https://www.nseindia.com/members/content/member_directory.htm"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return self.SEARCH_URL
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        listings = []
+        try:
+            soup = BeautifulSoup(html_content or await page.content(), 'lxml')
+            table = soup.select_one('table#memberDirectoryTable, .common_table')
+            if table:
+                rows = table.select('tr')[1:]
+                for row in rows:
+                    cols = row.select('td')
+                    if len(cols) >= 4:
+                        listings.append({
+                            'name': cols[1].get_text(strip=True),
+                            'phone': None,
+                            'address': cols[3].get_text(strip=True),
+                            'source_id': cols[0].get_text(strip=True)
+                        })
+        except Exception as e:
+            logger.warning(f"NSE extraction error: {e}")
+        return listings
 
 
 # ==================== Email Validation ====================

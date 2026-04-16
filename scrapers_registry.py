@@ -14,7 +14,11 @@ class BaseScraper(ABC):
 
     @abstractmethod
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, 
+        page: Page, 
+        city: str = None, 
+        category: str = None, 
+        html_content: str = None
     ) -> List[Dict]:
         """Extract contact listings from the current page."""
         pass
@@ -49,22 +53,29 @@ class ScraperRegistry:
     def get_source_for_category(cls, category: str) -> str:
         """Map a category to the most reliable source."""
         cat_lower = category.lower()
+        
+        # Specialized Financial Sources
         if "mutual" in cat_lower:
             return "AMFI"
         elif "insurance" in cat_lower:
             return "IRDAI"
+        elif "advisor" in cat_lower or "adviser" in cat_lower or "sebi" in cat_lower:
+            return "SEBI"
         elif "tax" in cat_lower or "chartered" in cat_lower:
             return "ICAI"
         elif "company" in cat_lower or "secretary" in cat_lower:
             return "ICSI"
-        elif "stock" in cat_lower or "broker" in cat_lower:
+        elif "stock" in cat_lower or "broker" in cat_lower or "authorized" in cat_lower:
             return "NSE"
-        elif "sebi" in cat_lower:
-            return "SEBI"
         elif "gst" in cat_lower:
             return "GST"
         elif "rbi" in cat_lower or "bank" in cat_lower or "nbfc" in cat_lower:
             return "RBI"
-        elif "business" in cat_lower:
-            return "INDIAMART"
+            
+        # Business/Local Directories
+        elif "business" in cat_lower or "shop" in cat_lower or "factory" in cat_lower:
+            return "GROTAL" # Favor GROTAL for high-volume business lists
+        elif "local" in cat_lower:
+            return "SULEKHA"
+            
         return "JUSTDIAL"

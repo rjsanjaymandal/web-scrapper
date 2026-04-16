@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
+from bs4 import BeautifulSoup
+from raw_storage import storage
 from scrapers_registry import BaseScraper, ScraperRegistry
 from stealth_utils import StealthManager
 from pathlib import Path
@@ -45,10 +47,16 @@ try:
     from enhanced_utils import (
         SulekhaScraper,
         ClickIndiaScraper,
+        GrotalScraper,
+        SEBIScraper,
+        NSEScraper,
     )
     # Register enhanced scrapers
     ScraperRegistry.register(SulekhaScraper())
     ScraperRegistry.register(ClickIndiaScraper())
+    ScraperRegistry.register(GrotalScraper())
+    ScraperRegistry.register(SEBIScraper())
+    ScraperRegistry.register(NSEScraper())
 except ImportError as e:
     logger.warning(f"Failed to import/register enhanced scrapers: {e}")
 
@@ -74,12 +82,18 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "company-secretaries": ["ICSI"],
     "secretaries": ["ICSI"],
     "stock-brokers": ["NSE", "BSE"],
+    "broker": ["NSE", "BSE"],
     "sebi-registered": ["SEBI"],
+    "investment-advisor": ["SEBI"],
+    "investment-adviser": ["SEBI"],
+    "advisor": ["SEBI", "JUSTDIAL"],
     "gst-practitioners": ["GST"],
     "gst": ["GST"],
     "rbi-regulated": ["RBI"],
     "banks": ["RBI"],
     "nbfc": ["RBI"],
+    "business": ["GROTAL", "INDIAMART", "JUSTDIAL"],
+    "local": ["GROTAL", "SULEKHA"],
 }
 
 
@@ -417,7 +431,7 @@ class JustDialScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         try:
@@ -598,7 +612,7 @@ class IndiaMartScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         try:
@@ -651,7 +665,7 @@ class ICICIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         try:
@@ -713,7 +727,7 @@ class AMFIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"AMFI: Starting extraction for city={city}, category={category}")
@@ -1065,7 +1079,7 @@ class IRDAIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"IRDAI: Starting extraction for city={city}, category={category}")
@@ -1301,7 +1315,7 @@ class ICSIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         try:
@@ -1409,7 +1423,7 @@ class ICSIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         try:
@@ -1487,7 +1501,7 @@ class SEBIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"SEBI: Starting extraction for city={city}, category={category}")
@@ -1576,7 +1590,7 @@ class NSEBrokerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"NSE: Starting extraction for city={city}")
@@ -1632,7 +1646,7 @@ class BSEBrokerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"BSE: Starting extraction for city={city}")
@@ -1696,7 +1710,7 @@ class GSTPractitionerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"GST: Starting extraction for city={city}")
@@ -1802,7 +1816,7 @@ class RBIRegulatedScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
     ) -> List[Dict]:
         listings = []
         logger.info(f"RBI: Starting extraction for city={city}")
@@ -2594,7 +2608,26 @@ class ContactScraper:
 
                     await self.rate_limiter.wait()
 
-                    listings = await self._extract_current_page(city, category, scraper)
+                    # THE GOLDEN RULE: Save raw HTML first before parsing (0:37)
+                    html_content = await self.page.content()
+                    raw_path = storage.save(
+                        html_content, 
+                        scraper.source_name if scraper else "Unknown",
+                        city,
+                        category
+                    )
+                    if raw_path:
+                        logger.info(f"💾 Raw HTML saved: {raw_path}")
+
+                    # Anti-Detection: Standard randomized jitter delay (12:56)
+                    jitter = random.uniform(
+                        self.config.request_delay_min, 
+                        self.config.request_delay_max
+                    )
+                    await asyncio.sleep(jitter)
+
+                    # Extract data from current page (Optionally using raw HTML)
+                    listings = await self._extract_current_page(city, category, scraper, html_content=html_content)
                     logger.info(
                         f"Extracted {len(listings)} listings from page {page_num}"
                     )
@@ -2653,6 +2686,7 @@ class ContactScraper:
         city: str = None,
         category: str = None,
         scraper: Optional[BaseScraper] = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:

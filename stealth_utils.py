@@ -1,4 +1,5 @@
 import random
+import logging
 from typing import Dict, List, Optional
 from playwright.async_api import BrowserContext, Page
 try:
@@ -6,29 +7,33 @@ try:
 except ImportError:
     stealth_async = None
 
+try:
+    from fake_useragent import UserAgent
+    ua_generator = UserAgent()
+except ImportError:
+    ua_generator = None
+
+logger = logging.getLogger(__name__)
+
 class StealthManager:
     """Manages browser stealth, user-agent rotation, and header spoofing."""
     
-    # Curated pool of modern User-Agents (Windows, Mac, Linux)
-    # Focus on Chrome and Safari for consistency with Playwright's Chromium engine
-    USER_AGENTS = [
-        # Chrome Windows
+    # Fallback pool if fake-useragent fails
+    FALLBACK_USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        # Chrome MacOS
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        # Safari MacOS
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
-        # Firefox (Masked as Chrome-like for better compatibility with Playwright Chromium)
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
     ]
 
     @classmethod
     def get_random_ua(cls) -> str:
-        return random.choice(cls.USER_AGENTS)
+        if ua_generator:
+            try:
+                return ua_generator.random
+            except Exception:
+                pass
+        return random.choice(cls.FALLBACK_USER_AGENTS)
 
     @classmethod
     def get_modern_headers(cls, user_agent: str) -> Dict[str, str]:
