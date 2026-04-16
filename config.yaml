@@ -11,20 +11,24 @@ database:
   password: your_password_here
 
 proxy:
-  # Add your proxy credentials here
-  host: brd-customer-YOUR_CUSTOMER-zone-YOUR_ZONE
-  username: your_username
-  password: your_password
+  # ===============================================
+  # PROXY CONFIGURATION (Residential Support)
+  # ===============================================
+  # Data Impulse (Rotating Residential) Template:
+  # Host: gw.dataimpulse.com:1234
+  # Username: your_username
+  # Password: your_password
+  
+  # Set host to your Data Impulse endpoint for global rotation
+  host: "gw.dataimpulse.com:823"
+  username: "1accade8fd4acb75b8ae"
+  password: "c51e0887f7425452"
+  
+  # List of additional proxies for failover or multi-zone rotation
   proxies:
-    - host: brd-customer-ZONE1-region
-      username: user1
-      password: pass1
-    - host: brd-customer-ZONE2-region
-      username: user2
-      password: pass2
-    - host: brd-customer-ZONE3-region
-      username: user3
-      password: pass3
+    - host: "gw.dataimpulse.com:823"
+      username: "1accade8fd4acb75b8ae"
+      password: "c51e0887f7425452"
 
 scraper:
   # Rate limits per source type (in seconds)

@@ -32,6 +32,18 @@ class FastScraperConfig:
 
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
+        
+        # Security: Prefer environment variables for proxies (Railway best practice)
+        self.proxy_list = []
+        env_proxy_host = os.environ.get("PROXY_HOST")
+        if env_proxy_host:
+            self.proxy_list.append({
+                "host": env_proxy_host,
+                "username": os.environ.get("PROXY_USER"),
+                "password": os.environ.get("PROXY_PASS")
+            })
+        else:
+            self.proxy_list = config_dict.get("proxies", [])
 
 
 class ParallelScraper:
@@ -78,6 +90,17 @@ class ParallelScraper:
         user_agent = StealthManager.get_random_ua()
         extra_headers = StealthManager.get_modern_headers(user_agent)
 
+        # Selection of proxy if available
+        proxy_config = None
+        if self.config.proxy_list:
+            p = random.choice(self.config.proxy_list)
+            proxy_config = {
+                "server": p["host"],
+                "username": p.get("username"),
+                "password": p.get("password")
+            }
+            logger.info(f"Worker using proxy: {p['host']}")
+
         context = await self.browser.new_context(
             user_agent=user_agent,
             extra_http_headers=extra_headers,
@@ -85,6 +108,7 @@ class ParallelScraper:
             device_scale_factor=random.choice([1, 2]),
             has_touch=random.choice([True, False]),
             ignore_https_errors=True,
+            proxy=proxy_config,
         )
 
         # Apply advanced stealth patches

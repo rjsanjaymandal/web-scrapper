@@ -104,6 +104,8 @@ def main():
             process_type = env_process_type
         elif "worker" in railway_service:
             process_type = "worker"
+        elif "automator" in railway_service or "enterprise" in railway_service:
+            process_type = "automator"
         else:
             process_type = "web"
         
@@ -171,6 +173,21 @@ def main():
                 sys.exit(0)
             except Exception as e:
                 log(f"❌ Worker crashed: {e}")
+                sys.exit(1)
+        
+        elif process_type == "automator":
+            port = os.environ.get("PORT", "8080")
+            log("Starting Healthcheck server for Automator...")
+            start_health_server(port)
+            log("🚀 Handoff to Enterprise Automator...")
+            cmd = ["python3", "automate_100_cities.py"]
+            try:
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                log("Automator received interrupt, shutting down...")
+                sys.exit(0)
+            except Exception as e:
+                log(f"❌ Automator crashed: {e}")
                 sys.exit(1)
         
         else:
