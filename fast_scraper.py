@@ -94,12 +94,16 @@ class ParallelScraper:
         proxy_config = None
         if self.config.proxy_list:
             p = random.choice(self.config.proxy_list)
+            host = p["host"]
+            # Playwright requires full URL format: http://host:port
+            if not host.startswith("http"):
+                host = f"http://{host}"
             proxy_config = {
-                "server": p["host"],
+                "server": host,
                 "username": p.get("username"),
                 "password": p.get("password")
             }
-            logger.info(f"Worker using proxy: {p['host']}")
+            logger.debug(f"Worker using proxy: {host}")
 
         context = await self.browser.new_context(
             user_agent=user_agent,
