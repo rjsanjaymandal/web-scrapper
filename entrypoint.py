@@ -83,8 +83,14 @@ def main():
 
         # Web-specific Init
         if process_type == "web":
+            log("Running eager database initialization for Web module...")
+            # Time the initialization to diagnose performance
+            init_start = time.time()
             if not init_tables():
+                log("❌ Database initialization failed. Process will exit.")
                 sys.exit(1)
+            init_duration = time.time() - init_start
+            log(f"✅ Database tables ready in {init_duration:.2f}s!")
             
             port = os.environ.get("PORT", "8080")
             log(f"Finalizing environment for Web Service on port {port}...")

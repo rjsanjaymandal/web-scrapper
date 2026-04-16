@@ -31,9 +31,14 @@ RAILWAY_SERVICE = os.environ.get("RAILWAY_SERVICE_NAME", "Unknown")
 logger.info(f"BOOTSTRAP: Railway Service: {RAILWAY_SERVICE} | Port: {PORT}")
 
 @app.route("/health")
-def health():
-    """Ultra-low latency health check for Railway/Gunicorn."""
-    return "OK", 200
+def health_check():
+    """Lightweight health check for Railway"""
+    return jsonify({
+        "status": "healthy",
+        "database": "ready" if DB_INIT_READY else "pending",
+        "timestamp": int(time.time()),
+        "service": "contact-scraper-dashboard"
+    }), 200
 
 
 @app.route("/up")
@@ -189,19 +194,42 @@ def init_tables():
                 # Ignore column errors
                 pass
 
-        # Cleanup existing duplicates before adding UNIQUE constraint
-        # This keeps the LATEST record for each phone/email pair
+        # Optimization: Only run heavy cleanup if the unique index is missing
         cur.execute("""
-            DELETE FROM contacts 
-            WHERE id NOT IN (
-                SELECT MAX(id) 
-                FROM contacts 
-                GROUP BY COALESCE(phone_clean, phone, ''), COALESCE(email, '')
-            )
+            SELECT count(*) FROM pg_indexes 
+            WHERE indexname = 'idx_contacts_unique_phone'
         """)
+        index_exists = cur.fetchone()['count'] > 0
+
+        if not index_exists:
+            logger.info("🧹 Deduplication Index missing. Running one-time cleanup...")
+            
+            # 1. Ensure phone_clean has a basic index to speed up the join
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_phone_clean ON contacts(phone_clean)")
+            
+            # 2. Faster JOIN-based deduplication (keeps record with highest ID/latest)
+            # This is significantly faster than NOT IN (SELECT MAX...)
+            cur.execute("""
+                DELETE FROM contacts a
+                USING contacts b
+                WHERE a.id < b.id
+                AND a.phone_clean = b.phone_clean
+                AND a.phone_clean IS NOT NULL
+            """)
+            
+            cur.execute("""
+                DELETE FROM contacts a
+                USING contacts b
+                WHERE a.id < b.id
+                AND a.email = b.email
+                AND a.email IS NOT NULL
+            """)
+            
+            # 3. Drop temporary index
+            cur.execute("DROP INDEX IF EXISTS idx_tmp_phone_clean")
+            logger.info("✅ Cleanup completed.")
 
         # Constraints for Deduplication (UPSERT support)
-        # Note: We use UNIQUE INDEX instead of CONSTRAINT for better "IF NOT EXISTS" support in some PG versions
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_unique_phone ON contacts(phone_clean) WHERE phone_clean IS NOT NULL")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_unique_email ON contacts(email) WHERE email IS NOT NULL")
         
@@ -211,7 +239,6 @@ def init_tables():
         cur.close()
         conn.close()
         DB_INIT_READY = True
-        DB_INIT_LAST_ERROR = None
         logger.info("Database tables ready!")
         return True
     except Exception as e:
@@ -1389,6 +1416,7 @@ def get_stats():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":
