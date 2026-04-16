@@ -292,6 +292,104 @@ class NSEScraper(BaseScraper):
         return listings
 
 
+class GoogleMapsScraper(BaseScraper):
+    """Deep scraper for Google Maps Business (GMB) listings."""
+    source_name = "GMB"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        query = f"{category} in {city}".replace(' ', '+')
+        return f"https://www.google.com/maps/search/{query}"
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        listings = []
+        try:
+            # GMB is highly dynamic. We scroll to load results.
+            # We only do this if we are in a live browser session (not just raw HTML)
+            if not html_content:
+                # Scroll result pane
+                try:
+                    await page.wait_for_selector('role=feed', timeout=10000)
+                    for _ in range(3): # Scroll a few times to get more results
+                        await page.mouse.wheel(0, 5000)
+                        await asyncio.sleep(2)
+                except: pass
+                
+            soup = BeautifulSoup(html_content or await page.content(), 'lxml')
+            # GMB result cards often use specific aria-labels or roles
+            cards = soup.select('div[role="article"], a[href*="/maps/place/"]')
+            
+            for card in cards:
+                try:
+                    # Look for name in aria-label or specific classes
+                    name = card.get('aria-label') or card.select_one('.fontHeadlineSmall, .qBF1Pd')
+                    if not name: continue
+                    
+                    name_text = name if isinstance(name, str) else name.get_text(strip=True)
+                    if not name_text: continue
+
+                    # Details are often in spans or specific classes
+                    # Note: These selectors change often, we use a broad search
+                    info_text = card.get_text(" | ", strip=True)
+                    phone = self._extract_phone_from_text(info_text)
+                    
+                    listings.append({
+                        'name': name_text,
+                        'phone': phone,
+                        'address': info_text.split('|')[1] if '|' in info_text else None, # Rough guess
+                        'detail_url': card.get('href') if card.name == 'a' else None
+                    })
+                except: continue
+        except Exception as e:
+            logger.warning(f"GMB extraction error: {e}")
+        return listings
+
+    def _extract_phone_from_text(self, text: str) -> Optional[str]:
+        # Simple regex for Indian phone numbers
+        matches = re.findall(r'(?:\+91|0)?\s?[6789]\d{9}', text)
+        return matches[0] if matches else None
+
+
+class LinkedInGoogleScraper(BaseScraper):
+    """Scrapes LinkedIn leads via Google Search to avoid account bans."""
+    source_name = "LINKEDIN"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        # Use Google to find LinkedIn profiles
+        query = f'site:linkedin.com/in/ "{category}" "{city}"'
+        return f"https://www.google.com/search?q={query.replace(' ', '+')}&start={(page-1)*10}"
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        listings = []
+        try:
+            soup = BeautifulSoup(html_content or await page.content(), 'lxml')
+            # Google search result cards
+            results = soup.select('.g, .tF2Cxc')
+            
+            for res in results:
+                try:
+                    title_elem = res.select_one('h3')
+                    link_elem = res.select_one('a')
+                    snippet_elem = res.select_one('.VwiC3b, .bAWN1e')
+                    
+                    if title_elem and link_elem:
+                        full_title = title_elem.get_text(strip=True)
+                        # LinkedIn titles in Google usually look like "John Doe - Senior Manager - Company | LinkedIn"
+                        parts = full_title.split(' - ')
+                        
+                        listings.append({
+                            'name': parts[0].strip(),
+                            'phone': None, # LinkedIn profiles don't show phone on public search
+                            'address': city,
+                            'title': parts[1].strip() if len(parts) > 1 else None,
+                            'detail_url': link_elem.get('href'),
+                            'snippet': snippet_elem.get_text(strip=True) if snippet_elem else None
+                        })
+                except: continue
+        except Exception as e:
+            logger.warning(f"LinkedInGoogle extraction error: {e}")
+        return listings
+
+
 # ==================== Email Validation ====================
 
 class EmailValidator:

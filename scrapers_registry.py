@@ -54,6 +54,10 @@ class ScraperRegistry:
         """Map a category to the most reliable source."""
         cat_lower = category.lower()
         
+        # Professional/Person Searches
+        if "person" in cat_lower or "profile" in cat_lower or "professional" in cat_lower:
+            return "LINKEDIN"
+            
         # Specialized Financial Sources
         if "mutual" in cat_lower:
             return "AMFI"
@@ -73,9 +77,11 @@ class ScraperRegistry:
             return "RBI"
             
         # Business/Local Directories
+        elif "map" in cat_lower or "location" in cat_lower:
+            return "GMB"
         elif "business" in cat_lower or "shop" in cat_lower or "factory" in cat_lower:
-            return "GROTAL" # Favor GROTAL for high-volume business lists
+            return "GMB" # GMB is now the top choice for business volume
         elif "local" in cat_lower:
-            return "SULEKHA"
+            return "GROTAL"
             
         return "JUSTDIAL"

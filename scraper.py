@@ -50,6 +50,8 @@ try:
         GrotalScraper,
         SEBIScraper,
         NSEScraper,
+        GoogleMapsScraper,
+        LinkedInGoogleScraper,
     )
     # Register enhanced scrapers
     ScraperRegistry.register(SulekhaScraper())
@@ -57,6 +59,8 @@ try:
     ScraperRegistry.register(GrotalScraper())
     ScraperRegistry.register(SEBIScraper())
     ScraperRegistry.register(NSEScraper())
+    ScraperRegistry.register(GoogleMapsScraper())
+    ScraperRegistry.register(LinkedInGoogleScraper())
 except ImportError as e:
     logger.warning(f"Failed to import/register enhanced scrapers: {e}")
 
@@ -92,8 +96,12 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "rbi-regulated": ["RBI"],
     "banks": ["RBI"],
     "nbfc": ["RBI"],
-    "business": ["GROTAL", "INDIAMART", "JUSTDIAL"],
-    "local": ["GROTAL", "SULEKHA"],
+    "business": ["GMB", "GROTAL", "INDIAMART", "JUSTDIAL"],
+    "local": ["GMB", "GROTAL", "SULEKHA"],
+    "person": ["LINKEDIN"],
+    "lead": ["LINKEDIN", "GMB"],
+    "professional": ["LINKEDIN", "SEBI", "NSE"],
+    "map": ["GMB"],
 }
 
 
