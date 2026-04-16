@@ -622,67 +622,6 @@ class JustDialScraper(BaseScraper):
         return await elem.inner_text() if elem else None
 
 
-class IndiaMartScraper(BaseScraper):
-    source_name = "INDIAMART"
-
-    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        category_slug = category.lower().replace(" ", "-")
-        city_slug = city.lower().replace(" ", "-")
-        return f"https://www.indiamart.com/proddir/{category_slug}-in-{city_slug}/?pn={page}"
-
-    async def get_detail_url(self, card) -> Optional[str]:
-        try:
-            link = await card.query_selector(".prod-name a")
-            if link:
-                href = await link.get_attribute("href")
-                return href
-        except:
-            pass
-        return None
-
-    async def extract_listings(
-        self,
-        page: Page,
-        city: str = None,
-        category: str = None,
-        html_content: str = None,
-    ) -> List[Dict]:
-        listings = []
-        try:
-            cards = await page.query_selector_all(".prod-list .prod-item")
-
-            for card in cards:
-                try:
-                    name = await self._get_text(card, ".prod-name")
-                    phone = await self._get_text(card, ".prod-phn")
-                    address = await self._get_text(card, ".prod-addr")
-                    detail_url = await self.get_detail_url(card)
-
-                    if name:
-                        listings.append(
-                            {
-                                "name": name.strip(),
-                                "phone": self._clean_phone(phone) if phone else None,
-                                "address": address.strip() if address else None,
-                                "area": None,
-                                "detail_url": detail_url,
-                            }
-                        )
-                except:
-                    continue
-        except Exception as e:
-            logger.warning(f"IndiaMart extraction error: {e}")
-        return listings
-
-    def _clean_phone(self, phone: str) -> Optional[str]:
-        if not phone:
-            return None
-        digits = re.sub(r"[^\d]", "", phone)
-        if len(digits) >= 10:
-            return digits[-10:]
-        return digits if digits else None
-
-    async def _get_text(self, card, selector: str) -> Optional[str]:
         elem = await card.query_selector(selector)
         return await elem.inner_text() if elem else None
 
@@ -2311,7 +2250,7 @@ class TradeIndiaScraper(BaseScraper):
         return await elem.inner_text() if elem else None
 
 
-class IndiamartScraper(BaseScraper):
+class IndiaMartScraper(BaseScraper):
     """Scraper for IndiaMart - B2B directory (enhanced)"""
 
     source_name = "INDIAMART"
@@ -2538,7 +2477,8 @@ class ContactScraper:
         if not expected_sources:
             return list(self.scrapers)
 
-        filtered = [s for s in self.scrapers if s.source_name in expected_sources]
+        all_scrapers = self.scrapers + self.business_scrapers
+        filtered = [s for s in all_scrapers if s.source_name in expected_sources]
         return filtered or list(self.scrapers)
 
     def _is_proxy_error(self, error: Exception) -> bool:
@@ -2951,12 +2891,11 @@ class ContactScraper:
 
         skipped_junk = len(processed_listings) - len(final_listings)
         if skipped_junk > 0:
-            logger.info(
-                f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
-            )
-            self.stats["skipped_junk"] = (
-                self.stats.get("skipped_junk", 0) + skipped_junk
-            )
+            msg = f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
+            logger.info(msg)
+            # Log to activity log if possible (via logger name prefix that tasks.py might pick up, 
+            # or simply via standard logging which we've verified works in Railway logs)
+            self.stats["skipped_junk"] = self.stats.get("skipped_junk", 0) + skipped_junk
 
         return final_listings
 

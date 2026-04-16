@@ -66,8 +66,9 @@ class ProcessingHandler:
         else:
             return None
 
-        # Validate Indian mobile (first digit should be 5-9)
-        if clean[0] not in '56789':
+        # Validate Indian format (Mobile 6-9, Landline 0/any for business)
+        # We allow 0-9 to accommodate business landlines while ensuring 10-digit length
+        if len(clean) < 10:
             return None
             
         return clean
