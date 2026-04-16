@@ -53,6 +53,7 @@ try:
         GoogleMapsScraper,
         LinkedInGoogleScraper,
     )
+
     # Register enhanced scrapers
     ScraperRegistry.register(SulekhaScraper())
     ScraperRegistry.register(ClickIndiaScraper())
@@ -76,28 +77,44 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 OFFICIAL_CATEGORY_SOURCE_MAP = {
+    # Financial Services (Regulated)
     "mutual-fund-agents": ["AMFI"],
     "mutual-fund-agent": ["AMFI"],
+    "mutual-fund-advisor": ["AMFI"],
     "insurance-agents": ["IRDAI"],
     "insurance-agent": ["IRDAI"],
+    "insurance-advisor": ["IRDAI"],
+    "insurance-consultant": ["IRDAI"],
     "tax-advocates": ["ICAI"],
     "tax-advocate": ["ICAI"],
+    "tax-consultant": ["ICAI"],
     "chartered-accountants": ["ICAI"],
+    "chartered-accountant": ["ICAI"],
+    "ca": ["ICAI"],
     "company-secretaries": ["ICSI"],
     "secretaries": ["ICSI"],
     "stock-brokers": ["NSE", "BSE"],
-    "broker": ["NSE", "BSE"],
+    "stock-broker": ["NSE", "BSE"],
     "sebi-registered": ["SEBI"],
+    "sebi-advisor": ["SEBI"],
     "investment-advisor": ["SEBI"],
     "investment-adviser": ["SEBI"],
-    "advisor": ["SEBI", "JUSTDIAL"],
+    "advisor": ["SEBI", "JUSTDIAL", "YELLOWPAGES"],
     "gst-practitioners": ["GST"],
+    "gst-consultant": ["GST"],
     "gst": ["GST"],
     "rbi-regulated": ["RBI"],
     "banks": ["RBI"],
     "nbfc": ["RBI"],
-    "business": ["GMB", "GROTAL", "INDIAMART", "JUSTDIAL"],
-    "local": ["GMB", "GROTAL", "SULEKHA"],
+    "financial-advisor": ["AMFI", "SEBI", "YELLOWPAGES"],
+    "wealth-manager": ["AMFI", "SEBI", "YELLOWPAGES"],
+    "investment-consultant": ["SEBI", "YELLOWPAGES"],
+    # Business Directories
+    "business-consultants": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART"],
+    "chartered-engineers": ["YELLOWPAGES", "TRADEINDIA"],
+    "cost-accountants": ["YELLOWPAGES"],
+    "business": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "JUSTDIAL"],
+    "local": ["YELLOWPAGES", "GROTAL", "SULEKHA"],
     "person": ["LINKEDIN"],
     "lead": ["LINKEDIN", "GMB"],
     "professional": ["LINKEDIN", "SEBI", "NSE"],
@@ -439,7 +456,11 @@ class JustDialScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
@@ -620,7 +641,11 @@ class IndiaMartScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
@@ -673,7 +698,11 @@ class ICICIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
@@ -735,7 +764,11 @@ class AMFIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"AMFI: Starting extraction for city={city}, category={category}")
@@ -868,7 +901,7 @@ class AMFIScraper(BaseScraper):
             # Try multiple row selectors
             row_selectors = [
                 ".MuiBox-root.css-ds3kc",  # New MUI-based grid rows
-                "div.MuiBox-root.css-1oi5t4f > div:not(:first-child)", # Alternative MUI container
+                "div.MuiBox-root.css-1oi5t4f > div:not(:first-child)",  # Alternative MUI container
                 "table tbody tr",
                 ".distributor-list .distributor-item",
                 ".result-row, .result-item",
@@ -1000,7 +1033,9 @@ class AMFIScraper(BaseScraper):
             for row in rows:
                 try:
                     # In MUI grid, children are divs. In tables, children are tds.
-                    cols = await row.query_selector_all('> div, td, .col, [class*="cell"]')
+                    cols = await row.query_selector_all(
+                        '> div, td, .col, [class*="cell"]'
+                    )
 
                     if not cols or len(cols) < 2:
                         continue
@@ -1010,14 +1045,22 @@ class AMFIScraper(BaseScraper):
                         # Based on research: ARN=1, Name=2, City=7 (1-based, so 0, 1, 6)
                         arn_result = await cols[0].inner_text()
                         name = await cols[1].inner_text()
-                        city_result = await cols[6].inner_text() if len(cols) > 6 else city
-                        state_result = None # Might be in there too
+                        city_result = (
+                            await cols[6].inner_text() if len(cols) > 6 else city
+                        )
+                        state_result = None  # Might be in there too
                     else:
                         # Standard table fallback
                         name = await cols[0].inner_text()
-                        arn_result = await cols[1].inner_text() if len(cols) > 1 else None
-                        city_result = await cols[2].inner_text() if len(cols) > 2 else city
-                        state_result = await cols[3].inner_text() if len(cols) > 3 else None
+                        arn_result = (
+                            await cols[1].inner_text() if len(cols) > 1 else None
+                        )
+                        city_result = (
+                            await cols[2].inner_text() if len(cols) > 2 else city
+                        )
+                        state_result = (
+                            await cols[3].inner_text() if len(cols) > 3 else None
+                        )
 
                     if name and arn_result and len(name.strip()) > 1:
                         listings.append(
@@ -1035,7 +1078,6 @@ class AMFIScraper(BaseScraper):
                 except Exception as e:
                     logger.debug(f"AMFI: Row parse error: {e}")
                     continue
-
 
             logger.info(f"AMFI: Total listings extracted: {len(listings)}")
 
@@ -1087,7 +1129,11 @@ class IRDAIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"IRDAI: Starting extraction for city={city}, category={category}")
@@ -1114,7 +1160,9 @@ class IRDAIScraper(BaseScraper):
             state_selected = False
             for sel, elem_type in selectors_to_try:
                 try:
-                    elem = await page.wait_for_selector(sel, state="visible", timeout=5000)
+                    elem = await page.wait_for_selector(
+                        sel, state="visible", timeout=5000
+                    )
                     if elem:
                         # Try selecting by label first, then by value if label fails
                         try:
@@ -1122,13 +1170,14 @@ class IRDAIScraper(BaseScraper):
                         except:
                             # Many Indian govt sites use uppercase values
                             await elem.select_option(value=state.upper())
-                        
+
                         state_selected = True
-                        logger.info(f"IRDAI: Selected state ({state}) using selector: {sel}")
+                        logger.info(
+                            f"IRDAI: Selected state ({state}) using selector: {sel}"
+                        )
                         break
                 except Exception:
                     continue
-
 
             if state_selected:
                 await asyncio.sleep(1)
@@ -1304,7 +1353,9 @@ class ICAIScraper(BaseScraper):
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
-            link = await card.query_selector("a.member-name, a.title, [class*='name'] a")
+            link = await card.query_selector(
+                "a.member-name, a.title, [class*='name'] a"
+            )
             if link:
                 return await link.get_attribute("href")
         except:
@@ -1312,59 +1363,80 @@ class ICAIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
             await page.wait_for_selector("body", timeout=15000)
-            
+
             # Common selectors for CA/Professional directories
             card_selectors = [
-                ".member-card", ".member-item", ".listing-item",
-                "table tbody tr", ".ca-item", ".professional-card"
+                ".member-card",
+                ".member-item",
+                ".listing-item",
+                "table tbody tr",
+                ".ca-item",
+                ".professional-card",
             ]
-            
+
             cards = []
             for sel in card_selectors:
                 cards = await page.query_selector_all(sel)
                 if cards:
                     logger.info(f"ICAI: Found {len(cards)} cards with selector: {sel}")
                     break
-                    
+
             if not cards:
                 # Text fallback if no structured cards found
                 body_text = await page.inner_text("body")
                 lines = [l.strip() for l in body_text.split("\n") if len(l.strip()) > 3]
                 for line in lines[:20]:
-                    if any(x in line.lower() for x in ["ca ", "chartered", "accountant"]):
-                        listings.append({
-                            "name": line[:100],
-                            "membership_no": None,
-                            "city": city,
-                            "phone": None,
-                            "email": None,
-                            "address": None,
-                            "detail_url": None
-                        })
+                    if any(
+                        x in line.lower() for x in ["ca ", "chartered", "accountant"]
+                    ):
+                        listings.append(
+                            {
+                                "name": line[:100],
+                                "membership_no": None,
+                                "city": city,
+                                "phone": None,
+                                "email": None,
+                                "address": None,
+                                "detail_url": None,
+                            }
+                        )
                 return listings
 
             for card in cards:
                 try:
-                    name = await self._get_text(card, ".name, .member-name, h3, td:first-child")
-                    phone = await self._get_text(card, ".phone, .contact, td:nth-child(3)")
+                    name = await self._get_text(
+                        card, ".name, .member-name, h3, td:first-child"
+                    )
+                    phone = await self._get_text(
+                        card, ".phone, .contact, td:nth-child(3)"
+                    )
                     addr = await self._get_text(card, ".address, .loc, td:nth-child(4)")
-                    mem_no = await self._get_text(card, ".mem-no, .membership, td:nth-child(2)")
-                    
+                    mem_no = await self._get_text(
+                        card, ".mem-no, .membership, td:nth-child(2)"
+                    )
+
                     if name:
-                        listings.append({
-                            "name": name.strip(),
-                            "phone": self._clean_phone(phone) if phone else None,
-                            "address": addr.strip() if addr else None,
-                            "membership_no": mem_no.strip() if mem_no else None,
-                            "city": city,
-                            "detail_url": await self.get_detail_url(card)
-                        })
-                except: continue
+                        listings.append(
+                            {
+                                "name": name.strip(),
+                                "phone": self._clean_phone(phone) if phone else None,
+                                "address": addr.strip() if addr else None,
+                                "membership_no": mem_no.strip() if mem_no else None,
+                                "city": city,
+                                "detail_url": await self.get_detail_url(card),
+                            }
+                        )
+                except:
+                    continue
         except Exception as e:
             logger.warning(f"ICAI extraction error: {e}")
         return listings
@@ -1373,7 +1445,9 @@ class ICAIScraper(BaseScraper):
         try:
             elem = await card.query_selector(selector)
             return await elem.inner_text() if elem else None
-        except: return None
+        except:
+            return None
+
 
 class ICSIScraper(BaseScraper):
     """Scraper for ICSI (Institute of Company Secretaries of India) directory"""
@@ -1395,7 +1469,11 @@ class ICSIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
@@ -1503,7 +1581,11 @@ class ICSIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         try:
@@ -1581,7 +1663,11 @@ class SEBIScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"SEBI: Starting extraction for city={city}, category={category}")
@@ -1670,7 +1756,11 @@ class NSEBrokerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"NSE: Starting extraction for city={city}")
@@ -1726,7 +1816,11 @@ class BSEBrokerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"BSE: Starting extraction for city={city}")
@@ -1790,7 +1884,11 @@ class GSTPractitionerScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"GST: Starting extraction for city={city}")
@@ -1896,7 +1994,11 @@ class RBIRegulatedScraper(BaseScraper):
         return None
 
     async def extract_listings(
-        self, page: Page, city: str = None, category: str = None, html_content: str = None
+        self,
+        page: Page,
+        city: str = None,
+        category: str = None,
+        html_content: str = None,
     ) -> List[Dict]:
         listings = []
         logger.info(f"RBI: Starting extraction for city={city}")
@@ -1973,6 +2075,324 @@ class RBIRegulatedScraper(BaseScraper):
             logger.error(f"RBI: Extraction error: {e}")
 
         return listings
+
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
+class YellowPagesScraper(BaseScraper):
+    """Scraper for YellowPages - high volume business directory"""
+
+    source_name = "YELLOWPAGES"
+
+    BASE_URL = "https://www.yellowpages.in"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        cat_slug = category.lower().replace(" ", "-")
+        city_slug = city.lower().replace(" ", "-")
+        if page == 1:
+            return f"{self.BASE_URL}/{city_slug}/{cat_slug}"
+        return f"{self.BASE_URL}/{city_slug}/{cat_slug}?page={page}"
+
+    async def get_detail_url(self, card) -> Optional[str]:
+        try:
+            link = await card.query_selector("a.business-name, a.title")
+            if link:
+                return await link.get_attribute("href")
+        except:
+            pass
+        return None
+
+    async def extract_listings(
+        self, page: Page, city: str = None, category: str = None
+    ) -> List[Dict]:
+        listings = []
+        logger.info(
+            f"YellowPages: Starting extraction for city={city}, category={category}"
+        )
+
+        try:
+            await page.wait_for_selector("body", timeout=15000)
+
+            card_selectors = [
+                ".search-results .result",
+                ".listing-card",
+                ".business-card",
+                ".srp-item",
+                "[class*='result-item']",
+                "article.listing",
+                "div[id*='listing']",
+            ]
+
+            cards = []
+            for sel in card_selectors:
+                cards = await page.query_selector_all(sel)
+                if cards:
+                    logger.info(
+                        f"YellowPages: Found {len(cards)} cards with selector: {sel}"
+                    )
+                    break
+
+            if not cards:
+                logger.warning("YellowPages: No cards found, trying text extraction")
+                body_text = await page.inner_text("body")
+                lines = [
+                    l.strip() for l in body_text.split("\n") if l.strip() and len(l) > 5
+                ]
+
+                for line in lines[:30]:
+                    if len(line) > 10 and len(line) < 150:
+                        listings.append(
+                            {
+                                "name": line[:100],
+                                "phone": None,
+                                "email": None,
+                                "address": None,
+                                "city": city,
+                                "area": None,
+                                "detail_url": None,
+                            }
+                        )
+                return listings
+
+            for card in cards:
+                try:
+                    name = await self._get_text(
+                        card, "h2, h3, .business-name, .title, .name"
+                    )
+                    phone = await self._get_text(
+                        card, ".phone, .contact-phone, [class*='phone']"
+                    )
+                    address = await self._get_text(
+                        card, ".address, .location, .contact-addr"
+                    )
+                    area = await self._get_text(card, ".area, .locality")
+                    email_elem = await card.query_selector("a[href*='mailto']")
+                    email = (
+                        await email_elem.get_attribute("href") if email_elem else None
+                    )
+                    if email:
+                        email = email.replace("mailto:", "")
+
+                    if name and len(name.strip()) > 2:
+                        listings.append(
+                            {
+                                "name": name.strip()[:150],
+                                "phone": self._clean_phone(phone) if phone else None,
+                                "email": email.strip() if email else None,
+                                "address": address.strip() if address else None,
+                                "city": city,
+                                "area": area.strip() if area else None,
+                                "detail_url": await self.get_detail_url(card),
+                            }
+                        )
+                except Exception as e:
+                    logger.debug(f"YellowPages: Card parse error: {e}")
+                    continue
+
+            logger.info(f"YellowPages: Total listings extracted: {len(listings)}")
+
+        except Exception as e:
+            logger.error(f"YellowPages: Extraction error: {e}")
+
+        return listings
+
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone:
+            return None
+        digits = re.sub(r"[^\d]", "", phone)
+        if len(digits) >= 10:
+            return digits[-10:]
+        return digits if digits else None
+
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
+class TradeIndiaScraper(BaseScraper):
+    """Scraper for TradeIndia - B2B directory"""
+
+    source_name = "TRADEINDIA"
+
+    BASE_URL = "https://www.tradeindia.com"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        cat_slug = category.lower().replace(" ", "-")
+        city_slug = city.lower().replace(" ", "-")
+        return f"{self.BASE_URL}/search/{cat_slug}-{city_slug}.html?page={page}"
+
+    async def get_detail_url(self, card) -> Optional[str]:
+        try:
+            link = await card.query_selector("a.company-name, a[href*='/companies/']")
+            if link:
+                return await link.get_attribute("href")
+        except:
+            pass
+        return None
+
+    async def extract_listings(
+        self, page: Page, city: str = None, category: str = None
+    ) -> List[Dict]:
+        listings = []
+        logger.info(
+            f"TradeIndia: Starting extraction for city={city}, category={category}"
+        )
+
+        try:
+            await page.wait_for_selector("body", timeout=15000)
+
+            cards = await page.query_selector_all(
+                ".company-list .company-item, .search-result .result-item, [class*='company']"
+            )
+
+            if not cards:
+                body_text = await page.inner_text("body")
+                lines = [
+                    l.strip()
+                    for l in body_text.split("\n")
+                    if l.strip() and 5 < len(l) < 100
+                ]
+                for line in lines[:20]:
+                    listings.append(
+                        {
+                            "name": line[:100],
+                            "phone": None,
+                            "email": None,
+                            "address": None,
+                            "city": city,
+                            "area": None,
+                            "detail_url": None,
+                        }
+                    )
+                return listings
+
+            for card in cards:
+                try:
+                    name = await self._get_text(
+                        card, "h3, h4, .company-name, .company-title"
+                    )
+                    phone = await self._get_text(
+                        card, ".phone, .contact, [class*='mobile']"
+                    )
+                    address = await self._get_text(card, ".address, .location")
+
+                    if name and len(name.strip()) > 2:
+                        listings.append(
+                            {
+                                "name": name.strip()[:150],
+                                "phone": self._clean_phone(phone) if phone else None,
+                                "email": None,
+                                "address": address.strip() if address else None,
+                                "city": city,
+                                "area": None,
+                                "detail_url": await self.get_detail_url(card),
+                            }
+                        )
+                except:
+                    continue
+
+            logger.info(f"TradeIndia: Total listings extracted: {len(listings)}")
+
+        except Exception as e:
+            logger.error(f"TradeIndia: Extraction error: {e}")
+
+        return listings
+
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone:
+            return None
+        digits = re.sub(r"[^\d]", "", phone)
+        return digits[-10:] if len(digits) >= 10 else digits
+
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        elem = await card.query_selector(selector)
+        return await elem.inner_text() if elem else None
+
+
+class IndiamartScraper(BaseScraper):
+    """Scraper for IndiaMart - B2B directory (enhanced)"""
+
+    source_name = "INDIAMART"
+
+    BASE_URL = "https://www.indiamart.com"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        cat_slug = category.lower().replace(" ", "-")
+        city_slug = city.lower().replace(" ", "-")
+        return f"{self.BASE_URL}/prodir/{cat_slug}-in-{city_slug}/?pn={page}"
+
+    async def get_detail_url(self, card) -> Optional[str]:
+        try:
+            link = await card.query_selector("a.company-name, a[href*='/ sellers/']")
+            if link:
+                return await link.get_attribute("href")
+        except:
+            pass
+        return None
+
+    async def extract_listings(
+        self, page: Page, city: str = None, category: str = None
+    ) -> List[Dict]:
+        listings = []
+        logger.info(
+            f"IndiaMart Enhanced: Starting extraction for city={city}, category={category}"
+        )
+
+        try:
+            await page.wait_for_selector("body", timeout=15000)
+
+            cards = await page.query_selector_all(
+                ".prod-list .prod-item, .seller-card, [class*='seller']"
+            )
+
+            if not cards:
+                return listings
+
+            for card in cards:
+                try:
+                    name = await self._get_text(card, ".company-name, .prod-name, h3")
+                    phone = await self._get_text(
+                        card, ".prod-phn, .contact, [class*='phone']"
+                    )
+                    address = await self._get_text(card, ".prod-addr, .address")
+                    email_elem = await card.query_selector("a[href*='mailto']")
+                    email = None
+                    if email_elem:
+                        href = await email_elem.get_attribute("href")
+                        if href:
+                            email = href.replace("mailto:", "")
+
+                    if name and len(name.strip()) > 2:
+                        listings.append(
+                            {
+                                "name": name.strip()[:150],
+                                "phone": self._clean_phone(phone) if phone else None,
+                                "email": email,
+                                "address": address.strip() if address else None,
+                                "city": city,
+                                "area": None,
+                                "detail_url": await self.get_detail_url(card),
+                            }
+                        )
+                except:
+                    continue
+
+            logger.info(
+                f"IndiaMart Enhanced: Total listings extracted: {len(listings)}"
+            )
+
+        except Exception as e:
+            logger.error(f"IndiaMart Enhanced: Extraction error: {e}")
+
+        return listings
+
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone:
+            return None
+        digits = re.sub(r"[^\d]", "", phone)
+        return digits[-10:] if len(digits) >= 10 else digits
 
     async def _get_text(self, card, selector: str) -> Optional[str]:
         elem = await card.query_selector(selector)
@@ -2082,6 +2502,8 @@ class ContactScraper:
             GrotalScraper(),
             GoogleMapsScraper(),
             LinkedInGoogleScraper(),
+            YellowPagesScraper(),
+            TradeIndiaScraper(),
         ]
 
         self.stats = {
@@ -2356,7 +2778,7 @@ class ContactScraper:
                 # Get dynamic User-Agent and modern headers
                 user_agent = StealthManager.get_random_ua()
                 extra_headers = StealthManager.get_modern_headers(user_agent)
-                
+
                 context_kwargs = {
                     "user_agent": user_agent,
                     "extra_http_headers": extra_headers,
@@ -2367,13 +2789,15 @@ class ContactScraper:
                     context_kwargs["proxy"] = proxy_dict
 
                 self.context = await self.browser.new_context(**context_kwargs)
-                
+
                 # Apply advanced stealth patches
                 await StealthManager.apply_stealth(self.context)
-                
+
                 self.page = await self.context.new_page()
 
-                logger.info(f"Browser initialized with dynamic UA: {user_agent[:40]}...")
+                logger.info(
+                    f"Browser initialized with dynamic UA: {user_agent[:40]}..."
+                )
                 return
 
             except Exception as exc:
@@ -2501,7 +2925,11 @@ class ContactScraper:
         processed_listings = []
 
         for listing in listings:
-            if self.config.enable_email_extraction and listing.get("detail_url") and not listing.get("email"):
+            if (
+                self.config.enable_email_extraction
+                and listing.get("detail_url")
+                and not listing.get("email")
+            ):
                 email = await self.extract_email_from_detail(listing["detail_url"])
                 listing["email"] = email
 
@@ -2520,11 +2948,15 @@ class ContactScraper:
 
         # FINAL QUALITY GATE: Only keep contacts with at least one valid method (Phone or Email)
         final_listings = ProcessingHandler.filter_valid(processed_listings)
-        
+
         skipped_junk = len(processed_listings) - len(final_listings)
         if skipped_junk > 0:
-            logger.info(f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email")
-            self.stats["skipped_junk"] = self.stats.get("skipped_junk", 0) + skipped_junk
+            logger.info(
+                f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
+            )
+            self.stats["skipped_junk"] = (
+                self.stats.get("skipped_junk", 0) + skipped_junk
+            )
 
         return final_listings
 
@@ -2557,12 +2989,11 @@ class ContactScraper:
         page_num = 1
         page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "10000"))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
-        
+
         user_agent = StealthManager.get_random_ua()
         headers = StealthManager.get_modern_headers(user_agent)
 
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-
             while True:
                 params = scraper.get_search_params(
                     city=city, page=page_num, page_size=page_size
@@ -2608,12 +3039,14 @@ class ContactScraper:
                         f"AMFI API total for {city}: {meta.get('total', len(records))} records across {total_pages} page(s) with pageSize={page_size}"
                     )
                 if on_progress:
-                    on_progress({
-                        "page": page_num,
-                        "total_pages": total_pages,
-                        "leads": len(batch),
-                        "source": scraper.source_name
-                    })
+                    on_progress(
+                        {
+                            "page": page_num,
+                            "total_pages": total_pages,
+                            "leads": len(batch),
+                            "source": scraper.source_name,
+                        }
+                    )
 
                 if page_num >= total_pages:
                     break
@@ -2711,23 +3144,24 @@ class ContactScraper:
                     # THE GOLDEN RULE: Save raw HTML first before parsing (0:37)
                     html_content = await self.page.content()
                     raw_path = storage.save(
-                        html_content, 
+                        html_content,
                         scraper.source_name if scraper else "Unknown",
                         city,
-                        category
+                        category,
                     )
                     if raw_path:
                         logger.info(f"💾 Raw HTML saved: {raw_path}")
 
                     # Anti-Detection: Standard randomized jitter delay (12:56)
                     jitter = random.uniform(
-                        self.config.request_delay_min, 
-                        self.config.request_delay_max
+                        self.config.request_delay_min, self.config.request_delay_max
                     )
                     await asyncio.sleep(jitter)
 
                     # Extract data from current page (Optionally using raw HTML)
-                    listings = await self._extract_current_page(city, category, scraper, html_content=html_content)
+                    listings = await self._extract_current_page(
+                        city, category, scraper, html_content=html_content
+                    )
                     logger.info(
                         f"Extracted {len(listings)} listings from page {page_num}"
                     )
@@ -2746,14 +3180,18 @@ class ContactScraper:
                             self.page.url,
                         )
                         all_listings.extend(processed)
-                        
+
                         if on_progress:
-                            on_progress({
-                                "page": page_num,
-                                "total_pages": limit,
-                                "leads": len(processed),
-                                "source": scraper.source_name if scraper else "Unknown"
-                            })
+                            on_progress(
+                                {
+                                    "page": page_num,
+                                    "total_pages": limit,
+                                    "leads": len(processed),
+                                    "source": scraper.source_name
+                                    if scraper
+                                    else "Unknown",
+                                }
+                            )
 
                         # Clear memory for long crawls
                         if len(all_listings) > 2000:
@@ -2834,7 +3272,9 @@ class ContactScraper:
 
         skipped = len(listings) - len(valid_listings)
         if skipped > 0:
-            logger.info(f"🛡️ Skipped {skipped} listings with invalid data during DB save")
+            logger.info(
+                f"🛡️ Skipped {skipped} listings with invalid data during DB save"
+            )
 
         if not valid_listings:
             return
@@ -2909,7 +3349,14 @@ class ContactScraper:
                         scraped_at = EXCLUDED.scraped_at,
                         source = CASE WHEN EXCLUDED.quality_score > contacts.quality_score THEN EXCLUDED.source ELSE contacts.source END
                 """,
-                    [r + (listing.get('quality_score', 0), listing.get('quality_tier', 'low')) for r, listing in zip(records, valid_listings)],
+                    [
+                        r
+                        + (
+                            listing.get("quality_score", 0),
+                            listing.get("quality_tier", "low"),
+                        )
+                        for r, listing in zip(records, valid_listings)
+                    ],
                 )
 
         logger.info(f"Saved {len(listings)} records to database")
@@ -2997,7 +3444,9 @@ class ContactScraper:
             self.stats["total_scrape"] += 1
             try:
                 if isinstance(scraper, AMFIScraper):
-                    listings = await self.scrape_amfi_api(scraper, city, category, on_progress=on_progress)
+                    listings = await self.scrape_amfi_api(
+                        scraper, city, category, on_progress=on_progress
+                    )
                 else:
                     listings = await self.scrape_page(
                         url, city, category, scraper=scraper, on_progress=on_progress
@@ -3111,3 +3560,5 @@ ScraperRegistry.register(NSEBrokerScraper())
 ScraperRegistry.register(BSEBrokerScraper())
 ScraperRegistry.register(GSTPractitionerScraper())
 ScraperRegistry.register(RBIRegulatedScraper())
+ScraperRegistry.register(YellowPagesScraper())
+ScraperRegistry.register(TradeIndiaScraper())

@@ -1,3 +1,8 @@
+# ===============================================
+# HIGH-VOLUME SCRAPER CONFIGURATION
+# Target: 10 Lakh (1 Million) High-Quality Contacts
+# ===============================================
+
 database:
   host: localhost
   port: 5432
@@ -6,6 +11,7 @@ database:
   password: your_password_here
 
 proxy:
+  # Add your proxy credentials here
   host: brd-customer-YOUR_CUSTOMER-zone-YOUR_ZONE
   username: your_username
   password: your_password
@@ -16,8 +22,25 @@ proxy:
     - host: brd-customer-ZONE2-region
       username: user2
       password: pass2
+    - host: brd-customer-ZONE3-region
+      username: user3
+      password: pass3
 
 scraper:
+  # Rate limits per source type (in seconds)
+  rate_limits:
+    amfi: 0          # Official API - fastest
+    irdai: 2         # Government site - moderate
+    icai: 2          # Government site - moderate
+    icsi: 2          # Government site - moderate
+    sebi: 3          # Government site - careful
+    nse: 3           # Stock exchange - careful
+    bse: 3           # Stock exchange - careful
+    justdial: 4      # Anti-bot protection
+    indiamart: 4    # Anti-bot protection
+    yellowpages: 3   # Moderate protection
+    google_maps: 5   # Strong protection
+
   request_delay_min: 2
   request_delay_max: 5
   max_retries: 3
@@ -33,23 +56,53 @@ scraper:
   enable_enrichment: true
   scheduler_enabled: false
   scheduler_interval_hours: 24
-  max_pages_per_source: 5
+  max_pages_per_source: 50  # Increased from 5 to 50
   dashboard_page_size: 50
 
+  # Quality settings - only keep contacts with phone OR email
+  quality_filter:
+    require_phone_or_email: true
+    min_name_length: 3
+    skip_invalid_phones: true
+
 categories:
+  # Primary categories (financial services)
   - Insurance-Agents
+  - Insurance-Advisor
+  - Insurance-Consultant
   - Mutual-Fund-Agents
+  - Mutual-Fund-Advisor
   - Tax-Advocates
+  - Tax-Consultant
   - Chartered-Accountants
+  - CA
   - Company-Secretaries
   - Stock-Brokers
   - SEBI-Registered
+  - SEBI-Advisor
   - GST-Practitioners
+  - GST-Consultant
   - RBI-Regulated
   - Banks
   - NBFC
+  - Financial-Advisor
+  - Wealth-Manager
+  - Investment-Advisor
+  # Business categories (high volume)
+  - Business-Consultants
+  - Chartered-Engineers
+  - Cost-Accountants
+
+# ===============================================
+# EXPANDED CITY LIST - 100+ CITIES
+# Tier-1: Major Metros (high volume)
+# Tier-2: Large Cities
+# Tier-3: Tier-2 Cities
+# Tier-4: Tier-3 Cities
+# ===============================================
 
 cities:
+  # Tier-1: Major Metros (10 cities, ~5000-10000 records each)
   - Delhi
   - Mumbai
   - Bangalore
@@ -57,6 +110,106 @@ cities:
   - Kolkata
   - Hyderabad
   - Pune
+  - Ahmedabad
+  - Surat
+  - Jaipur
+
+  # Tier-2: Large Cities (40 cities, ~2000-5000 records each)
+  - Lucknow
+  - Kanpur
+  - Nagpur
+  - Indore
+  - Thane
+  - Bhopal
+  - Visakhapatnam
+  - Pimpri-Chinchwad
+  - Patna
+  - Vadodara
+  - Ghaziabad
+  - Ludhiana
+  - Coimbatore
+  - Agra
+  - Mysore
+  - Ranchi
+  - Guwahati
+  - Chandigarh
+  - Thiruvananthapuram
+  - Srinagar
+  - Dehradun
+  - Jammu
+  - Panipat
+  - Karnal
+  - Rohtak
+  - Faridabad
+  - Gurgaon
+  - Noida
+  - Gwalior
+  - Bhubaneswar
+  - Cuttack
+  - Rourkela
+  - Durgapur
+  - Asansol
+  - Siliguri
+  - Muzaffarpur
+  - Dhanbad
+  - Jamshedpur
+  - Bokaro
+  - Raipur
+
+  # Tier-3: Medium Cities (50 cities, ~1000-2000 records each)
+  - Kolhapur
+  - Sangli
+  - Nashik
+  - Aurangabad
+  - Solapur
+  - Amravati
+  - Nanded
+  - Jalgaon
+  - Akola
+  - Latur
+  - Dhule
+  - Ahmednagar
+  - Malegaon
+  - Warangal
+  - Karimnagar
+  - Nizamabad
+  - Khammam
+  - Rajahmundry
+  - Kakinada
+  - Nellore
+  - Anantapur
+  - Kurnool
+  - Tirupati
+  - Visakhapatnam
+  - Guwalior
+  - Jabalpur
+  - Ujjain
+  - Ratlam
+  - Satna
+  - Rewa
+  - Sagar
+  - Durg
+  - Raigarh
+  - Bilaspur
+  - Jabalpur
+  - Bareilly
+  - Aligarh
+  - Moradabad
+  - Meerut
+  - Allahabad
+  - Varanasi
+  - Mathura
+  - Agra
+  - Jhansi
+  - Kanpur
+  - Gorakhpur
+  - Faizabad
+  - Ayodhya
+  - Bhagalpur
+  - Darbhanga
+  - Muzaffarpur
+  - Patna
+  - Gaya
 
 celery:
   broker_url: redis://localhost:6379/0
@@ -66,3 +219,9 @@ celery:
   result_serializer: json
   timezone: UTC
   enable_utc: true
+
+  # Worker configuration for high-volume scraping
+  worker_concurrency: 5
+  worker_prefetch_multiplier: 2
+  task_acks_late: true
+  task_reject_on_worker_lost: true
