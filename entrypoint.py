@@ -87,7 +87,16 @@ def main():
                 sys.exit(1)
             
             port = os.environ.get("PORT", "8080")
-            log(f"Launching Gunicorn on 0.0.0.0:{port}")
+            log(f"Finalizing environment for Web Service on port {port}...")
+            
+            # Diagnostic: Verify command existence before handoff
+            try:
+                subprocess.run(["gunicorn", "--version"], capture_output=True, check=True)
+            except Exception:
+                log("❌ CRITICAL: 'gunicorn' command not found in PATH!")
+                sys.exit(1)
+
+            log(f"Handoff to Gunicorn (0.0.0.0:{port})...")
             
             cmd = [
                 "gunicorn", "dashboard:app",
@@ -102,7 +111,7 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            log("Launching Celery Worker")
+            log("Handoff to Celery Worker...")
             cmd = [
                 "celery", "-A", "tasks.celery_app", "worker",
                 "--loglevel=info",
