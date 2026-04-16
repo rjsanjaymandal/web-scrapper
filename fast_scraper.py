@@ -37,11 +37,18 @@ class FastScraperConfig:
         self.proxy_list = []
         env_proxy_host = os.environ.get("PROXY_HOST")
         if env_proxy_host:
+            env_proxy_port = os.environ.get("PROXY_PORT", "")
+            # Build host:port string if port is provided separately
+            if env_proxy_port and ":" not in env_proxy_host:
+                proxy_host = f"{env_proxy_host}:{env_proxy_port}"
+            else:
+                proxy_host = env_proxy_host
             self.proxy_list.append({
-                "host": env_proxy_host,
+                "host": proxy_host,
                 "username": os.environ.get("PROXY_USER"),
                 "password": os.environ.get("PROXY_PASS")
             })
+            logger.info(f"Proxy configured: {proxy_host}")
         else:
             self.proxy_list = config_dict.get("proxies", [])
 
