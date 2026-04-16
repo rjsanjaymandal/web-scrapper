@@ -48,7 +48,10 @@ class FastScraperConfig:
                 "username": os.environ.get("PROXY_USER"),
                 "password": os.environ.get("PROXY_PASS")
             })
-            logger.info(f"Proxy configured: {proxy_host}")
+            # Validate port is present
+            if ":" not in proxy_host.split("//")[-1]:
+                logger.warning(f"⚠️  PROXY HAS NO PORT! Host='{proxy_host}'. Set PROXY_PORT env var.")
+            logger.info(f"✅ Proxy configured: {proxy_host}")
         else:
             self.proxy_list = config_dict.get("proxies", [])
 
@@ -85,6 +88,10 @@ class ParallelScraper:
 
         logger.info(f"Parallel Engine V2 ready: Concurrency={self.config.max_concurrent}")
 
+        # Proxy connectivity smoke test
+        if self.config.proxy_list:
+            await self._test_proxy_connectivity()
+
     async def close(self):
         if self.browser:
             await self.browser.close()
@@ -92,6 +99,35 @@ class ParallelScraper:
             await self.playwright.stop()
         if self.pool:
             await self.pool.close()
+
+    async def _test_proxy_connectivity(self):
+        """Quick smoke test: one page load through the proxy to validate connectivity."""
+        p = self.config.proxy_list[0]
+        host = p["host"]
+        if not host.startswith("http"):
+            host = f"http://{host}"
+        proxy_config = {
+            "server": host,
+            "username": p.get("username"),
+            "password": p.get("password"),
+        }
+        logger.info(f"🔍 Testing proxy: server={host}")
+        ctx = None
+        try:
+            ctx = await self.browser.new_context(
+                proxy=proxy_config,
+                ignore_https_errors=True,
+            )
+            page = await ctx.new_page()
+            resp = await page.goto("https://httpbin.org/ip", timeout=30000, wait_until="domcontentloaded")
+            body = await page.inner_text("body")
+            logger.info(f"✅ PROXY OK! Response status={resp.status}, IP={body.strip()[:80]}")
+        except Exception as e:
+            logger.critical(f"❌ PROXY FAILED! Error: {e}")
+            logger.critical(f"❌ Check PROXY_HOST (must include port) and PROXY_USER/PROXY_PASS env vars!")
+        finally:
+            if ctx:
+                await ctx.close()
 
     async def _setup_context(self) -> BrowserContext:
         user_agent = StealthManager.get_random_ua()
