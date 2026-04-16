@@ -45,8 +45,14 @@ def set_status(msg, is_running=True, stats=None):
     db_set_status(data)
     
     # 3. Log to Dashboard Activity Log if meaningful
-    if is_running and "Page" in msg:
+    # We log starts, ends, page updates, and error messages
+    log_triggers = ["Page", "Started", "Finished", "Cleaned", "Deep", "Error", "Batch", "Parallel"]
+    if is_running and any(t in msg for t in log_triggers):
         db_log("INFO", msg, stats.get("source") if stats else "SCRAPER")
+    elif not is_running and "Finished" in msg:
+        db_log("SUCCESS", msg, stats.get("source") if stats else "SCRAPER")
+    elif "Error" in msg:
+        db_log("ERROR", msg, stats.get("source") if stats else "SCRAPER")
 
     logger.info(f"STATUS UPDATE: {msg} {stats if stats else ''}")
 

@@ -187,9 +187,12 @@ def init_tables():
     try:
         conn = _connect_db()
         cur = conn.cursor()
-        cur.execute("""
+        # Use platform-aware types (SERIAL for Postgres, AUTOINCREMENT for SQLite)
+        id_type = "INTEGER PRIMARY KEY AUTOINCREMENT" if USE_SQLITE else "SERIAL PRIMARY KEY"
+        
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS contacts (
-                id SERIAL PRIMARY KEY,
+                id {id_type},
                 name VARCHAR(255),
                 phone VARCHAR(50),
                 email VARCHAR(255),
@@ -230,19 +233,38 @@ def init_tables():
 
         for column_name, column_type in required_columns.items():
             try:
-                cur.execute(
-                    f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
-                )
+                # SQLite doesn't support ADD COLUMN IF NOT EXISTS directly until very recently
+                if USE_SQLITE:
+                    cur.execute(f"PRAGMA table_info(contacts)")
+                    existing = [r[1] for r in cur.fetchall()]
+                    if column_name not in existing:
+                        cur.execute(f"ALTER TABLE contacts ADD COLUMN {column_name} {column_type}")
+                else:
+                    cur.execute(
+                        f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+                    )
             except Exception as col_err:
                 # Ignore column errors
                 pass
 
         # Optimization: Only run heavy cleanup if the unique index is missing
-        cur.execute("""
-            SELECT count(*) FROM pg_indexes 
-            WHERE indexname = 'idx_contacts_unique_phone'
-        """)
-        index_exists = cur.fetchone()['count'] > 0
+        index_exists = False
+        if not USE_SQLITE:
+            try:
+                cur.execute("""
+                    SELECT count(*) FROM pg_indexes 
+                    WHERE indexname = 'idx_contacts_unique_phone'
+                """)
+                index_exists = cur.fetchone()['count'] > 0
+            except:
+                pass
+        else:
+            try:
+                cur.execute("PRAGMA index_list('contacts')")
+                indices = cur.fetchall()
+                index_exists = any(idx[1] == 'idx_contacts_unique_phone' for idx in indices)
+            except:
+                pass
 
         if not index_exists:
             logger.info("🧹 Deduplication Index missing. Running one-time cleanup...")
@@ -250,23 +272,29 @@ def init_tables():
             # 1. Ensure phone_clean has a basic index to speed up the join
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_phone_clean ON contacts(phone_clean)")
             
-            # 2. Faster JOIN-based deduplication (keeps record with highest ID/latest)
-            # This is significantly faster than NOT IN (SELECT MAX...)
-            cur.execute("""
-                DELETE FROM contacts a
-                USING contacts b
-                WHERE a.id < b.id
-                AND a.phone_clean = b.phone_clean
-                AND a.phone_clean IS NOT NULL
-            """)
-            
-            cur.execute("""
-                DELETE FROM contacts a
-                USING contacts b
-                WHERE a.id < b.id
-                AND a.email = b.email
-                AND a.email IS NOT NULL
-            """)
+            if USE_SQLITE:
+                # SQLite doesn't support USING for DELETE, it's simpler
+                cur.execute("""
+                    DELETE FROM contacts WHERE id NOT IN (
+                        SELECT MAX(id) FROM contacts GROUP BY phone_clean
+                    ) AND phone_clean IS NOT NULL
+                """)
+            else:
+                cur.execute("""
+                    DELETE FROM contacts a
+                    USING contacts b
+                    WHERE a.id < b.id
+                    AND a.phone_clean = b.phone_clean
+                    AND a.phone_clean IS NOT NULL
+                """)
+                
+                cur.execute("""
+                    DELETE FROM contacts a
+                    USING contacts b
+                    WHERE a.id < b.id
+                    AND a.email = b.email
+                    AND a.email IS NOT NULL
+                """)
             
             # 3. Drop temporary index
             cur.execute("DROP INDEX IF EXISTS idx_tmp_phone_clean")
@@ -291,9 +319,10 @@ def init_tables():
         """)
         
         # Scraper Activity Logs for Dashboard visibility
-        cur.execute("""
+        log_id_type = "INTEGER PRIMARY KEY AUTOINCREMENT" if USE_SQLITE else "SERIAL PRIMARY KEY"
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS scraper_logs (
-                id SERIAL PRIMARY KEY,
+                id {log_id_type},
                 level VARCHAR(20),
                 message TEXT,
                 source VARCHAR(100),
