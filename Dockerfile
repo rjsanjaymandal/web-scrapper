@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Force unbuffered logs to avoid "silent" failures in Docker
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # Install system dependencies required by Playwright's Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
