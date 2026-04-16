@@ -1,2 +1,2 @@
-web: ./start.sh
-worker: PROCESS_TYPE=worker ./start.sh
+web: python3 entrypoint.py
+worker: PROCESS_TYPE=worker python3 entrypoint.py

@@ -32,9 +32,6 @@ RUN chown -R scraper:scraper /app
 # Switch to non-root user
 USER scraper
 
-# Ensure start.sh is executable
-RUN chmod +x start.sh
-
-# Use start.sh as the entrypoint/CMD
-CMD ["./start.sh"]
+# Use entrypoint.py as the entrypoint
+CMD ["python3", "entrypoint.py"]
 
