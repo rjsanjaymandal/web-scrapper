@@ -10,6 +10,7 @@ from pathlib import Path
 
 # Fix for Railway/Docker: Ensure the current directory is in the Python path
 sys.path.append(os.getcwd())
+PROJ_DIR = Path(__file__).parent
 
 # Heavy imports are now inside the task to ensure registration never fails
 # from scraper import ContactScraper, load_config
@@ -46,13 +47,19 @@ def set_status(msg, is_running=True, stats=None):
     
     # 3. Log to Dashboard Activity Log if meaningful
     # We log starts, ends, page updates, and error messages
-    log_triggers = ["Page", "Started", "Finished", "Cleaned", "Deep", "Error", "Batch", "Parallel"]
+    log_triggers = ["Scraping", "Page", "Started", "Finished", "Cleaned", "Deep", "Error", "Batch", "Parallel", "High-Speed", "Validation"]
+    
+    # Extract source Safely
+    source = "SCRAPER"
+    if stats and isinstance(stats, dict):
+        source = stats.get("source", "SCRAPER")
+    
     if is_running and any(t in msg for t in log_triggers):
-        db_log("INFO", msg, stats.get("source") if stats else "SCRAPER")
-    elif not is_running and "Finished" in msg:
-        db_log("SUCCESS", msg, stats.get("source") if stats else "SCRAPER")
-    elif "Error" in msg:
-        db_log("ERROR", msg, stats.get("source") if stats else "SCRAPER")
+        db_log("INFO", msg, source)
+    elif not is_running and any(t in msg for t in ["Finished", "Complete", "Batch"]):
+        db_log("SUCCESS", msg, source)
+    elif "Error" in msg or "Failed" in msg:
+        db_log("ERROR", msg, source)
 
     logger.info(f"STATUS UPDATE: {msg} {stats if stats else ''}")
 
@@ -72,7 +79,8 @@ def db_set_status(data):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
         if is_sqlite:
-            conn = sqlite3.connect('scraper_local.db', timeout=10)
+            db_path = PROJ_DIR / 'scraper_local.db'
+            conn = sqlite3.connect(db_path, timeout=15)
         else:
             conn = psycopg2.connect(db_url, connect_timeout=3)
             conn.autocommit = True
@@ -93,7 +101,7 @@ def db_set_status(data):
         cur.close()
         conn.close()
     except Exception as e:
-        logger.debug(f"DB status update failed: {e}")
+        logger.warning(f"DB status update failed: {e}")
 
 def db_log(level, message, source=None):
     """Write an entry to the Dashboard Activity Log"""
@@ -108,7 +116,8 @@ def db_log(level, message, source=None):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
         if is_sqlite:
-            conn = sqlite3.connect('scraper_local.db', timeout=10)
+            db_path = PROJ_DIR / 'scraper_local.db'
+            conn = sqlite3.connect(db_path, timeout=15)
         else:
             conn = psycopg2.connect(db_url, connect_timeout=3)
             conn.autocommit = True
@@ -125,7 +134,7 @@ def db_log(level, message, source=None):
         cur.close()
         conn.close()
     except Exception as e:
-        logger.debug(f"DB log write failed: {e}")
+        logger.warning(f"DB log write failed: {e}")
 
 if not redis_url:
     logger.warning("REDIS_URL not found. Celery tasks will run locally (always_eager).")

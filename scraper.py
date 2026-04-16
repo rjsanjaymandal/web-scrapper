@@ -2194,7 +2194,7 @@ class ContactScraper:
             self.use_sqlite = True
             import sqlite3
 
-            self.sqlite_conn = sqlite3.connect("scraper_local.db")
+            self.sqlite_conn = sqlite3.connect(PROJ_DIR / "scraper_local.db")
             self._create_sqlite_tables()
             logger.info("SQLite fallback active.")
 
