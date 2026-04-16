@@ -46,7 +46,7 @@ def wait_for_db():
             return True
         except Exception as e:
             print(f'⏳ [BOOTSTRAP] Still waiting for database... ({e})')
-            time.sleep(2)
+            time.sleep(1)
     print('❌ [BOOTSTRAP] Timeout waiting for database after 90s')
     return False
 
