@@ -1,0 +1,568 @@
+<!DOCTYPE html><html lang="zxx"><head>    <!-- Metas -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="author" content="">    <!-- Title  -->
+    <title>ICAI</title>    <!-- Google Fonts -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="author" content="">    <!-- Title  -->
+
+    <title>ICAI</title>
+
+    <link rel="stylesheet" href="https://caconnect.icai.org/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://caconnect.icai.org/css/jquery-ui.css">
+    <link rel="stylesheet" href="https://caconnect.icai.org/css/lightbox.min.css">
+    <link href="https://caconnect.icai.org/datatables/datatables.min.css" rel="stylesheet">
+    <script src="https://caconnect.icai.org/scripts/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" integrity="sha384-DyZ88mC6Up2uqS4h/KRgHuoeGwBcD4Ng9SiP4dIRy0EXTlnuz47vAwmeGwVChigm" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-3 mob"><a class="nav-link" href="https://icai.org"><img src="https://caconnect.icai.org/img/icai.jpg"></a></div>
+        <div class="col-md-4 mob"><a class="nav-link" href="https://caconnect.icai.org"><img src="https://caconnect.icai.org/img/caconnect.jpg"></a></div>
+        <div class="col-md-4 text-center mmenu"><nav class="navbar navbar-expand-sm">
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#collapsibleNavbar">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="collapsibleNavbar">
+                    <ul class="navbar-nav">
+                        <li class="nav-item hactive">
+                            <a class="nav-link" href="https://caconnect.icai.org">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="https://caconnect.icai.org/search-your-ca">Search Your CA</a>
+                        </li>
+                                                <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">CA Login / Register </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="register-as-member">Register as Member</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="register-as-firm">Register as Firm</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="register-as-guest">Register as Guest</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                                                <li><a class="dropdown-item" href="/login">Login</a></li>
+                                                                </ul>
+                        </li>
+                                                                    </ul>
+                </div>
+
+            </nav>
+
+        </div>
+        <div class="col-md-1 text-end calogo"><img src="https://caconnect.icai.org/img/ca.jpg"></div>
+
+    </div>
+
+
+
+</div>
+
+        <style>
+        .form-control {
+            display: block;
+            width: 100%;
+            padding: 5px 0px!important;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--bs-body-color);
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: none;
+            background-clip: padding-box;
+            border: none;
+            border-bottom: solid 1px #eee;
+            border-radius: 0;
+            transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+            color: #fff;
+        }
+        .form-control:focus {
+            color: #fff;
+            background-color: none!important;
+            border-bottom: solid 1px #eee;
+            outline: 0;
+            box-shadow: none!important;);
+        }
+        .mt-4{margin: 0px!important; margin-bottom: 10px;}
+        .box{margin-bottom: 10px;}
+        .svg-width img {
+            width: inherit;
+            height: auto;
+            text-align: center;
+        }
+
+    </style>
+    <section class="loginbg">
+        <div class="container text-align-center">
+            <div class="row">
+                
+                				                    <div class="alert alert alert-danger">
+                        <p>No data found please select another services or city and try again.</p>
+                    </div>
+                                <div class="col-md-6">
+                        <div class="box mt-4">
+
+    <h1>Find CA or CA Firms</h1>
+    <form method="get" action="https://caconnect.icai.org/search" class="frbody" enctype="multipart/form-data" autocomplete="off">
+        <input type="hidden" name="_token" value="2McZVRVBZtvqStnnnB6xKGoR1w6gCCezmWoLrijd">
+        <input type="hidden" name="type">
+        <table>
+            <tbody><tr>
+                <td class="">Preferred  Services</td>
+            </tr>
+
+            <tr>
+                <td><select class="form-select" name="services" id="services" required="">
+                        <option value="">Professional Services</option>
+                                                    <option value="Arbitration">Arbitration</option>
+                                                    <option value="Audit">Audit</option>
+                                                    <option value="Book keeping and Accounting">Book keeping and Accounting</option>
+                                                    <option value="BCP">BCP</option>
+                                                    <option value="Book-keeping">Book-keeping</option>
+                                                    <option value="Business Advisory">Business Advisory</option>
+                                                    <option value="Certification">Certification</option>
+                                                    <option value="Charities, Trust and Not For Profit">Charities, Trust and Not For Profit</option>
+                                                    <option value="Cloud Accounting">Cloud Accounting</option>
+                                                    <option value="Corporate Laws and LLP">Corporate Laws and LLP</option>
+                                                    <option value="Direct Taxes">Direct Taxes</option>
+                                                    <option value="FEMA">FEMA</option>
+                                                    <option value="Financial Advisory">Financial Advisory</option>
+                                                    <option value="Forensic Audit">Forensic Audit</option>
+                                                    <option value="Foreign Trade">Foreign Trade</option>
+                                                    <option value="Forensic Accounting &amp; Investigation">Forensic Accounting &amp; Investigation</option>
+                                                    <option value="Goods and Services Tax">Goods and Services Tax</option>
+                                                    <option value="ICFR audit">ICFR audit</option>
+                                                    <option value="Indirect Tax">Indirect Tax</option>
+                                                    <option value="Indirect Tax matter">Indirect Tax matter</option>
+                                                    <option value="Information Technology Services">Information Technology Services</option>
+                                                    <option value="Insolvency">Insolvency</option>
+                                                    <option value="Internal and Management Audit">Internal and Management Audit</option>
+                                                    <option value="Internal Controls">Internal Controls</option>
+                                                    <option value="International Tax">International Tax</option>
+                                                    <option value="Investment Advisory">Investment Advisory</option>
+                                                    <option value="MSME Advisory">MSME Advisory</option>
+                                                    <option value="Payroll Services">Payroll Services</option>
+                                                    <option value="RERA">RERA</option>
+                                                    <option value="Risk and Controls Management">Risk and Controls Management</option>
+                                                    <option value="Startup advisory">Startup advisory</option>
+                                                    <option value="Valuation">Valuation</option>
+                                                    <option value="Others">Others</option>
+                                                    <option value="XBRL Services">XBRL Services</option>
+                                            </select>
+
+                </td>
+            </tr>
+
+
+            <tr>
+                <td class="pt-3">State/UT</td>
+            </tr>
+
+            <tr>
+                <td><select class="form-select" name="state" id="state" required="">
+                        <option value="">Select State</option>
+                                                                                                                                                                  <option value="Andaman &amp; Nicobar Islands">Andaman &amp; Nicobar Islands</option>
+                                                                                                            <option value="Andhra Pradesh">Andhra Pradesh</option>
+                                                                                                            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                                                                                                            <option value="Assam">Assam</option>
+                                                                                                            <option value="Bihar">Bihar</option>
+                                                                                                            <option value="Chandigarh">Chandigarh</option>
+                                                                                                            <option value="Chhattisgarh">Chhattisgarh</option>
+                                                                                                            <option value="Dadra &amp; Nagar Haveli">Dadra &amp; Nagar Haveli</option>
+                                                                                                            <option value="Dadra Nagar Haveli">Dadra Nagar Haveli</option>
+                                                                                                            <option value="Daman &amp; Diu">Daman &amp; Diu</option>
+                                                                                                            <option value="Delhi">Delhi</option>
+                                                                                                            <option value="Goa">Goa</option>
+                                                                                                            <option value="Gujarat">Gujarat</option>
+                                                                                                            <option value="Haryana">Haryana</option>
+                                                                                                            <option value="Himachal Pradesh">Himachal Pradesh</option>
+                                                                                                            <option value="Jammu &amp; Kashmir">Jammu &amp; Kashmir</option>
+                                                                                                            <option value="Jharkhand">Jharkhand</option>
+                                                                                                            <option value="Karnataka">Karnataka</option>
+                                                                                                            <option value="Kerala">Kerala</option>
+                                                                                                            <option value="Ladakh">Ladakh</option>
+                                                                                                            <option value="Lakshadweep">Lakshadweep</option>
+                                                                                                            <option value="Madhya Pradesh">Madhya Pradesh</option>
+                                                                                                            <option value="Maharashtra">Maharashtra</option>
+                                                                                                            <option value="Manipur">Manipur</option>
+                                                                                                            <option value="Meghalaya">Meghalaya</option>
+                                                                                                            <option value="Mizoram">Mizoram</option>
+                                                                                                            <option value="Nagaland">Nagaland</option>
+                                                                                                            <option value="Odisha ">Odisha </option>
+                                                                                                            <option value="Pondicherry">Pondicherry</option>
+                                                                                                            <option value="Punjab">Punjab</option>
+                                                                                                            <option value="Rajasthan">Rajasthan</option>
+                                                                                                            <option value="Sikkim">Sikkim</option>
+                                                                                                            <option value="Tamil Nadu">Tamil Nadu</option>
+                                                                                                            <option value="Telangana">Telangana</option>
+                                                                                                            <option value="Tripura">Tripura</option>
+                                                                                                            <option value="Uttar Pradesh">Uttar Pradesh</option>
+                                                                                                            <option value="Uttarakhand">Uttarakhand</option>
+                                                                                                            <option value="West Bengal">West Bengal</option>
+                                                                        </select></td>
+            </tr>
+
+
+            <tr>
+                <td class="pt-3">Member / Firm City</td>
+            </tr>
+
+            <tr>
+                <td><select class="form-select" name="city" id="city" required="">
+                        <option value="">Select City</option>
+                    </select></td>
+            </tr>
+
+
+
+
+            <tr>
+                <td class="pt-4"><button type="submit" class="btn btn-warning btn-sm"> <i class="fas fa-search"></i> Search Your CA</button> </td>
+            </tr>
+        </tbody></table>
+    </form>
+
+
+</div>
+
+<div class="clearfix" style="margin-bottom: 5px;"></div>
+<i class="fas fa-chart-line"></i> <span style="color:#fff">Trending Search: </span>
+<a href="https://caconnect.icai.org/trending-search/Audit"><button type="button" class="btn btn-dark btn-sm">Audit</button></a>
+<!--<button type="button" class="btn btn-dark btn-sm">Audit</button>-->
+
+<a href="https://caconnect.icai.org/trending-search/Book keeping and Accounting"><button type="button" class="btn btn-dark btn-sm">Book keeping and Accounting</button></a>
+<!--<button type="button" class="btn btn-dark btn-sm">Book keeping and Accounting</button>-->
+
+<a href="https://caconnect.icai.org/trending-search/Direct Taxes"><button type="button" class="btn btn-dark btn-sm">Direct Taxes</button></a>
+<!--<button type="button" class="btn btn-dark btn-sm">Direct Taxes</button>-->
+
+<a href="https://caconnect.icai.org/trending-search/Others"><button type="button" class="btn btn-dark btn-sm">Others</button></a>
+<!--<button type="button" class="btn btn-dark btn-sm">Others</button>-->
+
+
+
+                </div>
+                <div class="col-md-6 svg-width">
+                    <div class="loginboximg">
+                        <img src="https://caconnect.icai.org/img/searchfirm3.jpg"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+<!-- =====================================
+
+      ==== Start Footer -->
+
+ 
+<section class="footer">
+    <div class="container text-align-center">
+
+        <div class="row">
+            <div class="col-md-3"><img src="https://caconnect.icai.org/img/caconnect.jpg" style="width:100%; margin-bottom: 10px; border-radius: 8px">
+                <p>CA Connect Portal is an Indigenous system of listing CA Firms/Individual CA Practitioners on the platform of ICAL. Member or firms may register here.<br><br>
+                    <a href="https://caconnect.icai.org/login"><button type="button" class="btn btn-danger">Signup</button></a>
+                    <a href="https://caconnect.icai.org/login"><button type="button" class="btn btn-warning">Login</button></a>
+
+                </p>
+            </div>
+            <div class="col-md-3">
+                <h2>Quick Links</h2>
+                <ul>
+				<!--
+                    <li><a href="https://caconnect.icai.org/CA-Connect-Portal.pdf" target="_blank">CA Connect Brochure</a></li>
+					-->
+                    <li><a href="https://caconnect.icai.org/search-your-ca"> Search Member</a></li>
+                    <li><a href="https://caconnect.icai.org/search-your-ca">Search Firms</a></li>
+                    <li><a href="https://caconnect.icai.org/data-security">Data Security</a></li>
+                    <li><a href="https://caconnect.icai.org/terms-conditions">Terms &amp; Conditions</a></li>
+                </ul>
+            </div>
+            <div class="col-md-3">
+                <h2>Contact Us :</h2>
+
+                <table>
+                    <tbody><tr>
+                        <td colspan="2">  <p>Ethical Standards Board <br>The Institute of Chartered Accountants of India</p></td>
+                    </tr>
+					 <tr>
+                        <td class="p-2"><i class="fas fa-map-marker-alt"></i> </td>
+                        <td>ICAI Bhawan, Plot No. A-29, Sector-62 NOIDA – 201309</td>
+
+                    </tr>
+					 <tr>
+                        <td class="p-2"><i class="fas fa-envelope"></i> </td>
+                        <td>caconnect[at]icai[dot]in</td>
+
+                    </tr>
+                    <tr>
+                        <td class="p-2"><i class="fas fa-phone-alt"></i> </td>
+                        <td>0120-3876857 (Ethical Standards Board)</td>
+
+                    </tr>
+                   
+                   
+                </tbody></table>
+
+
+
+
+
+            </div>
+            <div class="col-md-3">
+                   <form method="POST" action="https://caconnect.icai.org/sendMail" enctype="multipart/form-data" autocomplete="off" class="form">
+
+                    <div class="messages"></div>
+
+                    <input type="hidden" name="_token" value="2McZVRVBZtvqStnnnB6xKGoR1w6gCCezmWoLrijd">
+
+                    <table>
+                        <tbody><tr>
+
+                            <td> <input id="form_name" type="text" class="form-control" name="name" placeholder="Name" required="required"></td>
+                        </tr>
+                        <tr>
+
+                            <td><input id="form_email" type="email" class="form-control" name="email" placeholder="Email" required="required"></td>
+                        </tr>
+                         
+                        <tr>
+
+                        <td><textarea id="form_message" name="message" class="form-control" placeholder="Message" rows="2" required="required"></textarea></td>
+                        </tr>
+                        <tr>
+
+                            <td> <img src="https://caconnect.icai.org/captcha" class="capthaimg" style="width: 103px;
+    margin-bottom: 10px;">
+                                <img src="https://caconnect.icai.org/img/refresh.png" class="refreshcaptcha">
+                                <input type="text" name="chk" id="chk" autocomplete="off" class="form-control" placeholder="Enter Captcha"></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2"><button type="submit" class="btn  btn-danger"><span>Send Message</span></button></td>
+                        </tr>
+                    </tbody></table>
+
+
+                </form>
+
+
+            </div>
+
+
+            <div class="col-md-12 text-center">© 2024 ICAI. All Rights Reserved.</div>
+        </div>
+
+
+</div></section>
+
+<script>
+
+</script>
+
+
+
+<script src="https://caconnect.icai.org/scripts/bootstrap.bundle.min.js"></script>
+<script src="https://caconnect.icai.org/scripts/jquery-ui.js"></script>
+
+<script src="https://caconnect.icai.org/datatables/datatables.min.js"></script>
+<script type="text/javascript">
+    jQuery(".refreshcaptcha").click(function(){
+        jQuery('.capthaimg').attr('src','https://caconnect.icai.org/captcha?'+Date.now());
+    });
+</script>
+<script>
+
+    $(document).ready(function(){
+
+        var aElems = $(".toplink");
+
+        for (var i = 0, len = aElems.length; i < len; i++) {
+            aElems[i].onclick = function() {
+                var check = confirm("Are you sure you want to navigate away from this page?");
+                if (check == true) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            };
+        }
+        //
+
+
+        $(".num").keypress(function (e) {
+            //if the letter is not digit then display error and don't type anything
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                //display error message
+                //$("#errmsg").html("Digits Only").show().fadeOut("slow");
+                return false;
+            }
+        });
+
+
+
+        //end
+
+
+
+        $(".dts").dataTable( {
+
+            "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+
+            "pageLength": 100
+
+        });
+
+//for date picker//
+
+        $(".datex").datepicker({
+
+            changeMonth: true,
+
+            changeYear: true,
+
+            dateFormat: "dd-mm-yy",
+
+            yearRange: "c-81:c+1"
+
+        });
+
+//ajax
+
+
+
+//end ajax
+
+        //end document
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</script>
+<script>
+    jQuery(document).ready(function() {
+        jQuery("#state").change(function(){
+            var id =   jQuery('#state').val();
+           // console.log(id);
+
+            jQuery.post(
+                {
+                    data: {id: id},
+                    // data: {mrn: mrn},
+                    url: '/citySearch',
+                    success: function (data) {
+
+                        if (data.success != "") {
+                          //  console.log(data);
+                            $("#city").empty();
+                            $("#city").append($("<option/>").val('').text('Member / Firm City'));
+                            $.each(data.success, function (data, value){
+
+                                $("#city").append($("<option/>").val(value.city_name ).text(value.city_name));
+                            });
+
+                        } else {
+                            $("#city").empty();
+                            $("#city").append($("<option/>").val('').text('Select'));
+                        }
+                    }
+
+                }, 'json');
+        });
+
+
+
+        jQuery("input[type='checkbox']").change(function() {
+            myvar=jQuery(this).val();
+            if ($(this).is(':checked')) {
+
+                if (myvar=='42')
+                {
+                    jQuery('#Specify').removeClass('dispa');
+                }
+
+
+                if (myvar=='57')
+                {
+                    jQuery('#Specify1').removeClass('dispa');
+                }
+
+            } else {
+                jQuery('#Specify1').addClass('dispa');
+                jQuery('#Specify').addClass('dispa');
+
+            }
+
+
+
+
+
+
+        });
+        jQuery("#searchId").on("change", function () {
+
+            if (jQuery(this).val() == "1") {
+                jQuery('#partnerSearch').show();
+                jQuery('#nameSearch').hide();
+                jQuery('#pinSearch').hide();
+                jQuery('#aToz').hide();
+
+            }
+            else if (jQuery(this).val() == "2")
+            {
+                jQuery('#partnerSearch').hide();
+                jQuery('#nameSearch').show();
+                jQuery('#pinSearch').hide();
+                jQuery('#aToz').hide();
+            }
+            else if (jQuery(this).val() == "3")
+            {
+                jQuery('#partnerSearch').hide();
+                jQuery('#nameSearch').hide();
+                jQuery('#pinSearch').show();
+                jQuery('#aToz').hide();
+            }
+            else if (jQuery(this).val() == "4")
+            {
+                jQuery('#partnerSearch').hide();
+                jQuery('#nameSearch').hide();
+                jQuery('#pinSearch').hide();
+                jQuery('#aToz').show();
+            }
+
+
+            //
+
+        });
+
+        //end document ready
+    });
+
+
+</script>
+
+
+
+
+</body></html>

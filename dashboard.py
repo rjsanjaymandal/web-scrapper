@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from openpyxl import Workbook
 from pathlib import Path
+import sqlite3
 
 app = Flask(__name__)
 
@@ -49,16 +50,23 @@ def up():
 
 
 # Redis for live status (optional)
+REDIS_ACTIVE = False
 try:
     import redis
 
     REDIS_URL = os.environ.get("REDIS_URL")
-    redis_client = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
+    if REDIS_URL:
+        redis_client = redis.Redis.from_url(REDIS_URL, socket_timeout=2)
+        redis_client.ping()
+        REDIS_ACTIVE = True
+    else:
+        redis_client = None
 except Exception:
     redis_client = None
 
 
-# Global state for caching heavy queries
+# DB Globals
+USE_SQLITE = False
 DB_INIT_READY = False
 DB_INIT_IN_PROGRESS = False
 DB_INIT_LAST_ATTEMPT = 0.0
@@ -99,6 +107,24 @@ def get_db_url():
 
 def _connect_db():
     """Open a database connection with a short timeout so web boot stays responsive."""
+    global USE_SQLITE
+    
+    if USE_SQLITE or not os.environ.get("DATABASE_URL"):
+        try:
+            # Check if Postgres is reachable even if no URL is set (localhost)
+            url = get_db_url()
+            if "localhost" in url:
+                 conn = psycopg2.connect(url, connect_timeout=1)
+                 return conn
+        except Exception:
+            pass
+            
+        # Fallback to SQLite
+        USE_SQLITE = True
+        conn = sqlite3.connect(PROJ_DIR / "scraper_local.db")
+        conn.row_factory = sqlite3.Row
+        return conn
+
     url = get_db_url()
     # Railway may use postgres:// — psycopg2 needs postgresql://
     if url and url.startswith("postgres://"):
@@ -359,11 +385,23 @@ HTML = """
         .filters .btn-clear { padding: 8px 16px; background: transparent; color: #8b8fa3; border: 1px solid #2d3148; border-radius: 6px; font-size: 13px; cursor: pointer; }
         .filters .btn-clear:hover { border-color: #ff7b72; color: #ff7b72; }
         .filter-stats { margin-left: auto; font-size: 13px; color: #8b8fa3; }
+        .notification { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #238636; color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 2000; animation: slideIn 0.3s ease-out; display: none; font-size: 14px; font-weight: 600; }
+        .notification.error { background: #da3633; }
+        .mode-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-left: 12px; }
+        .mode-local { background: #d29922; color: #000; }
+        .mode-cloud { background: #238636; color: #fff; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Financial Services Contact Scraper</h1>
+        <div style="display:flex; align-items:center;">
+            <h1>Financial Services Contact Scraper</h1>
+            {% if use_sqlite %}
+            <span class="mode-badge mode-local">Local Mode (SQLite)</span>
+            {% else %}
+            <span class="mode-badge mode-cloud">Cloud Mode (Postgres)</span>
+            {% endif %}
+        </div>
         <span style="font-size:13px; opacity:0.8;">{{s.total}} contacts collected</span>
     </div>
 
@@ -418,7 +456,17 @@ HTML = """
         <button class="btn" style="background:#d29922;" onclick="updateQuality()">📊 Update Quality</button>
     </div>
 
+    <div id="notification" class="notification"></div>
+
     <script>
+        function showNotification(msg, isError = false) {
+            const el = document.getElementById('notification');
+            el.innerText = msg;
+            el.style.display = 'block';
+            if (isError) el.classList.add('error');
+            else el.classList.remove('error');
+            setTimeout(() => { el.style.display = 'none'; }, 4000);
+        }
         // Update SSE logic to handle status and stats
         const source = new EventSource('/api/stream/stats');
         source.onmessage = function(event) {
@@ -643,7 +691,7 @@ HTML = """
 
         function showContactDetail(id){
             fetch('/api/contact/' + id).then(r=>r.json()).then(data=>{
-                if(data.error){ alert(data.error); return; }
+                if(data.error){ showNotification(data.error, true); return; }
                 const c = data;
                 document.getElementById('modal-content').innerHTML = `
                     <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${c.name || '-'}</span></div>
@@ -1105,14 +1153,21 @@ def api_contacts():
             params.append(filter_source)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # SQLite vs Postgres compatibility
+        if USE_SQLITE:
+            where_sql = where_sql.replace("ILIKE", "LIKE")
+            query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT ? OFFSET ?"
+            query = query.replace("%s", "?")
+            count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}".replace("%s", "?")
+        else:
+            query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s"
+            count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
 
-        cur.execute(
-            f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s",
-            params + [limit, offset],
-        )
+        cur.execute(query, params + [limit, offset])
         contacts = cur.fetchall()
-        cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}", params)
-        total = cur.fetchone()["cnt"]
+        cur.execute(count_query, params)
+        total = cur.fetchone()["cnt"] if USE_SQLITE else cur.fetchone()["cnt"]
         cur.close()
         conn.close()
         return jsonify(
@@ -1390,11 +1445,13 @@ def stream_stats():
                     last_total = total
                     last_phone = with_phone
                     last_email = with_email
-
             except Exception as e:
-                logger.warning(f"SSE error: {e}")
-
-            time.sleep(3)  # Check every 3 seconds
+                logger.error(f"SSE Error: {e}")
+                yield f"data: {json.dumps({'error': str(e), 'running': False})}\n\n"
+            
+            time.sleep(2)
+            
+            time.sleep(2)  # Check every 2 seconds
 
     return Response(generate(), mimetype="text/event-stream")
 

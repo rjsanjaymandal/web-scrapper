@@ -1302,6 +1302,78 @@ class ICAIScraper(BaseScraper):
             return digits[-10:]
         return digits if digits else None
 
+    async def get_detail_url(self, card) -> Optional[str]:
+        try:
+            link = await card.query_selector("a.member-name, a.title, [class*='name'] a")
+            if link:
+                return await link.get_attribute("href")
+        except:
+            pass
+        return None
+
+    async def extract_listings(
+        self, page: Page, city: str = None, category: str = None, html_content: str = None
+    ) -> List[Dict]:
+        listings = []
+        try:
+            await page.wait_for_selector("body", timeout=15000)
+            
+            # Common selectors for CA/Professional directories
+            card_selectors = [
+                ".member-card", ".member-item", ".listing-item",
+                "table tbody tr", ".ca-item", ".professional-card"
+            ]
+            
+            cards = []
+            for sel in card_selectors:
+                cards = await page.query_selector_all(sel)
+                if cards:
+                    logger.info(f"ICAI: Found {len(cards)} cards with selector: {sel}")
+                    break
+                    
+            if not cards:
+                # Text fallback if no structured cards found
+                body_text = await page.inner_text("body")
+                lines = [l.strip() for l in body_text.split("\n") if len(l.strip()) > 3]
+                for line in lines[:20]:
+                    if any(x in line.lower() for x in ["ca ", "chartered", "accountant"]):
+                        listings.append({
+                            "name": line[:100],
+                            "membership_no": None,
+                            "city": city,
+                            "phone": None,
+                            "email": None,
+                            "address": None,
+                            "detail_url": None
+                        })
+                return listings
+
+            for card in cards:
+                try:
+                    name = await self._get_text(card, ".name, .member-name, h3, td:first-child")
+                    phone = await self._get_text(card, ".phone, .contact, td:nth-child(3)")
+                    addr = await self._get_text(card, ".address, .loc, td:nth-child(4)")
+                    mem_no = await self._get_text(card, ".mem-no, .membership, td:nth-child(2)")
+                    
+                    if name:
+                        listings.append({
+                            "name": name.strip(),
+                            "phone": self._clean_phone(phone) if phone else None,
+                            "address": addr.strip() if addr else None,
+                            "membership_no": mem_no.strip() if mem_no else None,
+                            "city": city,
+                            "detail_url": await self.get_detail_url(card)
+                        })
+                except: continue
+        except Exception as e:
+            logger.warning(f"ICAI extraction error: {e}")
+        return listings
+
+    async def _get_text(self, card, selector: str) -> Optional[str]:
+        try:
+            elem = await card.query_selector(selector)
+            return await elem.inner_text() if elem else None
+        except: return None
 
 class ICSIScraper(BaseScraper):
     """Scraper for ICSI (Institute of Company Secretaries of India) directory"""
