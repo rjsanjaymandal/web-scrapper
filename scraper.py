@@ -2079,6 +2079,9 @@ class ContactScraper:
             IndiaMartScraper(),
             SulekhaScraper(),
             ClickIndiaScraper(),
+            GrotalScraper(),
+            GoogleMapsScraper(),
+            LinkedInGoogleScraper(),
         ]
 
         self.stats = {

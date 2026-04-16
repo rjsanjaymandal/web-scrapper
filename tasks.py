@@ -24,21 +24,102 @@ redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
 def set_status(msg, is_running=True, stats=None):
     """
-    Update Redis with current task status and optional stats for the dashboard.
-    stats format: {"leads": 123, "page": 2, "total_pages": 10, "source": "JUSTDIAL"}
+    Update status for the dashboard.
+    Priority: Redis (fast) -> Database (persistent fallback)
     """
+    data = {
+        "message": msg, 
+        "running": is_running, 
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "stats": stats or {}
+    }
+    
+    # 1. Update Redis (for real-time SSE)
     if redis_client:
         try:
-            data = {
-                "message": msg, 
-                "running": is_running, 
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "stats": stats or {}
-            }
             redis_client.set("scraper_status", json.dumps(data), ex=3600)
         except Exception as e:
             logger.error(f"Redis status update failed: {e}")
+            
+    # 2. Update Database (for persistence and non-redis environments)
+    db_set_status(data)
+    
+    # 3. Log to Dashboard Activity Log if meaningful
+    if is_running and "Page" in msg:
+        db_log("INFO", msg, stats.get("source") if stats else "SCRAPER")
+
     logger.info(f"STATUS UPDATE: {msg} {stats if stats else ''}")
+
+def db_set_status(data):
+    """Fallback status storage in Database"""
+    import sqlite3
+    import psycopg2
+    from scraper import load_config
+    
+    try:
+        config = load_config()
+        db_url = os.environ.get('DATABASE_URL')
+        
+        # Determine connection type
+        is_sqlite = not db_url
+        if db_url and db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+
+        if is_sqlite:
+            conn = sqlite3.connect('scraper_local.db', timeout=10)
+        else:
+            conn = psycopg2.connect(db_url, connect_timeout=3)
+            conn.autocommit = True
+            
+        cur = conn.cursor()
+        val_json = json.dumps(data)
+        
+        if is_sqlite:
+            cur.execute("INSERT OR REPLACE INTO system_status (id, key, value, updated_at) VALUES (1, 'scraper_status', ?, ?)", 
+                       (val_json, datetime.now()))
+        else:
+            cur.execute("""
+                INSERT INTO system_status (id, key, value, updated_at) 
+                VALUES (1, 'scraper_status', %s, NOW())
+                ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (val_json,))
+            
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.debug(f"DB status update failed: {e}")
+
+def db_log(level, message, source=None):
+    """Write an entry to the Dashboard Activity Log"""
+    import sqlite3
+    import psycopg2
+    from scraper import load_config
+    
+    try:
+        db_url = os.environ.get('DATABASE_URL')
+        is_sqlite = not db_url
+        if db_url and db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+
+        if is_sqlite:
+            conn = sqlite3.connect('scraper_local.db', timeout=10)
+        else:
+            conn = psycopg2.connect(db_url, connect_timeout=3)
+            conn.autocommit = True
+            
+        cur = conn.cursor()
+        
+        if is_sqlite:
+            cur.execute("INSERT INTO scraper_logs (level, message, source, created_at) VALUES (?, ?, ?, ?)", 
+                       (level, message, source, datetime.now()))
+        else:
+            cur.execute("INSERT INTO scraper_logs (level, message, source, created_at) VALUES (%s, %s, %s, NOW())", 
+                       (level, message, source))
+            
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.debug(f"DB log write failed: {e}")
 
 if not redis_url:
     logger.warning("REDIS_URL not found. Celery tasks will run locally (always_eager).")

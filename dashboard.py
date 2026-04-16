@@ -279,6 +279,29 @@ def init_tables():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)")
+
+        # System Status Table for non-Redis environments
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system_status (
+                id INTEGER PRIMARY KEY,
+                key VARCHAR(50) UNIQUE,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Scraper Activity Logs for Dashboard visibility
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scraper_logs (
+                id SERIAL PRIMARY KEY,
+                level VARCHAR(20),
+                message TEXT,
+                source VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_scraper_logs_created ON scraper_logs(created_at DESC)")
         cur.close()
         conn.close()
         DB_INIT_READY = True
@@ -409,10 +432,26 @@ HTML = """
         <div class="stat"><h3>Total Contacts</h3><div class="val">{{s.total}}</div></div>
         <div class="stat"><h3>Phone Numbers</h3><div class="val">{{s.phone}}</div></div>
         <div class="stat"><h3>Emails Found</h3><div class="val">{{s.email}}</div></div>
-        <div class="stat"><h3>Cities Covered</h3><div class="val">{{s.cities}}</div></div>
         <div class="stat status-card">
             <h3>Live Scraper Status</h3>
             <div id="live-status" class="val status-idle" style="font-size:16px;">Idle</div>
+            <div id="scrape-progress" style="display:none; margin-top:10px;">
+                <div style="background:#2d3148; height:4px; border-radius:2px; overflow:hidden;">
+                    <div id="progress-bar" style="background:#58a6ff; width:0%; height:100%; transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div id="skipped-status" style="font-size:11px; margin-top:5px; color:#8b8fa3;"></div>
+        </div>
+    </div>
+
+    <!-- NEW: Activity Log Section -->
+    <div class="card" style="margin-bottom:20px; border-left: 4px solid #58a6ff;">
+        <h3 style="display:flex; justify-content:space-between; align-items:center;">
+            <span>📋 Scraper Activity Log</span>
+            <span id="log-count" style="font-size:12px; font-weight:normal; background:#2d3148; padding:2px 8px; border-radius:10px;">0 events</span>
+        </h3>
+        <div id="activity-log" style="height:200px; overflow-y:auto; background:#0d1117; border-radius:8px; padding:15px; font-family:monospace; font-size:13px; line-height:1.6;">
+            <div style="color:#8b8fa3;">Waiting for scraper activity...</div>
         </div>
     </div>
 
@@ -448,12 +487,10 @@ HTML = """
 
     <div class="actions">
         <button class="btn btn-export" onclick="exportWithFilters('csv')">📥 Export CSV</button>
-        <button class="btn btn-export" onclick="exportWithFilters('json')">📥 Export JSON</button>
-        <button class="btn btn-scrape" id="scrape-btn" onclick="startScrape()">🚀 Start Scrape</button>
-        <button class="btn" style="background:#238636;" onclick="startFastScrape()">⚡ Fast Scrape</button>
-        <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📋 View Logs</button>
-        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🗑️ Clean Empty</button>
-        <button class="btn" style="background:#d29922;" onclick="updateQuality()">📊 Update Quality</button>
+        <button class="btn btn-scrape" id="scrape-btn" onclick="startScraperPool()">🚀 Start Business Scraper</button>
+        <button class="btn" style="background:#238636;" onclick="startFastScrape()">⚡ Fast Scrape (Parallel)</button>
+        <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📂 Raw HTML Logs</button>
+        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🗑️ Cleanup</button>
     </div>
 
     <div id="notification" class="notification"></div>
@@ -482,24 +519,72 @@ HTML = """
 
             // Update status card
             const statusEl = document.getElementById('live-status');
+            const progressContainer = document.getElementById('scrape-progress');
+            const progressBar = document.getElementById('progress-bar');
+            const skippedEl = document.getElementById('skipped-status');
             const statusData = data.scraper_status || {};
             
             if (statusData.running) {
                 let msg = statusData.message || 'Scraping...';
-                if (statusData.stats && statusData.stats.leads !== undefined) {
-                    msg += `<br><span style="font-size:12px;opacity:0.8;color:#58a6ff;">✨ ${statusData.stats.leads} leads found on this page</span>`;
-                }
                 statusEl.innerHTML = msg;
                 statusEl.className = 'val status-running pulse';
+                
+                if (statusData.stats) {
+                    const s = statusData.stats;
+                    if (s.page && s.total_pages) {
+                        const pct = Math.round((s.page / s.total_pages) * 100);
+                        progressContainer.style.display = 'block';
+                        progressBar.style.width = pct + '%';
+                    }
+                    if (s.source) {
+                        skippedEl.innerText = `Source: ${s.source} | ${s.leads || 0} found`;
+                    }
+                }
+                
                 document.getElementById('scrape-btn').disabled = true;
-                document.getElementById('scrape-btn').innerText = '🚧 Scraping...';
+                document.getElementById('scrape-btn').innerText = '🚧 Working...';
             } else {
                 statusEl.innerText = 'Idle';
                 statusEl.className = 'val status-idle';
+                progressContainer.style.display = 'none';
+                skippedEl.innerText = '';
                 document.getElementById('scrape-btn').disabled = false;
-                document.getElementById('scrape-btn').innerText = '🚀 Start Scrape';
+                document.getElementById('scrape-btn').innerText = '🚀 Start Business Scraper';
+            }
+
+            // Update Activity Log
+            if (data.activity_logs && data.activity_logs.length > 0) {
+                const logContainer = document.getElementById('activity-log');
+                const logCount = document.getElementById('log-count');
+                logCount.innerText = data.activity_logs.length + ' events';
+                
+                let html = '';
+                data.activity_logs.forEach(log => {
+                    const color = log.level === 'ERROR' ? '#f85149' : (log.level === 'SUCCESS' ? '#3fb950' : '#8b8fa3');
+                    html += `<div style="margin-bottom:4px;"><span style="color:#484f58;">[${log.time}]</span> <span style="color:#58a6ff; font-weight:bold;">${log.source || 'SYS'}</span> <span style="color:${color};">${log.message}</span></div>`;
+                });
+                logContainer.innerHTML = html;
             }
         };
+
+        function startScraperPool() {
+            const city = document.getElementById('filter-city').value;
+            const cat = document.getElementById('filter-category').value;
+            
+            if (!city || !cat) {
+                 showNotification("Please select both a City and Category first!", true);
+                 return;
+            }
+
+            showNotification(`Starting scrape for ${cat} in ${city}...`);
+            fetch('/api/trigger/scrape', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({city: city, category: cat, use_business: true})
+            }).then(r=>r.json()).then(d=>{
+                showNotification(d.message || d.error);
+            });
+        }
 
         function startFastScrape(){
             const btn = document.getElementById('scrape-btn');
@@ -1082,42 +1167,24 @@ def trigger_scrape():
         if use_business
         else "Official Sources (AMFI, IRDAI, ICAI)"
     )
-    return jsonify(
-        {
-            "message": f"🚀 Batch scrape queued for {source_type} across {pair_count} city/category combinations!",
-            "tasks": 1,
-            "pairs": pair_count,
-            "source_type": source_type,
-            "use_business": use_business,
-        }
-    )
-
+    try:
+        data = request.json or {}
+        use_business = data.get("use_business", False)
+        scrape_all_task.delay(use_business=use_business)
+        return jsonify({"message": "🚀 Batch scrape queued for all cities/categories!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/trigger/fast-scrape", methods=["POST"])
 def trigger_fast_scrape():
     """Trigger fast parallel scraping with higher concurrency"""
     from tasks import fast_scrape_task
-    from tasks import _load_runtime_config
-
-    config = _load_runtime_config()
-    cities = config.get("cities", [])
-    categories = config.get("categories", [])
-    pair_count = len(cities) * len(categories)
-
-    max_concurrent = request.args.get("concurrency", 3, type=int)
-
-    fast_scrape_task.delay(
-        source=None, use_business=False, max_concurrent=max_concurrent
-    )
-
-    return jsonify(
-        {
-            "message": f"⚡ Fast scrape queued! {pair_count} jobs with concurrency={max_concurrent}",
-            "type": "fast_parallel",
-            "jobs": pair_count,
-            "concurrency": max_concurrent,
-        }
-    )
+    try:
+        max_concurrent = request.args.get("concurrency", 5, type=int)
+        fast_scrape_task.delay(max_concurrent=max_concurrent)
+        return jsonify({"message": f"⚡ Fast scrape queued with concurrency={max_concurrent}!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/contacts")
@@ -1415,43 +1482,71 @@ def stream_stats():
                 )
                 with_email = cur.fetchone()["cnt"]
 
-                cur.close()
-                conn.close()
-
-                # Get scraper status from Redis
+                # Get scraper status from Redis or Database
                 status_data = {}
                 if redis_client:
-                    raw_status = redis_client.get("scraper_status")
-                    if raw_status:
-                        status_data = json.loads(raw_status)
+                    try:
+                        raw_status = redis_client.get("scraper_status")
+                        if raw_status:
+                            status_data = json.loads(raw_status)
+                    except Exception:
+                        pass
+                
+                # DB Fallback if Redis failed or returned nothing
+                if not status_data:
+                    try:
+                        cur = conn.cursor()
+                        cur.execute("SELECT value FROM system_status WHERE key = 'scraper_status'")
+                        row = cur.fetchone()
+                        if row:
+                            status_data = json.loads(row["value"])
+                        cur.close()
+                    except Exception:
+                        pass
+
+                # Get latest activity logs
+                latest_logs = []
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT level, message, source, created_at FROM scraper_logs ORDER BY created_at DESC LIMIT 10")
+                    rows = cur.fetchall()
+                    for r in rows:
+                        latest_logs.append({
+                            "level": r["level"],
+                            "message": r["message"],
+                            "source": r["source"],
+                            "time": r["created_at"].strftime("%H:%M:%S") if hasattr(r["created_at"], "strftime") else str(r["created_at"])
+                        })
+                    cur.close()
+                except Exception:
+                    pass
 
                 data = {
                     "total": total,
                     "with_phone": with_phone,
                     "with_email": with_email,
                     "timestamp": int(time.time()),
-                    "scraper_status": status_data
+                    "scraper_status": status_data,
+                    "activity_logs": latest_logs
                 }
 
-                # Send if data changed OR if scraper is running (to update progress)
-                is_running = status_data.get("running", False)
-                if (
-                    total != last_total
-                    or with_phone != last_phone
-                    or with_email != last_email
-                    or is_running
-                ):
-                    yield f"data: {json.dumps(data)}\n\n"
-                    last_total = total
-                    last_phone = with_phone
-                    last_email = with_email
+                # Send data
+                yield f"data: {json.dumps(data)}\n\n"
+                last_total = total
+                last_phone = with_phone
+                last_email = with_email
+                
+                # Small delay to prevent CPU hammering
+                time.sleep(2)
             except Exception as e:
-                logger.error(f"SSE Error: {e}")
-                yield f"data: {json.dumps({'error': str(e), 'running': False})}\n\n"
-            
-            time.sleep(2)
-            
-            time.sleep(2)  # Check every 2 seconds
+                logger.error(f"SSE Stat Stream Error: {e}")
+                time.sleep(5)
+            finally:
+                if 'conn' in locals() and conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
 
     return Response(generate(), mimetype="text/event-stream")
 
