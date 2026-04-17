@@ -36,24 +36,41 @@ class FastScraperConfig:
         # Security: Prefer environment variables for proxies (Railway best practice)
         self.proxy_list = []
         env_proxy_host = os.environ.get("PROXY_HOST")
+        
+        # Determine source for logging
         if env_proxy_host:
+            source = "Environment (PROXY_HOST)"
             env_proxy_port = os.environ.get("PROXY_PORT", "")
-            # Build host:port string if port is provided separately
+            
+            # Build host:port string if port is provided separately and not in host
             if env_proxy_port and ":" not in env_proxy_host:
                 proxy_host = f"{env_proxy_host}:{env_proxy_port}"
             else:
                 proxy_host = env_proxy_host
+                
+            proxy_user = os.environ.get("PROXY_USER")
+            proxy_pass = os.environ.get("PROXY_PASS")
+            
             self.proxy_list.append({
                 "host": proxy_host,
-                "username": os.environ.get("PROXY_USER"),
-                "password": os.environ.get("PROXY_PASS")
+                "username": proxy_user,
+                "password": proxy_pass
             })
-            # Validate port is present
+            
+            # Security-aware logging: Mask sensitive parts
+            masked_host = proxy_host.split("@")[-1]  # In case host string already contains credentials
+            logger.info(f"✅ Proxy configured from {source}: {masked_host}")
+            
+            # Validation: Port is critical for residential proxies
             if ":" not in proxy_host.split("//")[-1]:
-                logger.warning(f"⚠️  PROXY HAS NO PORT! Host='{proxy_host}'. Set PROXY_PORT env var.")
-            logger.info(f"✅ Proxy configured: {proxy_host}")
+                logger.warning(f"⚠️  PROXY MUDDLED! Host '{masked_host}' has no port. Residents usually need :80, :823, etc.")
         else:
-            self.proxy_list = config_dict.get("proxies", [])
+            config_proxies = config_dict.get("proxies", [])
+            if config_proxies:
+                self.proxy_list = config_proxies
+                logger.info(f"✅ Proxy configured from Config File: {len(self.proxy_list)} proxies")
+            else:
+                logger.warning("⚠️  NO PROXY CONFIGURED! Running on direct IP (Risk of ban).")
 
 
 class ParallelScraper:

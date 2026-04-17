@@ -635,17 +635,21 @@ HTML = """
             }
         };
         function startScraperPool() {
-            const manualCity = document.getElementById('trigger-city').value;
-            const manualCat = document.getElementById('trigger-category').value;
-            const filterCity = document.getElementById('filter-city').value;
-            const filterCat = document.getElementById('filter-category').value;
+            const manualCity = document.getElementById('trigger-city')?.value?.trim();
+            const manualCat = document.getElementById('trigger-category')?.value?.trim();
+            const filterCity = document.getElementById('filter-city')?.value?.trim();
+            const filterCat = document.getElementById('filter-category')?.value?.trim();
             
+            // Prioritize manual input, fallback to selected filters
             const city = manualCity || filterCity;
             const cat = manualCat || filterCat;
             
             if (!city || !cat) {
-                 showNotification("Please enter or select both a City and Category first!", true);
-                 return;
+                const missing = [];
+                if (!city) missing.push("City");
+                if (!cat) missing.push("Category");
+                showNotification(`Missing target: Please ${manualCity === undefined ? 'select' : 'enter or select'} a ${missing.join(" and ")} first!`, true);
+                return;
             }
 
             const btnPrimary = document.getElementById('scrape-btn-primary');

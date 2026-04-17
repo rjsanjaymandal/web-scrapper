@@ -56,15 +56,8 @@ try:
         LinkedInGoogleScraper,
     )
 
-    # Register enhanced scrapers
-    ScraperRegistry.register(SulekhaScraper())
-    ScraperRegistry.register(ClickIndiaScraper())
-    ScraperRegistry.register(GrotalScraper())
-    ScraperRegistry.register(SEBIScraper())
-    ScraperRegistry.register(NSEScraper())
-    ScraperRegistry.register(GoogleMapsScraper())
-    ScraperRegistry.register(LinkedInGoogleScraper())
-    ScraperRegistry.register(GoogleDorkScraper())
+    # Registration handled at end of file to ensure all classes are defined
+    pass
 except ImportError as e:
     logger.warning(f"Failed to import/register enhanced scrapers: {e}")
 
@@ -3547,17 +3540,32 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-# Register scrapers
-ScraperRegistry.register(JustDialScraper())
-ScraperRegistry.register(IndiaMartScraper())
-ScraperRegistry.register(ICICIScraper())
-ScraperRegistry.register(AMFIScraper())
-ScraperRegistry.register(ICSIScraper())
-ScraperRegistry.register(SEBIScraper())
-ScraperRegistry.register(NSEBrokerScraper())
-ScraperRegistry.register(BSEBrokerScraper())
-ScraperRegistry.register(GSTPractitionerScraper())
-ScraperRegistry.register(RBIRegulatedScraper())
-ScraperRegistry.register(YellowPagesScraper())
-ScraperRegistry.register(TradeIndiaScraper())
-ScraperRegistry.register(GoogleDorkScraper())
+# Global Scraper Registry Initialization
+# We register all available scrapers here to ensure ScraperRegistry.get() works across the app.
+try:
+    # Official / Regulated Sources
+    ScraperRegistry.register(AMFIScraper())           # AMFI (Mutual Funds)
+    ScraperRegistry.register(IRDAIScraper())          # IRDAI (Insurance)
+    ScraperRegistry.register(ICAIScraper())           # ICAI (Tax/CA)
+    ScraperRegistry.register(ICSIScraper())           # ICSI (Company Secretaries)
+    ScraperRegistry.register(SEBIScraper())           # SEBI (Investment Advisors)
+    ScraperRegistry.register(NSEBrokerScraper())      # NSE (Stock Brokers)
+    ScraperRegistry.register(BSEBrokerScraper())      # BSE (Stock Brokers)
+    ScraperRegistry.register(GSTPractitionerScraper()) # GST Practitioners
+    ScraperRegistry.register(RBIRegulatedScraper())   # RBI (Banks/NBFC)
+    
+    # Business Directories & Deep Scrapers
+    ScraperRegistry.register(JustDialScraper())
+    ScraperRegistry.register(YellowPagesScraper())
+    ScraperRegistry.register(IndiaMartScraper())
+    ScraperRegistry.register(TradeIndiaScraper())
+    ScraperRegistry.register(SulekhaScraper())
+    ScraperRegistry.register(ClickIndiaScraper())
+    ScraperRegistry.register(GrotalScraper())
+    ScraperRegistry.register(GoogleMapsScraper())
+    ScraperRegistry.register(LinkedInGoogleScraper())
+    ScraperRegistry.register(GoogleDorkScraper())     # Source: FOOTPRINT
+    
+    logger.info(f"✅ Scraper Registry initialized with {len(ScraperRegistry.list_scrapers())} sources")
+except Exception as e:
+    logger.error(f"❌ Critical Error during Scraper Registration: {e}")
