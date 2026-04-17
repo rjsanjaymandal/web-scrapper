@@ -40,6 +40,7 @@ class FastScraperConfig:
         self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", 3))
         self.block_resources = True
         self.redis_url = os.environ.get("REDIS_URL")
+        self.enable_city_targeting = os.environ.get("PROXY_CITY_TARGETING", "false").lower() == "true"
 
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
@@ -193,9 +194,11 @@ class ParallelScraper:
             if ctx:
                 await ctx.close()
 
-    async def _setup_context(self) -> BrowserContext:
+    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None) -> BrowserContext:
         user_agent = StealthManager.get_random_ua()
         extra_headers = StealthManager.get_modern_headers(user_agent)
+        
+        from stealth_utils import DataImpulseManager
 
         # Selection of proxy if available
         proxy_config = None
@@ -207,7 +210,12 @@ class ParallelScraper:
                 host = f"http://{host}"
             proxy_config = {
                 "server": host,
-                "username": p.get("username"),
+                "username": DataImpulseManager.format_auth(
+                    p.get("username"), 
+                    city=city, 
+                    session_id=session_id,
+                    enable_city=self.config.enable_city_targeting
+                ),
                 "password": p.get("password")
             }
             logger.debug(f"Worker using proxy: {host}")
@@ -265,7 +273,18 @@ class ParallelScraper:
 
             context = None
             page = None
+            
+            # Generate a unique session ID for this job to maintain Sticky IP consistency
+            import uuid
+            session_id = str(uuid.uuid4())[:8]
+            
             for attempt in range(self.config.max_retries):
+                # If we detected a block in the previous attempt, 
+                # rotate the session_id to get a fresh IP for the retry.
+                if attempt > 0:
+                    session_id = str(uuid.uuid4())[:8]
+                    logger.info(f"🛡️  Rotating Sticky Session: New IP requested for attempt {attempt+1}")
+
                 url = scraper.build_search_url(city, category)
                 
                 # ==== PHASE 1: HYBRID HTTP FETCH (Enterprise Speed Loop) ====
@@ -308,7 +327,7 @@ class ParallelScraper:
                             logger.error("🛑 CRITICAL MEMORY: Aborting job to prevent restart.")
                             return 0
 
-                    context = await self._setup_context()
+                    context = await self._setup_context(city=city, session_id=session_id)
                     page = await context.new_page()
                     await page.goto(
                         url, timeout=self.config.timeout, wait_until="domcontentloaded"

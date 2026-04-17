@@ -13,7 +13,64 @@ try:
 except ImportError:
     ua_generator = None
 
+import uuid
+
 logger = logging.getLogger(__name__)
+
+class DataImpulseManager:
+    """Specialized manager for DataImpulse Enterprise Proxy parameters."""
+    
+    @staticmethod
+    def format_auth(
+        username: str, 
+        city: Optional[str] = None, 
+        session_id: Optional[str] = None, 
+        duration: int = 300,
+        enable_city: bool = False
+    ) -> str:
+        """
+        Formats username with sticky sessions and location parameters.
+        Format: user__sid.{sid};cr.{country};ct.{city};intvlv.{seconds}
+        """
+        if not username:
+            return ""
+            
+        # If it's not a DataImpulse user, return as is
+        # (DataImpulse usernames are usually long hex strings or contain 'dataimpulse')
+        if len(username) < 10 and "data" not in username.lower():
+            return username
+
+        params = []
+        
+        # 1. Location Targeting
+        if enable_city and city:
+            # City targeting (Costs 2x)
+            # Normalize city name: lowercase, no spaces
+            clean_city = city.lower().replace(" ", "")
+            params.append(f"ct.{clean_city}")
+            # Country is implied but we can be explicit
+            params.append("cr.in")
+        else:
+            # Standard Country targeting (Default: India)
+            if "__cr." not in username:
+                params.append("cr.in")
+
+        # 2. Session Persistence (Sticky IP)
+        if session_id:
+            # sid.randomString allows keeping the same IP
+            params.append(f"sid.{session_id}")
+            # Set duration for sticky session
+            params.append(f"intvlv.{duration}")
+
+        if not params:
+            return username
+
+        # Join parameters with delimiter __ and separator ;
+        # The base username must come first
+        base_user = username.split("__")[0]
+        param_string = ";".join(params)
+        
+        return f"{base_user}__{param_string}"
 
 class StealthManager:
     """Manages browser stealth, user-agent rotation, and header spoofing."""
