@@ -1268,14 +1268,13 @@ class IRDAIScraper(BaseScraper):
 
 
 class ICAIScraper(BaseScraper):
-    """Scraper for ICAI CA directory data (caconnect.icai.org)"""
+    """Modernized Scraper for ICAI (Chartered Accountants) - Handles 2026 portal"""
 
     source_name = "ICAI"
-
-    MEMBER_SEARCH_URL = "https://caconnect.icai.org/city-wise-list"
+    MEMBER_SEARCH_URL = "https://eservices.icai.org/traceamember"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return f"{self.MEMBER_SEARCH_URL}/{city.title()}"
+        return self.MEMBER_SEARCH_URL
 
     @staticmethod
     def _clean_phone(phone: str) -> Optional[str]:
@@ -1385,14 +1384,13 @@ class ICAIScraper(BaseScraper):
 
 
 class ICSIScraper(BaseScraper):
-    """Scraper for ICSI (Institute of Company Secretaries of India) directory"""
+    """Modernized Scraper for ICSI (Company Secretaries) - Handles 2026 'Stimulate' portal"""
 
     source_name = "ICSI"
-
-    MEMBER_SEARCH_URL = "https://www.icsi.edu/member/search"
+    MEMBER_SEARCH_URL = "https://stimulate.icsi.edu/members/MemberSearch.aspx"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return f"{self.MEMBER_SEARCH_URL}?city={city.lower()}"
+        return self.MEMBER_SEARCH_URL
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -1740,15 +1738,13 @@ class NSEBrokerScraper(BaseScraper):
 
 
 class BSEBrokerScraper(BaseScraper):
-    """Scraper for BSE (Bombay Stock Exchange) registered brokers"""
+    """Modernized Scraper for BSE (Bombay Stock Exchange) - Handles 2026 portal structure"""
 
     source_name = "BSE"
+    BASE_URL = "https://www.bseindia.com/corporates/List_Scrips.aspx"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return "https://www.bseindia.com/corporates/mktdata.html"
-
-    async def get_detail_url(self, card) -> Optional[str]:
-        return None
+        return self.BASE_URL
 
     async def extract_listings(
         self,
@@ -1758,39 +1754,52 @@ class BSEBrokerScraper(BaseScraper):
         html_content: str = None,
     ) -> List[Dict]:
         listings = []
-        logger.info(f"BSE: Starting extraction for city={city}")
+        logger.info(f"BSE: Targeted extraction for city={city}")
 
         try:
-            await page.wait_for_selector("body", timeout=15000)
-            page_url = page.url
-            logger.info(f"BSE: Page URL: {page_url}")
+            # Phase 1: Interactive Portal Navigation
+            await page.wait_for_selector("#ContentPlaceHolder1_ddlSegment", timeout=15000)
+            
+            # Select Equity segment for widest search
+            await page.select_option("#ContentPlaceHolder1_ddlSegment", "Equity")
+            # Select Active status
+            await page.select_option("#ContentPlaceHolder1_ddlStatus", "Active")
+            
+            await page.click("#ContentPlaceHolder1_btnSubmit")
+            await page.wait_for_load_state("networkidle")
+            
+            # Phase 2: High-Fidelity Extraction
+            soup = BeautifulSoup(html_content or await page.content(), "lxml")
+            rows = soup.select("table[id*='gvScrips'] tr")
+            
+            if not rows:
+                # Fallback to general table search
+                rows = soup.select(".table-striped tr, .common-table tr")
 
-            body_text = await page.inner_text("body")
+            for row in rows[1:]: # Skip header
+                cols = row.select("td")
+                if len(cols) >= 3:
+                    name = cols[1].get_text(strip=True)
+                    code = cols[0].get_text(strip=True)
+                    
+                    if name and len(name) > 3:
+                        listings.append({
+                            "name": name[:150],
+                            "member_code": code,
+                            "city": city,
+                            "phone": None,
+                            "email": None,
+                            "address": None,
+                            "status": "Active",
+                            "source": "BSE Official"
+                        })
 
-            name_pattern = re.compile(
-                r"([A-Z][A-Z\s]+(?:Broking|Securities|Pvt|Ltd|Stock)[^\d\n]{2,50})",
-                re.IGNORECASE,
-            )
-            matches = name_pattern.findall(body_text)
-
-            for match in matches[:30]:
-                listings.append(
-                    {
-                        "name": match.strip()[:100],
-                        "member_code": None,
-                        "city": city,
-                        "phone": None,
-                        "email": None,
-                        "address": None,
-                        "area": None,
-                        "detail_url": None,
-                    }
-                )
-
-            logger.info(f"BSE: Total listings extracted: {len(listings)}")
+            logger.info(f"BSE: Successfully extracted {len(listings)} authorized entities.")
 
         except Exception as e:
-            logger.error(f"BSE: Extraction error: {e}")
+            logger.error(f"BSE Enterprise Error: {e}. Falling back to raw regex.")
+            # Enterprise Fallback: Call the base class regex engine if UI fails
+            listings = self.extract_raw_fallback(html_content or await page.content(), city, category)
 
         return listings
 
@@ -2068,22 +2077,6 @@ class YellowPagesScraper(BaseScraper):
                         f"YellowPages: Found {len(cards)} cards with selector: {sel}"
                     )
                     break
-                # If no phones found, try email-only leads
-                if not seen_phones:
-                    for i, email in enumerate(emails_found[:10]):
-                        name = name_candidates[i] if i < len(name_candidates) else f"YellowPages Lead {i+1}"
-                        listings.append({
-                            "name": name[:100],
-                            "phone": None,
-                            "email": email,
-                            "address": None,
-                            "city": city,
-                            "area": None,
-                            "detail_url": None,
-                        })
-                
-                logger.info(f"YellowPages: Text extraction found {len(listings)} leads ({len(seen_phones)} phones, {len(emails_found)} emails)")
-                return listings
 
             for card in cards:
                 try:

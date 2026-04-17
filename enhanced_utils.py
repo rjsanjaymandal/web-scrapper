@@ -233,10 +233,11 @@ class GrotalScraper(BaseScraper):
 
 
 class SEBIScraper(BaseScraper):
-    """Specialized scraper for SEBI Registered Investment Advisors."""
+    """Specialized scraper for SEBI Registered Investment Advisors and Intermediaries."""
     source_name = "SEBI"
     
-    SEARCH_URL = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFpi=yes&intmId=13"
+    # Official portal for 2026
+    SEARCH_URL = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return self.SEARCH_URL
@@ -244,21 +245,49 @@ class SEBIScraper(BaseScraper):
     async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         listings = []
         try:
-            soup = BeautifulSoup(html_content or await page.content(), 'lxml')
-            table = soup.select_one('table.table-striped, #sample_1')
+            # Phase 1: Interactive Search (Triggering the server-side action)
+            # If we are in a live page, we might need to select the category
+            try:
+                if not html_content:
+                    await page.wait_for_selector("select[name='intmId']", timeout=10000)
+                    # 13 is the internal ID for Investment Advisers
+                    await page.select_option("select[name='intmId']", "13")
+                    await page.click("input[type='submit']")
+                    await page.wait_for_load_state("networkidle")
+            except: pass
+
+            # Phase 2: High-Fidelity Extraction
+            content = html_content or await page.content()
+            soup = BeautifulSoup(content, 'lxml')
+            
+            # SEBI uses 'table-striped' and '#sample_1' for their data grids
+            table = soup.select_one('table#sample_1, .table-striped, table[border="1"]')
+            
             if table:
-                rows = table.select('tr')[1:]
+                rows = table.select('tr')
                 for row in rows:
                     cols = row.select('td')
                     if len(cols) >= 3:
-                        listings.append({
-                            'name': cols[1].get_text(strip=True),
-                            'phone': None,
-                            'address': cols[2].get_text(strip=True),
-                            'arn': cols[0].get_text(strip=True)
-                        })
+                        name = cols[1].get_text(strip=True)
+                        reg_no = cols[0].get_text(strip=True)
+                        addr = cols[2].get_text(strip=True)
+                        
+                        if name and "Name" not in name:
+                            listings.append({
+                                'name': name[:150],
+                                'registration_no': reg_no,
+                                'address': addr[:200],
+                                'city': city,
+                                'source': 'SEBI Registered'
+                            })
+            
+            if not listings:
+                logger.warning(f"SEBI: No leads in table. Checking for fallback regex.")
+                listings = self.extract_raw_fallback(content, city, category)
+
         except Exception as e:
-            logger.warning(f"SEBI extraction error: {e}")
+            logger.error(f"SEBI Enterprise Error: {e}")
+            
         return listings
 
 

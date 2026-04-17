@@ -2,6 +2,7 @@ import random
 import asyncio
 import logging
 import os
+import psutil
 import re
 from typing import Dict, List, Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext
@@ -43,6 +44,20 @@ class FastScraperConfig:
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
         
+        # Enterprise Infrastructure: Global source throttling map
+        # Ensures sensitive sites like Google aren't hammered, preventing CAPTCHAs.
+        self.delay_map = {
+            "FOOTPRINT": 15.0,  # High Cooldown for Google
+            "NSE": 5.0,
+            "BSE": 5.0,
+            "SEBI": 3.0,
+            "AMFI": 1.0,        # Trusted APIs can be faster
+            "DEFAULT": 2.0
+        }
+        
+        # Memory Safety: Railway vCPU/RAM monitoring threshold
+        self.memory_threshold = 0.85 
+        
         # Security: Prefer environment variables for proxies (Railway best practice)
         self.proxy_list = []
         env_proxy_host = os.environ.get("PROXY_HOST")
@@ -69,6 +84,12 @@ class FastScraperConfig:
             proxy_user = os.environ.get("PROXY_USER", "").strip()
             proxy_pass = os.environ.get("PROXY_PASS", "").strip()
             
+            # Enterprise Update: Auto-append country suffix for DataImpulse Indian residential proxies
+            # This fixes 'ERR_TUNNEL_CONNECTION_FAILED' caused by missing geo-targeting strings.
+            if proxy_user and "dataimpulse.com" in env_proxy_host.lower() and "__cr." not in proxy_user:
+                proxy_user = f"{proxy_user}__cr.in"
+                logger.info(f"🛡️  Harden: Auto-appended country suffix to proxy user: {proxy_user[:5]}...__cr.in")
+
             # If they are empty strings after stripping, set to None so we don't pass empty auth
             proxy_user = proxy_user if proxy_user else None
             proxy_pass = proxy_pass if proxy_pass else None
@@ -276,18 +297,44 @@ class ParallelScraper:
 
                 # ==== PHASE 2: BROWSER FALLBACK ====
                 try:
+                    # Memory Safety Check: Prevent OOM on Railway
+                    mem_percent = psutil.virtual_memory().percent
+                    if mem_percent > self.config.memory_threshold * 100:
+                        wait_time = random.uniform(5.0, 10.0)
+                        logger.warning(f"⚠️  High Memory Usage ({mem_percent}%). Cooling down for {wait_time:.1f}s...")
+                        await asyncio.sleep(wait_time)
+                        # Re-check or continue
+                        if mem_percent > 95:
+                            logger.error("🛑 CRITICAL MEMORY: Aborting job to prevent restart.")
+                            return 0
+
                     context = await self._setup_context()
                     page = await context.new_page()
                     await page.goto(
                         url, timeout=self.config.timeout, wait_until="domcontentloaded"
                     )
                     listings = await scraper.extract_listings(page, city, category)
+                    
+                    # WAF / Block Detection Logic
+                    page_title = await page.title()
+                    body_text = await page.evaluate("() => document.body.innerText.substring(0, 500)")
+                    
+                    block_keywords = [
+                        "Access Denied", "Forbidden", "403", "404", "Not Found", 
+                        "Resource cannot be found", "Unusual traffic", "Verify you are human",
+                        "Checking your browser", "Cloudflare", "Server Error"
+                    ]
+                    
+                    is_blocked = any(kw.lower() in page_title.lower() or kw.lower() in body_text.lower() for kw in block_keywords)
+                    
+                    if is_blocked and not listings:
+                        logger.warning(f"🛡️  WAF/Block detected on {source_name} (Title: {page_title})")
+                        raise Exception(f"WAF Block detected: {page_title}")
+
                     logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
 
                     if not listings:
-                        title = await page.title()
-                        body = await page.inner_text("body")
-                        logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {title} | Body: {body[:100].replace('\\n', ' ')}")
+                        logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {page_title} | Body: {body_text[:100].replace('\n', ' ')}")
 
                     if listings:
                         processed = ProcessingHandler.process_batch(listings)
@@ -328,9 +375,11 @@ class ParallelScraper:
                         await page.close()
                     if context:
                         await context.close()
-                    # Sleep briefly to avoid slamming proxies across attempts
+                    # Sleep based on Adaptive Delay Map
+                    delay = self.config.delay_map.get(source_name, self.config.delay_map["DEFAULT"])
                     if attempt < self.config.max_retries - 1:
-                        await asyncio.sleep(random.uniform(1.5, 4.0))
+                        # Add some jitter to avoid pattern detection
+                        await asyncio.sleep(delay + random.uniform(2.0, 5.0))
 
     async def _batch_insert(
         self, listings: List[Dict], category: str, city: str, source: str
