@@ -1942,11 +1942,25 @@ class TradeIndiaScraper(BaseScraper):
         try:
             await page.wait_for_selector("body", timeout=15000)
 
-            cards = await page.query_selector_all(
-                ".company-list .company-item, .search-result .result-item, .card, [class*='company'], article"
-            )
+            # Modern 2026 Card Selectors (Styled Components)
+            card_selectors = [
+                ".sc-c97d860b-0", 
+                "div[class*='ProductCard']",
+                ".listing-card",
+                ".results-container > div",
+                ".company-list .company-item", 
+                ".search-result .result-item"
+            ]
+
+            cards = []
+            for sel in card_selectors:
+                cards = await page.query_selector_all(sel)
+                if cards:
+                    logger.info(f"TradeIndia: Found {len(cards)} cards with selector: {sel}")
+                    break
 
             if not cards:
+                # Regex Fallback (already optimized)
                 body_text = await page.inner_text("body")
                 phone_pattern = re.compile(r'(?:\+91[\-\s]?)?[6-9]\d{4}[\-\s]?\d{5}')
                 email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
@@ -1958,45 +1972,35 @@ class TradeIndiaScraper(BaseScraper):
                 seen_phones = set()
                 for i, phone in enumerate(phones_found):
                     clean = re.sub(r'[^\d]', '', phone)[-10:]
-                    if clean in seen_phones:
-                        continue
+                    if clean in seen_phones: continue
                     seen_phones.add(clean)
                     listings.append({
                         "name": (name_candidates[i] if i < len(name_candidates) else f"TradeIndia Lead {i+1}")[:100],
                         "phone": clean, "email": emails_found[i] if i < len(emails_found) else None,
                         "address": None, "city": city, "area": None, "detail_url": None,
+                        "source": "TRADEINDIA_REGEX"
                     })
                 return listings
 
             for card in cards:
                 try:
-                    name = await self._get_text(
-                        card, "h3, h2, h4, .company-name, .company-title"
-                    )
-                    phone = await self._get_text(
-                        card, ".phone, .contact, [class*='mobile']"
-                    )
-                    address = await self._get_text(card, ".address, .location, .loc")
+                    name = await self._get_text(card, "h3, .company-name, [class*='CompanyName']")
+                    location = await self._get_text(card, "span[class*='fBXBUU'], .location, .city")
+                    detail_url = await self.get_detail_url(card)
 
-                    if name and len(name.strip()) > 2:
-                        listings.append(
-                            {
-                                "name": name.strip()[:150],
-                                "phone": self._clean_phone(phone) if phone else None,
-                                "email": None,
-                                "address": address.strip() if address else None,
-                                "city": city,
-                                "area": None,
-                                "detail_url": await self.get_detail_url(card),
-                            }
-                        )
-                except:
+                    if name:
+                        listings.append({
+                            "name": name.strip(),
+                            "city": location.strip() if location else city,
+                            "phone": None, # TradeIndia 2026: Hidden behind Lead-Gen modal
+                            "source": "TRADEINDIA_UI",
+                            "detail_url": detail_url
+                        })
+                except Exception as e:
+                    logger.debug(f"TradeIndia: Row parse error: {e}")
                     continue
-
-            logger.info(f"TradeIndia: Total listings extracted: {len(listings)}")
-
         except Exception as e:
-            logger.error(f"TradeIndia: Extraction error: {e}")
+            logger.warning(f"TradeIndia extraction error: {e}")
 
         return listings
 

@@ -28,6 +28,19 @@ class BaseScraper(ABC):
         """Extract contact listings from the current page."""
         pass
 
+    def _clean_phone(self, phone: str) -> Optional[str]:
+        if not phone:
+            return None
+        # Remove all non-numeric characters
+        digits = re.sub(r"[^\d]", "", str(phone))
+        # Handle Indian numbers: if 12 digits starting with 91, take last 10
+        if len(digits) == 12 and digits.startswith("91"):
+            return digits[-10:]
+        # Standard 10 digits
+        if len(digits) >= 10:
+            return digits[-10:]
+        return digits if digits else None
+
     @property
     def force_http1(self) -> bool:
         """Whether to force HTTP/1.1 for this source."""
