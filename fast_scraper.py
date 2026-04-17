@@ -5,7 +5,7 @@ import os
 import psutil
 import re
 from typing import Dict, List, Optional
-from playwright.async_api import async_playwright, Browser, BrowserContext
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 import asyncpg
 try:
     import redis.asyncio as redis
