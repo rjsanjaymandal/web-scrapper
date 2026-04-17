@@ -39,6 +39,7 @@ class FastScraperConfig:
         
         # Determine source for logging
         if env_proxy_host:
+            env_proxy_host = env_proxy_host.strip()
             source = "Environment (PROXY_HOST)"
             # Build host:port string if port is provided separately and not in host
             if ":" not in env_proxy_host:
@@ -53,8 +54,12 @@ class FastScraperConfig:
             else:
                 proxy_host = env_proxy_host
                 
-            proxy_user = os.environ.get("PROXY_USER")
-            proxy_pass = os.environ.get("PROXY_PASS")
+            proxy_user = os.environ.get("PROXY_USER", "").strip()
+            proxy_pass = os.environ.get("PROXY_PASS", "").strip()
+            
+            # If they are empty strings after stripping, set to None so we don't pass empty auth
+            proxy_user = proxy_user if proxy_user else None
+            proxy_pass = proxy_pass if proxy_pass else None
             
             self.proxy_list.append({
                 "host": proxy_host,
