@@ -306,19 +306,25 @@ class ParallelScraper:
                     await route.abort()
                 else:
                     await route.continue_()
-
             await context.route("**/*", block_aggressively)
 
         return context
 
-    async def scrape_job(self, city: str, category: str, source_name: str) -> int:
-        """Run a single scraper job within the semaphore limit (With Auto-Retry and Proxy Swap)."""
-        async with self.semaphore:
-            scraper = ScraperRegistry.get(source_name)
-            if not scraper:
-                logger.error(f"No scraper found for {source_name}")
-                return 0
+    async def scrape_job(self, city: str, category: str, source_name: str, page_num: int = 1, results_handler=None) -> List[Dict]:
+        """
+        Executes a scraper job for a specific source, city, and category.
+        Returns the list of valid contacts found.
+        """
+        url = ""
+        scraper = ScraperRegistry.get(source_name)
+        if not scraper:
+            logger.error(f"Scraper not found for source: {source_name}")
+            return []
 
+        url = scraper.build_search_url(city, category, page_num)
+        logger.info(f"🚀 Starting Job: {source_name} | {city} | {category} | Page {page_num}")
+
+        async with self.semaphore:
             context = None
             page = None
             
@@ -388,7 +394,7 @@ class ParallelScraper:
                         # Re-check or continue
                         if mem_percent > 95:
                             logger.error("[ABORT] CRITICAL MEMORY: Aborting job to prevent restart.")
-                            return 0
+                            return []
 
                     # Enterprise Protocol Selection
                     force_h1 = scraper.force_http1 or source_name in self.config.force_http1_sources
@@ -435,11 +441,11 @@ class ParallelScraper:
                     if is_blocked and not listings:
                         logger.error(f"[HARDEN] CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job to save bandwidth.")
                         # Early Abort: Don't retry if clearly blocked
-                        return 0
+                        return []
 
                     if response and response.status in [403, 404]:
                         logger.error(f"[HARDEN] CRITICAL HTTP {response.status} on {source_name}. Aborting job to save bandwidth.")
-                        return 0
+                        return []
 
                     logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
 
@@ -460,7 +466,11 @@ class ParallelScraper:
                             )
                         
                         if valid:
-                            await self._batch_insert(valid, category, city, source_name)
+                            if results_handler:
+                                await results_handler(valid, category, city, source_name)
+                            else:
+                                await self._batch_insert(valid, category, city, source_name)
+
                             # Phase 4: Cache Authorized Cookies (Immunity Vault)
                             if self.redis_conn and context:
                                 new_cookies = await context.cookies()
@@ -469,11 +479,11 @@ class ParallelScraper:
                                 if cookie_str:
                                     await self.redis_conn.setex(f"cookies_{source_name}", 3600, cookie_str)
                                     logger.debug(f"Saved authorized session cookie to Redis for {source_name}")
-                        return len(valid)
+                        return valid
                         
                     # If we reach here and it's 0 leads, it might be a block. Break if last attempt.
                     if attempt == self.config.max_retries - 1:
-                        return 0
+                        return []
                         
                 except Exception as e:
                     err_str = str(e)
@@ -496,7 +506,7 @@ class ParallelScraper:
                     
                     if attempt == self.config.max_retries - 1:
                         logger.error(f"Job failed completely: {source_name} | {city}/{category}")
-                        return 0
+                        return []
                 finally:
                     if page:
                         await page.close()

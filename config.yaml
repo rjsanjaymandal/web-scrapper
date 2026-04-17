@@ -32,3 +32,20 @@ scraper_settings:
   max_retries: 5
   timeout: 45
   max_concurrent: 5
+  max_pages_per_source: 3
+
+distributed:
+  batch_size: 1000
+  write_interval: 30
+  task_queue: "scraper:tasks"
+  result_buffer: "scraper:results_buffer"
+
+cities:
+  - "mumbai"
+  - "delhi"
+  - "bangalore"
+
+categories:
+  - "mutual-fund-agents"
+  - "insurance-agents"
+  - "chartered-accountants"
