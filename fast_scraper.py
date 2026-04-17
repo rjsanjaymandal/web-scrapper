@@ -41,6 +41,8 @@ class FastScraperConfig:
         if env_proxy_host:
             env_proxy_host = env_proxy_host.strip()
             source = "Environment (PROXY_HOST)"
+            env_proxy_port = os.environ.get("PROXY_PORT", "").strip()
+            
             # Build host:port string if port is provided separately and not in host
             if ":" not in env_proxy_host:
                 if env_proxy_port:
