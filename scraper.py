@@ -429,6 +429,12 @@ class JustDialScraper(BaseScraper):
             matches = re.findall(r'[6-9]\d{9}', card_text.replace(" ", "").replace("-", ""))
             if matches:
                 return matches[0]
+            
+            # 2026: Check for hidden data attributes
+            html = await card.inner_html()
+            data_matches = re.findall(r'data-tel="(\d+)"', html)
+            if data_matches:
+                return data_matches[0]
 
         except Exception as e:
             logger.debug(f"JustDial: Phone extraction failed: {e}")
@@ -469,17 +475,15 @@ class JustDialScraper(BaseScraper):
             logger.info(f"Page content length: {len(page_content)}")
 
             card_selectors = [
+                ".resultbox", # 2026 Primary Card
+                ".jsx-17aafc05bdbc2ecd", # 2026 Component Class
                 ".store-list .store-info",
-                ".store-list .results",
+                ".results_listing_container > div",
                 ".store-info",
                 ".results .store-info",
-                '[class*="store"]',
                 ".listing-card",
                 ".business-card",
                 "li.store-data",
-                ".srch-result",
-                ".clg-listing",
-                ".search-result",
                 "article",
                 ".card",
             ]
@@ -536,12 +540,12 @@ class JustDialScraper(BaseScraper):
             for card in cards:
                 try:
                     name_selectors = [
+                        ".resultbox_title_anchor",
                         ".store-name",
                         ".name",
                         "h2",
                         "h3",
                         ".business-name",
-                        '[class*="name"]',
                         "a.store-name",
                     ]
                     name = None
@@ -553,10 +557,10 @@ class JustDialScraper(BaseScraper):
                     phone = await self._extract_phone(card)
 
                     addr_selectors = [
+                        "address", # 2026 Primary
                         ".store-address",
                         ".address",
                         ".addr",
-                        '[class*="address"]',
                     ]
                     address = None
                     for sel in addr_selectors:
@@ -681,8 +685,9 @@ class AMFIScraper(BaseScraper):
     ARN_BASE_URL = "https://www.amfiindia.com/load-distributor-data"
     SEARCH_API_URL = "https://www.amfiindia.com/api/distributor-agent"
 
-    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return f"https://www.amfiindia.com/api/distributor-agent?strOpt=ALL&city={city.replace(' ', '+')}&page={page}&pageSize=100"
+    def build_search_url(self, city: Optional[str], category: str, page: int = 1) -> str:
+        clean_city = (city or "").replace(' ', '+')
+        return f"https://www.amfiindia.com/api/distributor-agent?strOpt=ALL&city={clean_city}&page={page}&pageSize=100"
 
     async def scrape_via_api(self, city: str, page_num: int = 1) -> List[Dict]:
         """High-speed API extraction for AMFI (saves 95% bandwidth)"""
@@ -853,11 +858,14 @@ class IRDAIScraper(BaseScraper):
         logger.info(f"IRDAI: Starting extraction for city={city}, category={category}")
 
         try:
-            # Log page info
-            page_title = await page.title()
-            page_url = page.url
-            logger.info(f"IRDAI: Page title: {page_title}")
-            logger.info(f"IRDAI: Page URL: {page_url}")
+            # Log page info (Wrapped in try-except for navigation races)
+            try:
+                page_title = await page.title()
+                page_url = page.url
+                logger.info(f"IRDAI: Page title: {page_title}")
+                logger.info(f"IRDAI: Page URL: {page_url}")
+            except Exception as e:
+                logger.debug(f"IRDAI: Could not fetch title/url: {e}")
 
             # Determine state from city
             state = CITY_STATE_MAP.get((city or "").lower(), "MAHARASHTRA")

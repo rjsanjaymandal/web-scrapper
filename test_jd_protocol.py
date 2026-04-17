@@ -24,13 +24,12 @@ async def test_jd():
     
     try:
         # Test Delhi Chartered Accountants
-        count = await scraper_engine.scrape_job("Delhi", "Chartered Accountants", "JUSTDIAL")
-        logger.info(f"JustDial Test Finished. Extracted: {count} leads.")
-        
-        if count == 0 and "http2" in str(getattr(scraper_engine, 'last_error', '')).lower():
+        leads = await scraper_engine.scrape_job("Delhi", "Chartered Accountants", "JUSTDIAL")
+        logger.info(f"JustDial Test Finished. Extracted: {len(leads) if leads else 0} leads.")
+        if not leads and "http2" in str(getattr(scraper_engine, 'last_error', '')).lower():
             logger.error("DARN! H2 Error still leaked through.")
-        elif count > 0:
-            logger.info("VICTORY! JustDial protocol block bypassed.")
+        elif leads and len(leads) > 0:
+            logger.info(f"VICTORY! JustDial extracted {len(leads)} leads. Protocol block bypassed.")
             
     finally:
         await scraper_engine.close()

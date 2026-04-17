@@ -80,10 +80,13 @@ class ProcessingHandler:
         return True
 
     @staticmethod
-    def calculate_quality_score(contact: Dict) -> int:
+    def calculate_quality_score(contact: Optional[Dict]) -> int:
         """
         Calculates a lead quality score (0-100) based on completeness and data fidelity.
         """
+        if not contact:
+            return 0
+            
         score = 0
         
         # Phone (35 points) - Highest priority
@@ -129,10 +132,13 @@ class ProcessingHandler:
         return 'low'
 
     @classmethod
-    def process_contact(cls, contact: Dict) -> Dict:
+    def process_contact(cls, contact: Optional[Dict]) -> Optional[Dict]:
         """
         Performs full cleaning, normalization, and scoring on a single contact record.
         """
+        if not contact:
+            return None
+            
         # 1. Clean Phone
         phone_clean = cls.normalize_phone(contact.get('phone'))
         contact['phone_clean'] = phone_clean
@@ -162,7 +168,7 @@ class ProcessingHandler:
                 contact[field] = val
         
         # 4. Calculate Quality
-        contact['quality_score'] = cls.calculate_score(contact) if hasattr(cls, 'calculate_score') else cls.calculate_quality_score(contact)
+        contact['quality_score'] = cls.calculate_quality_score(contact)
         contact['quality_tier'] = cls.get_quality_tier(contact['quality_score'])
         
         # 5. Metadata

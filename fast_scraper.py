@@ -310,6 +310,20 @@ class ParallelScraper:
 
         return context
 
+    async def _safe_get_title(self, page: Page) -> str:
+        """Safely gets page title even if context is destroyed."""
+        try:
+            return await page.title()
+        except Exception:
+            return "Unknown (Navigation Context Destroyed)"
+
+    async def _safe_get_url(self, page: Page) -> str:
+        """Safely gets page URL."""
+        try:
+            return page.url
+        except Exception:
+            return ""
+
     async def scrape_job(self, city: str, category: str, source_name: str, page_num: int = 1, results_handler=None) -> List[Dict]:
         """
         Executes a scraper job for a specific source, city, and category.
@@ -352,8 +366,11 @@ class ParallelScraper:
                                 processed = ProcessingHandler.process_batch(fast_leads)
                                 valid = ProcessingHandler.filter_valid(processed)
                                 if valid:
-                                    await self._batch_insert(valid, category, city, source_name)
-                                return len(valid)
+                                     if results_handler:
+                                         await results_handler(valid, category, city, source_name)
+                                     else:
+                                         await self._batch_insert(valid, category, city, source_name)
+                                return valid
 
                         async with AsyncSession(impersonate="chrome120") as s:
                             ua = StealthManager.get_random_ua()
@@ -376,8 +393,11 @@ class ParallelScraper:
                                     processed = ProcessingHandler.process_batch(fast_leads)
                                     valid = ProcessingHandler.filter_valid(processed)
                                     if valid:
-                                        await self._batch_insert(valid, category, city, source_name)
-                                    return len(valid)
+                                     if results_handler:
+                                         await results_handler(valid, category, city, source_name)
+                                     else:
+                                         await self._batch_insert(valid, category, city, source_name)
+                                    return valid
                             elif fast_resp.status_code in [403, 404]:
                                 logger.warning(f"[HARDEN] Fast HTTP 403/404 on {source_name}. Likely IP Blocked.")
                     except Exception as e:
@@ -427,8 +447,12 @@ class ParallelScraper:
                     listings = await scraper.extract_listings(page, city, category)
                     
                     # WAF / Block Detection Logic
-                    page_title = await page.title()
-                    body_text = await page.evaluate("() => document.body.innerText.substring(0, 500)")
+                    page_title = await self._safe_get_title(page)
+                    body_text = ""
+                    try:
+                        body_text = await page.evaluate("() => document.body ? document.body.innerText.substring(0, 500) : ''")
+                    except Exception:
+                        pass
                     
                     block_keywords = [
                         "Access Denied", "Forbidden", "403", "404", "Not Found", 
@@ -572,7 +596,8 @@ class ParallelScraper:
     async def run_parallel_suite(self, jobs: List[tuple]):
         tasks = [self.scrape_job(city, cat, src) for city, cat, src in jobs]
         results = await asyncio.gather(*tasks)
-        total_leads = sum(results)
+        # Results are lists now, so we sum their lengths
+        total_leads = sum(len(r) if isinstance(r, list) else 0 for r in results)
         logger.info(f"Parallel Suite Complete: Total Leads Found: {total_leads}")
         return total_leads
 
