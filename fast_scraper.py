@@ -36,7 +36,9 @@ class FastScraperConfig:
 
         self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 20))
         self.headless = os.environ.get("HEADLESS", "true").lower() == "true"
-        self.timeout = int(os.environ.get("TIMEOUT", config_dict.get("scraper_settings", {}).get("timeout", 60000)))
+        # Convert seconds from config to milliseconds for Playwright
+        timeout_sec = int(os.environ.get("TIMEOUT", config_dict.get("scraper_settings", {}).get("timeout", 60)))
+        self.timeout = timeout_sec * 1000
         self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", config_dict.get("scraper_settings", {}).get("max_retries", 3)))
         self.block_resources = True
         self.redis_url = os.environ.get("REDIS_URL")
@@ -134,29 +136,17 @@ class ParallelScraper:
             self.redis_conn = await redis.from_url(self.config.redis_url)
         
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.config.headless,
-            args=[
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--disable-extensions",
-            ],
-        )
+        # Browsers will be lazy-loaded in _setup_context to save memory
         
-        # Secondary browser for "Protocol Stealth" (H2 disabled)
-        self.browser_h1 = await self.playwright.chromium.launch(
-            headless=self.config.headless,
-            args=[
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--disable-extensions",
-                "--disable-http2",
-            ],
-        )
+        if self.config.db_url and asyncpg:
+            try:
+                self.pool = await asyncpg.create_pool(self.config.db_url, min_size=1, max_size=self.config.max_concurrent)
+            except Exception as e:
+                logger.error(f"Failed to create DB pool: {e}")
+        else:
+            logger.error("No DATABASE_URL found for parallel scraper pool.")
+
+        logger.info(f"Parallel Engine V2 ready (Lazy Browser): Concurrency={self.config.max_concurrent}")
 
         if self.config.db_url:
             self.pool = await asyncpg.create_pool(
@@ -193,6 +183,13 @@ class ParallelScraper:
             "password": p.get("password"),
         }
         logger.info(f"🔍 Testing proxy: server={host}")
+        # Ensure browser is launched for the test
+        if not self.browser:
+            self.browser = await self.playwright.chromium.launch(
+                headless=self.config.headless,
+                args=["--disable-dev-shm-usage", "--no-sandbox"]
+            )
+            
         ctx = None
         try:
             ctx = await self.browser.new_context(
@@ -237,7 +234,30 @@ class ParallelScraper:
             logger.debug(f"Worker using proxy: {host} (H1={force_http1})")
 
         # Select browser based on protocol requirement
-        target_browser = self.browser_h1 if force_http1 and hasattr(self, "browser_h1") else self.browser
+        # Lazy-load browser based on protocol requirement
+        if force_http1:
+            if not getattr(self, "browser_h1", None):
+                logger.info("🚀 Launching Stealth HTTP/1.1 Engine...")
+                self.browser_h1 = await self.playwright.chromium.launch(
+                    headless=self.config.headless,
+                    args=[
+                        "--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu",
+                        "--disable-software-rasterizer", "--disable-extensions",
+                        "--disable-http2",
+                    ],
+                )
+            target_browser = self.browser_h1
+        else:
+            if not getattr(self, "browser", None):
+                logger.info("🚀 Launching Standard Engine...")
+                self.browser = await self.playwright.chromium.launch(
+                    headless=self.config.headless,
+                    args=[
+                        "--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu",
+                        "--disable-software-rasterizer", "--disable-extensions",
+                    ],
+                )
+            target_browser = self.browser
 
         context = await target_browser.new_context(
             user_agent=user_agent,
@@ -352,15 +372,26 @@ class ParallelScraper:
                         force_h1 = True
                         logger.warning(f"🛡️  Protocol Error detected previously. Forcing HTTP/1.1 for retry.")
 
+                    # Use a unique session_id per attempt to force DataImpulse to provide a new IP
+                    session_id = f"sess_{int(asyncio.get_event_loop().time())}_{attempt}"
                     context = await self._setup_context(city=city, session_id=session_id, force_http1=force_h1)
                     page = await context.new_page()
                     
                     try:
-                        await page.goto(
+                        response = await page.goto(
                             url, timeout=self.config.timeout, wait_until="domcontentloaded"
                         )
+                        status_code = response.status if response else 0
+                        
+                        if status_code in [403, 404, 429] and source_name in ["TRADEINDIA", "INDIAMART", "YELLOWPAGES"]:
+                             logger.warning(f"🛡️  {source_name} returned {status_code}. Likely URL deprecated or IP Blocked.")
+                             raise Exception(f"WAF Block/URL Error: HTTP {status_code}")
+                             
                     except Exception as goto_err:
                         self.last_error = str(goto_err)
+                        # Specific handling for Playwright navigation errors that are often WAF stealth blocks
+                        if any(x in str(goto_err) for x in ["ERR_ABORTED", "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET"]):
+                            logger.warning(f"🛡️  Connection error on {source_name}: likely WAF block. Retrying...")
                         raise goto_err
 
                     listings = await scraper.extract_listings(page, city, category)

@@ -14,24 +14,12 @@ proxy:
   # ===============================================
   # PROXY CONFIGURATION (Residential Support)
   # ===============================================
-  # Data Impulse (Rotating Residential) Template:
-  # Host: gw.dataimpulse.com:1234
-  # Username: your_username
-  # Password: your_password
-  
-  # Set host to your Data Impulse endpoint for global rotation
   host: "gw.dataimpulse.com:823"
   username: "1accade8fd4acb75b8ae"
   password: "c51e0887f7425452"
 
-  # ===============================================
-  # DATAIMPULSE ADVANCED CONFIG
-  # ===============================================
-  # Triples accuracy for government sites (BSE/SEBI) but 
-  # doubles bandwidth cost ($2/GB instead of $1/GB).
   enable_city_targeting: false
   
-  # List of additional proxies for failover or multi-zone rotation
   proxies:
     - host: "gw.dataimpulse.com:823"
       username: "1accade8fd4acb75b8ae"
@@ -43,3 +31,4 @@ scraper_settings:
   force_http1_sources: ["JUSTDIAL", "TRADEINDIA", "INDIAMART", "AMFI"]
   max_retries: 5
   timeout: 45
+  max_concurrent: 5

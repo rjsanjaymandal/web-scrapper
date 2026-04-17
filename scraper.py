@@ -146,6 +146,7 @@ class Config:
     categories: List[str]
     cities: List[str]
     scraper_settings: Dict
+    redis_url: Optional[str] = None
 
 
 def load_config() -> Config:
@@ -303,7 +304,8 @@ def load_config() -> Config:
         ),
         categories=data.get("categories", []),
         cities=data.get("cities", []),
-        scraper_settings=scraper_settings
+        scraper_settings=scraper_settings,
+        redis_url=os.environ.get("REDIS_URL") or data.get("redis", {}).get("url")
     )
 
 
@@ -2061,11 +2063,12 @@ class YellowPagesScraper(BaseScraper):
     BASE_URL = "https://www.yellowpages.in"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        cat_slug = category.lower().replace(" ", "-")
-        city_slug = city.lower().replace(" ", "-")
+        # 2026 Resilient pattern for YellowPages
+        # Format: /city/category or /search?q=category+in+city
+        q = f"{category} in {city}".replace(" ", "+")
         if page == 1:
-            return f"{self.BASE_URL}/{city_slug}/{cat_slug}"
-        return f"{self.BASE_URL}/{city_slug}/{cat_slug}?page={page}"
+            return f"{self.BASE_URL}/search?q={q}"
+        return f"{self.BASE_URL}/search?q={q}&page={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2169,9 +2172,9 @@ class TradeIndiaScraper(BaseScraper):
     BASE_URL = "https://www.tradeindia.com"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        cat_slug = category.lower().replace(" ", "-")
-        city_slug = city.lower().replace(" ", "-")
-        return f"{self.BASE_URL}/search/{cat_slug}-{city_slug}.html?page={page}"
+        # 2026 Dynamic Keyword Pattern
+        query = f"{category} in {city}".replace(" ", "+")
+        return f"{self.BASE_URL}/search.html?keyword={query}&page={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2194,7 +2197,7 @@ class TradeIndiaScraper(BaseScraper):
             await page.wait_for_selector("body", timeout=15000)
 
             cards = await page.query_selector_all(
-                ".company-list .company-item, .search-result .result-item, [class*='company']"
+                ".company-list .company-item, .search-result .result-item, .card, [class*='company'], article"
             )
 
             if not cards:
@@ -2222,12 +2225,12 @@ class TradeIndiaScraper(BaseScraper):
             for card in cards:
                 try:
                     name = await self._get_text(
-                        card, "h3, h4, .company-name, .company-title"
+                        card, "h3, h2, h4, .company-name, .company-title"
                     )
                     phone = await self._get_text(
                         card, ".phone, .contact, [class*='mobile']"
                     )
-                    address = await self._get_text(card, ".address, .location")
+                    address = await self._get_text(card, ".address, .location, .loc")
 
                     if name and len(name.strip()) > 2:
                         listings.append(
@@ -2270,9 +2273,10 @@ class IndiaMartScraper(BaseScraper):
     BASE_URL = "https://www.indiamart.com"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        cat_slug = category.lower().replace(" ", "-")
-        city_slug = city.lower().replace(" ", "-")
-        return f"{self.BASE_URL}/prodir/{cat_slug}-in-{city_slug}/?pn={page}"
+        # 2026 Directory Search Pattern
+        cat_slug = category.lower().replace(" ", "+")
+        city_slug = city.lower().replace(" ", "+")
+        return f"https://dir.indiamart.com/search.mp?ss={cat_slug}&cq={city_slug}&pn={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2295,7 +2299,7 @@ class IndiaMartScraper(BaseScraper):
             await page.wait_for_selector("body", timeout=15000)
 
             cards = await page.query_selector_all(
-                ".prod-list .prod-item, .seller-card, [class*='seller']"
+                "article.template7-product-card, .prod-list .prod-item, .seller-card, [class*='seller']"
             )
 
             if not cards:
@@ -2303,7 +2307,7 @@ class IndiaMartScraper(BaseScraper):
 
             for card in cards:
                 try:
-                    name = await self._get_text(card, ".company-name, .prod-name, h3")
+                    name = await self._get_text(card, ".template7-seller-name, .company-name, .prod-name, h3")
                     phone = await self._get_text(
                         card, ".prod-phn, .contact, [class*='phone']"
                     )
