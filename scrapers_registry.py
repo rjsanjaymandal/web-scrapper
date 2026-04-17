@@ -3,6 +3,10 @@ from typing import List, Dict, Optional
 from playwright.async_api import Page
 import logging
 import re
+try:
+    from selectolax.parser import HTMLParser
+except ImportError:
+    HTMLParser = None
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +42,24 @@ class BaseScraper(ABC):
         if not html_content:
             return listings
 
+        # Phase 3: High-Speed C-Bindings Parsing (selectolax)
+        clean_text = html_content
+        if HTMLParser:
+            try:
+                tree = HTMLParser(html_content)
+                # Strip out noisy tags that cause false positive regex matches
+                tree.strip_tags(['script', 'style', 'path', 'svg', 'noscript', 'meta', 'link'])
+                clean_text = tree.text(separator=' ')
+            except Exception as e:
+                logger.warning(f"Selectolax parsing failed: {e}. Falling back to raw HTML regex.")
+
         # Match generic emails
         email_pattern = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
         # Match Indian mobile patterns, landlines loosely
         phone_pattern = re.compile(r"(\+91[-.\s]??\d{10}|\b\d{10}\b|\b0\d{10,11}\b)")
         
-        emails = list(set(email_pattern.findall(html_content)))
-        phones = list(set(phone_pattern.findall(html_content)))
+        emails = list(set(email_pattern.findall(clean_text)))
+        phones = list(set(phone_pattern.findall(clean_text)))
         
         # We can't link an email to a phone easily when scraping raw, 
         # so we inject them individually as "Raw Extract" names.

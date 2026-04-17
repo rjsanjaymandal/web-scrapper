@@ -6,6 +6,14 @@ import re
 from typing import Dict, List, Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext
 import asyncpg
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None
+try:
+    from curl_cffi.requests import AsyncSession
+except ImportError:
+    AsyncSession = None
 
 # Trigger scraper registration before using ScraperRegistry
 import scraper  # noqa: F401
@@ -30,6 +38,7 @@ class FastScraperConfig:
         self.timeout = int(os.environ.get("TIMEOUT", 60000))
         self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", 3))
         self.block_resources = True
+        self.redis_url = os.environ.get("REDIS_URL")
 
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
@@ -95,8 +104,12 @@ class ParallelScraper:
         self.playwright = None
         self.browser = None
         self.pool = None
+        self.redis_conn = None
 
     async def init(self):
+        if self.config.redis_url and redis:
+            self.redis_conn = await redis.from_url(self.config.redis_url)
+        
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=self.config.headless,
@@ -229,12 +242,42 @@ class ParallelScraper:
                 logger.error(f"No scraper found for {source_name}")
                 return 0
 
+            context = None
+            page = None
             for attempt in range(self.config.max_retries):
-                context = await self._setup_context()
-                page = await context.new_page()
                 url = scraper.build_search_url(city, category)
                 
+                # ==== PHASE 1: HYBRID HTTP FETCH (Enterprise Speed Loop) ====
+                if AsyncSession and attempt == 0:
+                    try:
+                        async with AsyncSession(impersonate="chrome120") as s:
+                            headers = {"User-Agent": StealthManager.get_random_ua()}
+                            
+                            # Inject cached cookies to bypass Cloudflare
+                            if self.redis_conn:
+                                cached = await self.redis_conn.get(f"cookies_{source_name}")
+                                if cached:
+                                    headers["Cookie"] = cached.decode("utf-8")
+                                    
+                            fast_resp = await s.get(url, headers=headers, timeout=10)
+                            html = fast_resp.text
+                            # Heuristic check for WAF/Cloudflare
+                            if fast_resp.status_code == 200 and "Just a moment" not in html and "Verify you are human" not in html:
+                                fast_leads = scraper.extract_raw_fallback(html, city, category)
+                                if fast_leads:
+                                    logger.info(f"⚡ FAST HTTP SUCCESS! Extracted {len(fast_leads)} via curl_cffi regex from {source_name}. Bypassed Playwright.")
+                                    processed = ProcessingHandler.process_batch(fast_leads)
+                                    valid = ProcessingHandler.filter_valid(processed)
+                                    if valid:
+                                        await self._batch_insert(valid, category, city, source_name)
+                                    return len(valid)
+                    except Exception as e:
+                        logger.debug(f"Fast HTTP fetch failed: {e}. Falling back to Browser.")
+
+                # ==== PHASE 2: BROWSER FALLBACK ====
                 try:
+                    context = await self._setup_context()
+                    page = await context.new_page()
                     await page.goto(
                         url, timeout=self.config.timeout, wait_until="domcontentloaded"
                     )
@@ -261,6 +304,14 @@ class ParallelScraper:
                         
                         if valid:
                             await self._batch_insert(valid, category, city, source_name)
+                            # Phase 4: Cache Authorized Cookies (Immunity Vault)
+                            if self.redis_conn and context:
+                                new_cookies = await context.cookies()
+                                # Only store cookies if we got valid lists
+                                cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in new_cookies])
+                                if cookie_str:
+                                    await self.redis_conn.setex(f"cookies_{source_name}", 3600, cookie_str)
+                                    logger.debug(f"Saved authorized session cookie to Redis for {source_name}")
                         return len(valid)
                         
                     # If we reach here and it's 0 leads, it might be a block. Break if last attempt.
@@ -273,8 +324,10 @@ class ParallelScraper:
                         logger.error(f"Job failed completely: {source_name} | {city}/{category}")
                         return 0
                 finally:
-                    await page.close()
-                    await context.close()
+                    if page:
+                        await page.close()
+                    if context:
+                        await context.close()
                     # Sleep briefly to avoid slamming proxies across attempts
                     if attempt < self.config.max_retries - 1:
                         await asyncio.sleep(random.uniform(1.5, 4.0))
