@@ -701,8 +701,9 @@ class AMFIScraper(BaseScraper):
                     "Referer": "https://www.amfiindia.com/locate-distributor",
                     "User-Agent": StealthManager.get_random_ua()
                 }
-                resp = await s.get(url, headers=headers, timeout=10)
-                if resp.status_code == 200:
+                resp = await s.get(url, headers=headers, timeout=15)
+                # FIX: Check status and Content-Type to avoid 'NoneType' or HTML error parsing
+                if resp.status_code == 200 and 'application/json' in resp.headers.get('Content-Type', '').lower():
                     data = resp.json()
                     raw_data = data.get("data", []) if isinstance(data, dict) else []
                     for item in raw_data:
@@ -716,6 +717,8 @@ class AMFIScraper(BaseScraper):
                             "arn": item.get("ARN"),
                             "detail_url": None
                         })
+                else:
+                    logger.warning(f"AMFI API: Invalid response ({resp.status_code}) or Content-Type: {resp.headers.get('Content-Type')}")
                     logger.info(f"AMFI API: Extracted {len(listings)} leads for {city} (Page {page_num})")
         except Exception as e:
             logger.error(f"AMFI API Error: {e}")

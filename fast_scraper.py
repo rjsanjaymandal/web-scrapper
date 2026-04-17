@@ -186,7 +186,13 @@ class ParallelScraper:
         if not self.browser:
             self.browser = await self.playwright.chromium.launch(
                 headless=self.config.headless,
-                args=["--disable-dev-shm-usage", "--no-sandbox"]
+                args=[
+                    "--disable-dev-shm-usage", 
+                    "--no-sandbox",
+                    "--disable-gpu",
+                    "--single-process",
+                    "--disable-software-rasterizer"
+                ]
             )
             
         ctx = None
@@ -249,9 +255,13 @@ class ParallelScraper:
                 self.browser_h1 = await self.playwright.chromium.launch(
                     headless=self.config.headless,
                     args=[
-                        "--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu",
-                        "--disable-software-rasterizer", "--disable-extensions",
-                        "--disable-http2",
+                        "--disable-dev-shm-usage", 
+                        "--no-sandbox", 
+                        "--disable-gpu",
+                        "--disable-software-rasterizer", 
+                        "--disable-extensions",
+                        "--single-process",
+                        "--force-http1.1",
                     ],
                 )
             target_browser = self.browser_h1
@@ -261,9 +271,13 @@ class ParallelScraper:
                 self.browser = await self.playwright.chromium.launch(
                     headless=self.config.headless,
                     args=[
-                        "--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu",
-                        "--disable-software-rasterizer", "--disable-extensions",
-                    ],
+                        "--disable-dev-shm-usage", 
+                        "--no-sandbox", 
+                        "--disable-gpu",
+                        "--single-process",
+                        "--disable-software-rasterizer",
+                        "--disable-extensions"
+                    ]
                 )
             target_browser = self.browser
 
