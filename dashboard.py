@@ -356,9 +356,9 @@ def load_config():
 # Note: In production, entrypoint.py handles eager bootstrap.
 # We skip eager init at import time in Railway environments to allow Gunicorn to bind quickly.
 if not DB_INIT_READY and RAILWAY_SERVICE != "Unknown":
-    logger.info(f"💾 BOOTSTRAP: Managed mode (Railway {RAILWAY_SERVICE}). Awaiting first request for local state sync.")
+    logger.info(f"BOOTSTRAP: Managed mode (Railway {RAILWAY_SERVICE}). Awaiting first request for local state sync.")
 elif not DB_INIT_READY:
-    logger.info("💾 BOOTSTRAP: Local/Lazy mode (RAILWAY_SERVICE=Unknown).")
+    logger.info("BOOTSTRAP: Local/Lazy mode (RAILWAY_SERVICE=Unknown).")
 
 
 HTML = """

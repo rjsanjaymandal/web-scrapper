@@ -171,7 +171,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
     use_business: If True, use business directories (JustDial, etc). If False (default), use official sources (AMFI, IRDAI, ICAI).
     """
     from scraper import ContactScraper
-    set_status(f"🚀 Scraping {category} in {city}...")
+    set_status(f"Scraping {category} in {city}...")
     
     async def _run_scrape():
         config = _load_runtime_config()
@@ -180,7 +180,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         
         # Progress callback to update Redis in real-time
         def on_progress(stats):
-            msg = f"🔍 Page {stats['page']}/{stats['total_pages']} on {stats['source']}..."
+            msg = f"Reading Page {stats['page']}/{stats['total_pages']} on {stats['source']}..."
             set_status(msg, True, stats)
 
         try:
@@ -211,7 +211,7 @@ def scrape_all_task(source: str = None, use_business: bool = False):
         try:
             total_jobs = len(jobs)
             for index, (city, category) in enumerate(jobs, start=1):
-                set_status(f"🚀 [{index}/{total_jobs}] Scraping {category} in {city}...")
+                set_status(f"[{index}/{total_jobs}] Scraping {category} in {city}...")
                 try:
                     await scraper.scrape_category(city, category, source, use_business)
                     results.append({"city": city, "category": category, "status": "completed"})
@@ -279,7 +279,7 @@ def fast_scrape_task(source: str = None, use_business: bool = False, max_concurr
         if db_url and db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
             
-        set_status("💎 Enriching and scoring all leads...")
+        set_status("Enriching and scoring all leads...")
         
         conn = await asyncpg.connect(dsn=db_url)
         try:
@@ -301,9 +301,9 @@ def fast_scrape_task(source: str = None, use_business: bool = False, max_concurr
                 count += 1
                 
                 if count % 10 == 0:
-                    set_status(f"💎 Enriched {count} leads...")
+                    set_status(f"Enriched {count} leads...")
                 
-            set_status(f"✅ Enriched {count} leads", False)
+            set_status(f"Success: Enriched {count} leads", False)
             return {"status": "completed", "enriched_count": count}
         finally:
             await conn.close()
@@ -314,7 +314,7 @@ def fast_scrape_task(source: str = None, use_business: bool = False, max_concurr
 @celery_app.task(name="tasks.validate_all_contacts_task")
 def validate_all_contacts_task():
     from scraper import ContactScraper
-    set_status("🔍 Validating all contacts...")
+    set_status("Validating all contacts...")
     async def _run_validation():
         config = _load_runtime_config()
         scraper = ContactScraper(config)

@@ -52,7 +52,7 @@ class RawStorage:
                     try:
                         folder_date = datetime.strptime(folder.name, "%Y-%m-%d")
                         if folder_date < cutoff:
-                            logger.info(f"💾 Cleanup: Removing expired raw data folder {folder.name}")
+                            logger.info(f"STORAGE Cleanup: Removing expired raw data folder {folder.name}")
                             # Remove all files and the folder itself
                             self._rmtree(folder)
                     except ValueError:

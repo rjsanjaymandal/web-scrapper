@@ -98,7 +98,7 @@ class FastScraperConfig:
             # This fixes 'ERR_TUNNEL_CONNECTION_FAILED' caused by missing geo-targeting strings.
             if proxy_user and "dataimpulse.com" in env_proxy_host.lower() and "__cr." not in proxy_user:
                 proxy_user = f"{proxy_user}__cr.in"
-                logger.info(f"🛡️  Harden: Auto-appended country suffix to proxy user: {proxy_user[:5]}...__cr.in")
+                logger.info(f"[HARDEN] Auto-appended country suffix to proxy user: {proxy_user[:5]}...__cr.in")
 
             # If they are empty strings after stripping, set to None so we don't pass empty auth
             proxy_user = proxy_user if proxy_user else None
@@ -245,7 +245,7 @@ class ParallelScraper:
         # Lazy-load browser based on protocol requirement
         if force_http1:
             if not getattr(self, "browser_h1", None):
-                logger.info("🚀 Launching Stealth HTTP/1.1 Engine...")
+                logger.info("[LAUNCH] Launching Stealth HTTP/1.1 Engine...")
                 self.browser_h1 = await self.playwright.chromium.launch(
                     headless=self.config.headless,
                     args=[
@@ -257,7 +257,7 @@ class ParallelScraper:
             target_browser = self.browser_h1
         else:
             if not getattr(self, "browser", None):
-                logger.info("🚀 Launching Standard Engine...")
+                logger.info("[LAUNCH] Launching Standard Engine...")
                 self.browser = await self.playwright.chromium.launch(
                     headless=self.config.headless,
                     args=[
@@ -331,7 +331,7 @@ class ParallelScraper:
                 # rotate the session_id to get a fresh IP for the retry.
                 if attempt > 0:
                     session_id = str(uuid.uuid4())[:8]
-                    logger.info(f"🛡️  Rotating Sticky Session: New IP requested for attempt {attempt+1}")
+                    logger.info(f"[HARDEN] Rotating Sticky Session: New IP requested for attempt {attempt+1}")
 
                 url = scraper.build_search_url(city, category)
                 
@@ -342,7 +342,7 @@ class ParallelScraper:
                         if hasattr(scraper, "scrape_via_api"):
                             fast_leads = await scraper.scrape_via_api(city)
                             if fast_leads:
-                                logger.info(f"🚀 HIGH-SPEED API SUCCESS! Extracted {len(fast_leads)} via direct API from {source_name}. Bypassed Browser.")
+                                logger.info(f"[SUCCESS] HIGH-SPEED API SUCCESS! Extracted {len(fast_leads)} via direct API from {source_name}. Bypassed Browser.")
                                 processed = ProcessingHandler.process_batch(fast_leads)
                                 valid = ProcessingHandler.filter_valid(processed)
                                 if valid:
@@ -371,7 +371,7 @@ class ParallelScraper:
                                         await self._batch_insert(valid, category, city, source_name)
                                     return len(valid)
                             elif fast_resp.status_code in [403, 404]:
-                                logger.warning(f"🛡️  Fast HTTP 403/404 on {source_name}. Likely IP Blocked.")
+                                logger.warning(f"[HARDEN] Fast HTTP 403/404 on {source_name}. Likely IP Blocked.")
                     except Exception as e:
                         logger.debug(f"Fast HTTP fetch failed: {e}. Falling back to Browser.")
 
@@ -385,14 +385,14 @@ class ParallelScraper:
                         await asyncio.sleep(wait_time)
                         # Re-check or continue
                         if mem_percent > 95:
-                            logger.error("🛑 CRITICAL MEMORY: Aborting job to prevent restart.")
+                            logger.error("[ABORT] CRITICAL MEMORY: Aborting job to prevent restart.")
                             return 0
 
                     # Enterprise Protocol Selection
                     force_h1 = scraper.force_http1 or source_name in self.config.force_http1_sources
                     if attempt > 0 and "http2" in str(getattr(self, 'last_error', '')).lower():
                         force_h1 = True
-                        logger.warning(f"🛡️  Protocol Error detected previously. Forcing HTTP/1.1 for retry.")
+                        logger.warning(f"[HARDEN] Protocol Error detected previously. Forcing HTTP/1.1 for retry.")
 
                     # Use a unique session_id per attempt to force DataImpulse to provide a new IP
                     session_id = f"sess_{int(asyncio.get_event_loop().time())}_{attempt}"
@@ -406,14 +406,14 @@ class ParallelScraper:
                         status_code = response.status if response else 0
                         
                         if status_code in [403, 404, 429] and source_name in ["TRADEINDIA", "INDIAMART", "YELLOWPAGES"]:
-                             logger.warning(f"🛡️  {source_name} returned {status_code}. Likely URL deprecated or IP Blocked.")
+                             logger.warning(f"[HARDEN] {source_name} returned {status_code}. Likely URL deprecated or IP Blocked.")
                              raise Exception(f"WAF Block/URL Error: HTTP {status_code}")
                              
                     except Exception as goto_err:
                         self.last_error = str(goto_err)
                         # Specific handling for Playwright navigation errors that are often WAF stealth blocks
                         if any(x in str(goto_err) for x in ["ERR_ABORTED", "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET"]):
-                            logger.warning(f"🛡️  Connection error on {source_name}: likely WAF block. Retrying...")
+                            logger.warning(f"[HARDEN] Connection error on {source_name}: likely WAF block. Retrying...")
                         raise goto_err
 
                     listings = await scraper.extract_listings(page, city, category)
@@ -431,12 +431,12 @@ class ParallelScraper:
                     is_blocked = any(kw.lower() in page_title.lower() or kw.lower() in body_text.lower() for kw in block_keywords)
                     
                     if is_blocked and not listings:
-                        logger.error(f"🛡️  CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job to save bandwidth.")
+                        logger.error(f"[HARDEN] CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job to save bandwidth.")
                         # Early Abort: Don't retry if clearly blocked
                         return 0
 
                     if response and response.status in [403, 404]:
-                        logger.error(f"🛡️  CRITICAL HTTP {response.status} on {source_name}. Aborting job to save bandwidth.")
+                        logger.error(f"[HARDEN] CRITICAL HTTP {response.status} on {source_name}. Aborting job to save bandwidth.")
                         return 0
 
                     logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")

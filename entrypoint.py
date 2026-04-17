@@ -13,11 +13,11 @@ from dashboard import init_tables, logger
 try:
     import psycopg2
 except ImportError as e:
-    print(f"❌ [BOOTSTRAP] CRITICAL: Missing dependency 'psycopg2': {e}", flush=True)
+    print(f"[ERROR] [BOOTSTRAP] CRITICAL: Missing dependency 'psycopg2': {e}", flush=True)
     sys.exit(1)
 
 def log(msg):
-    print(f"🚀 [BOOTSTRAP] {msg}", flush=True)
+    print(f"[BOOTSTRAP] {msg}", flush=True)
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -121,10 +121,10 @@ def main():
             # Time the initialization to diagnose performance
             init_start = time.time()
             if not init_tables():
-                log("❌ Database initialization failed. Process will exit.")
+                log("[ERROR] Database initialization failed. Process will exit.")
                 sys.exit(1)
             init_duration = time.time() - init_start
-            log(f"✅ Database tables ready in {init_duration:.2f}s!")
+            log(f"[SUCCESS] Database tables ready in {init_duration:.2f}s!")
             
             port = os.environ.get("PORT", "8080")
             log(f"Finalizing environment for Web Service on port {port}...")
@@ -133,7 +133,7 @@ def main():
             try:
                 subprocess.run(["gunicorn", "--version"], capture_output=True, check=True)
             except Exception:
-                log("❌ CRITICAL: 'gunicorn' command not found in PATH!")
+                log("[ERROR] CRITICAL: 'gunicorn' command not found in PATH!")
                 sys.exit(1)
 
             # Use execvp for web process to give it full control
@@ -147,14 +147,14 @@ def main():
                 "--error-logfile", "-",
                 "dashboard:app"
             ]
-            log(f"🚀 Handoff to Gunicorn (0.0.0.0:{port})...")
+            log(f"[LAUNCH] Handoff to Gunicorn (0.0.0.0:{port})...")
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
             port = os.environ.get("PORT", "8080")
             log("Starting Healthcheck server for Worker...")
             start_health_server(port)
-            log("🚀 Handoff to Celery Worker...")
+            log("[LAUNCH] Handoff to Celery Worker...")
             # Run Celery as subprocess to keep the healthcheck thread alive
             cmd = [
                 "celery",
@@ -172,7 +172,7 @@ def main():
                 log("Worker received interrupt, shutting down...")
                 sys.exit(0)
             except Exception as e:
-                log(f"❌ Worker crashed: {e}")
+                log(f"[ERROR] Worker crashed: {e}")
                 sys.exit(1)
         
         elif process_type == "automator":
@@ -195,12 +195,12 @@ def main():
                 "dashboard:app"
             ]
             dashboard_proc = subprocess.Popen(gunicorn_cmd)
-            log(f"✅ Dashboard running (PID: {dashboard_proc.pid})")
+            log(f"[SUCCESS] Dashboard running (PID: {dashboard_proc.pid})")
             
             # Give gunicorn a moment to bind the port
             time.sleep(3)
             
-            log("🚀 Starting Enterprise Automator...")
+            log("[LAUNCH] Starting Enterprise Automator...")
             automator_cmd = ["python3", "automate_100_cities.py"]
             try:
                 subprocess.run(automator_cmd)
@@ -209,7 +209,7 @@ def main():
                 dashboard_proc.terminate()
                 sys.exit(0)
             except Exception as e:
-                log(f"❌ Automator crashed: {e}")
+                log(f"[ERROR] Automator crashed: {e}")
                 dashboard_proc.terminate()
                 sys.exit(1)
             finally:
@@ -221,11 +221,11 @@ def main():
                     dashboard_proc.terminate()
         
         else:
-            log(f"❌ Unknown PROCESS_TYPE: {process_type}")
+            log(f"[ERROR] Unknown PROCESS_TYPE: {process_type}")
             sys.exit(1)
             
     except Exception as e:
-        log(f"❌ CRITICAL FAILURE in main loop: {e}")
+        log(f"[ERROR] CRITICAL FAILURE in main loop: {e}")
         traceback.print_exc()
         sys.exit(1)
 

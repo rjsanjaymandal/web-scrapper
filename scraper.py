@@ -2683,7 +2683,7 @@ class ContactScraper:
 
         skipped_junk = len(processed_listings) - len(final_listings)
         if skipped_junk > 0:
-            msg = f"🛡️ Quality Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
+            msg = f"[QUALITY] Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
             logger.info(msg)
             # Log to activity log if possible (via logger name prefix that tasks.py might pick up, 
             # or simply via standard logging which we've verified works in Railway logs)
@@ -2853,7 +2853,7 @@ class ContactScraper:
                         or "robot" in page_text_lower
                         or "unusual activity" in page_text_lower
                     ):
-                        logger.warning("🛡️ Detection: CAPTCHA or bot detection detected!")
+                        logger.warning("[DEBUG] Detection: CAPTCHA or bot detection detected!")
                         # Rotate proxy profile on next retry
                         self.proxy_manager.get_proxy() 
                         break
@@ -2884,7 +2884,7 @@ class ContactScraper:
                         category,
                     )
                     if raw_path:
-                        logger.info(f"💾 Raw HTML saved: {raw_path}")
+                        logger.info(f"[STORAGE] Raw HTML saved: {raw_path}")
 
                     # Anti-Detection: Standard randomized jitter delay (12:56)
                     jitter = random.uniform(
@@ -3027,7 +3027,7 @@ class ContactScraper:
         skipped = len(listings) - len(valid_listings)
         if skipped > 0:
             logger.info(
-                f"🛡️ Skipped {skipped} listings with invalid data during DB save"
+                f"[STORAGE] Skipped {skipped} listings with invalid data during DB save"
             )
 
         if not valid_listings:
@@ -3329,6 +3329,6 @@ try:
     ScraperRegistry.register(LinkedInGoogleScraper())
     ScraperRegistry.register(GoogleDorkScraper())     # Source: FOOTPRINT
     
-    logger.info(f"✅ Scraper Registry initialized with {len(ScraperRegistry.list_scrapers())} sources")
+    logger.info(f"[SUCCESS] Scraper Registry initialized with {len(ScraperRegistry.list_scrapers())} sources")
 except Exception as e:
-    logger.error(f"❌ Critical Error during Scraper Registration: {e}")
+    logger.error(f"[ERROR] Critical Error during Scraper Registration: {e}")
