@@ -160,6 +160,23 @@ class ParallelScraper:
         if self.config.proxy_list:
             await self._test_proxy_connectivity()
 
+    async def _launch_browser(self, force_http1: bool = False):
+        """Centralized browser launch with memory-safe args for Railway."""
+        args = [
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+        ]
+        if force_http1:
+            args.append("--disable-http2")
+        
+        return await self.playwright.chromium.launch(
+            headless=self.config.headless,
+            args=args,
+        )
+
     async def close(self):
         if self.browser:
             await self.browser.close()
@@ -184,16 +201,7 @@ class ParallelScraper:
         logger.info(f"🔍 Testing proxy: server={host}")
         # Ensure browser is launched for the test
         if not self.browser:
-            self.browser = await self.playwright.chromium.launch(
-                headless=self.config.headless,
-                args=[
-                    "--disable-dev-shm-usage", 
-                    "--no-sandbox",
-                    "--disable-gpu",
-                    "--single-process",
-                    "--disable-software-rasterizer"
-                ]
-            )
+            self.browser = await self._launch_browser()
             
         ctx = None
         try:
@@ -250,35 +258,22 @@ class ParallelScraper:
         # Select browser based on protocol requirement
         # Lazy-load browser based on protocol requirement
         if force_http1:
-            if not getattr(self, "browser_h1", None):
+            if not getattr(self, "browser_h1", None) or not self.browser_h1.is_connected():
+                if getattr(self, "browser_h1", None):
+                    logger.warning("[RECOVER] H1 Browser crashed. Relaunching...")
+                    try: await self.browser_h1.close()
+                    except: pass
                 logger.info("[LAUNCH] Launching Stealth HTTP/1.1 Engine...")
-                self.browser_h1 = await self.playwright.chromium.launch(
-                    headless=self.config.headless,
-                    args=[
-                        "--disable-dev-shm-usage", 
-                        "--no-sandbox", 
-                        "--disable-gpu",
-                        "--disable-software-rasterizer", 
-                        "--disable-extensions",
-                        "--single-process",
-                        "--force-http1.1",
-                    ],
-                )
+                self.browser_h1 = await self._launch_browser(force_http1=True)
             target_browser = self.browser_h1
         else:
-            if not getattr(self, "browser", None):
+            if not getattr(self, "browser", None) or not self.browser.is_connected():
+                if getattr(self, "browser", None):
+                    logger.warning("[RECOVER] Standard Browser crashed. Relaunching...")
+                    try: await self.browser.close()
+                    except: pass
                 logger.info("[LAUNCH] Launching Standard Engine...")
-                self.browser = await self.playwright.chromium.launch(
-                    headless=self.config.headless,
-                    args=[
-                        "--disable-dev-shm-usage", 
-                        "--no-sandbox", 
-                        "--disable-gpu",
-                        "--single-process",
-                        "--disable-software-rasterizer",
-                        "--disable-extensions"
-                    ]
-                )
+                self.browser = await self._launch_browser()
             target_browser = self.browser
 
         context = await target_browser.new_context(
@@ -418,6 +413,12 @@ class ParallelScraper:
                         logger.debug(f"Fast HTTP fetch failed: {e}. Falling back to Browser.")
 
                 # ==== PHASE 2: BROWSER FALLBACK ====
+                # Skip browser entirely for API-only sources (saves RAM)
+                API_ONLY_SOURCES = ["AMFI"]
+                if source_name in API_ONLY_SOURCES:
+                    logger.info(f"[SKIP] {source_name} is API-only. No browser needed.")
+                    return []
+
                 try:
                     # Memory Safety Check: Prevent OOM on Railway
                     mem_percent = psutil.virtual_memory().percent
@@ -425,7 +426,7 @@ class ParallelScraper:
                         wait_time = random.uniform(5.0, 10.0)
                         logger.warning(f"⚠️  High Memory Usage ({mem_percent}%). Cooling down for {wait_time:.1f}s...")
                         await asyncio.sleep(wait_time)
-                        # Re-check or continue
+                        mem_percent = psutil.virtual_memory().percent
                         if mem_percent > 95:
                             logger.error("[ABORT] CRITICAL MEMORY: Aborting job to prevent restart.")
                             return []
