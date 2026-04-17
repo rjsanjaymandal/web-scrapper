@@ -403,58 +403,37 @@ class JustDialScraper(BaseScraper):
         return None
 
     async def _extract_phone(self, card) -> Optional[str]:
+        """Modernized 2026 JustDial extraction: No more icons, now plain text hidden in anchors"""
         try:
-            icons = await card.query_selector_all(
-                'span[class*="mobilesv"], span[class*="icon"], [class*="phone"]'
-            )
-            if icons:
-                jd_map = {
-                    "icon-ji": "9",
-                    "icon-dc": "0",
-                    "icon-fe": "1",
-                    "icon-hg": "2",
-                    "icon-ba": "3",
-                    "icon-lk": "4",
-                    "icon-nm": "5",
-                    "icon-op": "6",
-                    "icon-rq": "7",
-                    "icon-ts": "8",
-                    "icon-acb": "0",
-                    "icon-yz": "1",
-                    "icon-wx": "2",
-                    "icon-vu": "3",
-                    "icon-ts": "4",
-                    "icon-rq": "5",
-                    "icon-pon": "6",
-                    "icon-mlk": "7",
-                    "icon-jih": "8",
-                    "icon-gfed": "9",
-                    "mcl-": "",
-                }
-                phone_digits = []
-                for icon in icons:
-                    class_attr = await icon.get_attribute("class") or ""
-                    for icon_class, digit in jd_map.items():
-                        if icon_class in class_attr:
-                            if digit:
-                                phone_digits.append(digit)
-                            break
-                if len(phone_digits) >= 8:
-                    return "".join(phone_digits)
+            # 1. Primary: Look for 'callNowAnchor' which often has the number in its text or data attributes
+            selectors = [
+                 "span.callNowAnchor", "a.callNowAnchor", 
+                 "a[href*='tel:']", "button.callbutton",
+                 ".contact-info", ".phone-num", ".store-phone"
+            ]
+            
+            for sel in selectors:
+                elements = await card.query_selector_all(sel)
+                for el in elements:
+                    text = await el.inner_text()
+                    # Also check href for tel: links
+                    href = await el.get_attribute("href") or ""
+                    
+                    phone_source = text + " " + href
+                    clean = self._clean_phone(phone_source)
+                    if clean and len(clean) >= 10:
+                        return clean
+            
+            # 2. Fallback: Search for any 10+ digit sequence in the card's text
+            card_text = await card.inner_text()
+            matches = re.findall(r'[6-9]\d{9}', card_text.replace(" ", "").replace("-", ""))
+            if matches:
+                return matches[0]
 
-            text = await self._get_text(
-                card, '.store-phone, .phone, [class*="contact"], a[href*="tel"]'
-            )
-            if text:
-                return self._clean_phone(text)
-
-            all_text = await card.inner_text() if card else ""
-            phone_match = re.search(r"(\d{8,12})", all_text)
-            if phone_match:
-                return self._clean_phone(phone_match.group(1))
         except Exception as e:
-            logger.debug(f"Phone extraction error: {e}")
+            logger.debug(f"JustDial: Phone extraction failed: {e}")
         return None
+
 
     async def extract_listings(
         self,
@@ -696,18 +675,39 @@ class AMFIScraper(BaseScraper):
     SEARCH_API_URL = "https://www.amfiindia.com/api/distributor-agent"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        return "https://www.amfiindia.com/locate-distributor"
+        return f"https://www.amfiindia.com/api/distributor-agent?strOpt=ALL&city={city.replace(' ', '+')}&page={page}&pageSize=100"
 
-    def get_search_params(self, city: str, page: int = 1, page_size: int = 100) -> Dict:
-        return {
-            "strOpt": "ALL",
-            "city": city,
-            "page": page,
-            "pageSize": page_size,
-        }
-
-    async def get_detail_url(self, card) -> Optional[str]:
-        return None
+    async def scrape_via_api(self, city: str, page_num: int = 1) -> List[Dict]:
+        """High-speed API extraction for AMFI (saves 95% bandwidth)"""
+        listings = []
+        try:
+            # We use the built-in AsyncSession from fast_scraper if available
+            from curl_cffi.requests import AsyncSession
+            async with AsyncSession(impersonate="chrome110") as s:
+                url = self.build_search_url(city, "", page_num)
+                headers = {
+                    "Referer": "https://www.amfiindia.com/locate-distributor",
+                    "User-Agent": StealthManager.get_random_ua()
+                }
+                resp = await s.get(url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_data = data.get("data", []) if isinstance(data, dict) else []
+                    for item in raw_data:
+                        listings.append({
+                            "name": item.get("ARNHolderName", "").strip(),
+                            "phone": self._clean_phone(item.get("TelephoneNumber_O")),
+                            "email": item.get("Email"),
+                            "address": item.get("Address"),
+                            "city": item.get("City", city),
+                            "pin": item.get("Pin"),
+                            "arn": item.get("ARN"),
+                            "detail_url": None
+                        })
+                    logger.info(f"AMFI API: Extracted {len(listings)} leads for {city} (Page {page_num})")
+        except Exception as e:
+            logger.error(f"AMFI API Error: {e}")
+        return listings
 
     async def extract_listings(
         self,
@@ -716,138 +716,40 @@ class AMFIScraper(BaseScraper):
         category: str = None,
         html_content: str = None,
     ) -> List[Dict]:
+        # If we have the page, we can try to extract from UI or just hit the API in background if browser is too heavy
+        # First check if the page has the JSON we need (sometimes it's in a script tag)
         listings = []
-        logger.info(f"AMFI: Starting extraction for city={city}, category={category}")
-
         try:
-            # Log page info
-            page_title = await page.title()
-            page_url = page.url
-            logger.info(f"AMFI: Page title: {page_title}")
-            logger.info(f"AMFI: Page URL: {page_url}")
+            # Check if we are being blocked by WAF first
+            title = await page.title()
+            if "Cloudflare" in title or "Access Denied" in title:
+                logger.warning("AMFI: Browser blocked by WAF. Swapping to direct API attempt.")
+                return await self.scrape_via_api(city)
 
-            # Step 1: Click "Filter Location" to expand location filters
-            filter_location_selectors = [
-                'span:has-text("Filter Location")',
-                'button:has-text("Filter Location")',
-                'a:has-text("Filter Location")',
-                '[class*="filter-location"]',
-                "#filterLocation",
-                '[onclick*="Filter"]',
-            ]
+            # Try to hit API directly via page context to leverage cookies/stealth
+            api_url = f"https://www.amfiindia.com/api/distributor-agent?strOpt=ALL&city={city}&page=1&pageSize=100"
+            resp_json = await page.evaluate(f"async () => {{ const r = await fetch('{api_url}'); return r.json(); }}")
+            if resp_json and "data" in resp_json:
+                for item in resp_json["data"]:
+                    listings.append({
+                        "name": item.get("ARNHolderName", "").strip(),
+                        "phone": self._clean_phone(item.get("TelephoneNumber_O")),
+                        "email": item.get("Email"),
+                        "address": item.get("Address"),
+                        "city": item.get("City", city),
+                        "arn": item.get("ARN"),
+                    })
+                if listings:
+                    logger.info(f"AMFI: Extracted {len(listings)} leads via Page-Proxy API call")
+                    return listings
 
-            filter_clicked = False
-            for sel in filter_location_selectors:
-                try:
-                    filter_elem = await page.query_selector(sel)
-                    if filter_elem:
-                        await filter_elem.click()
-                        logger.info(f"AMFI: Clicked Filter Location: {sel}")
-                        filter_clicked = True
-                        await asyncio.sleep(2)
-                        break
-                except Exception as e:
-                    logger.debug(f"AMFI: Could not click {sel}: {e}")
-                    continue
-
-            if not filter_clicked:
-                logger.warning("AMFI: Could not click Filter Location")
-
-            # Take screenshot after clicking filter
-            await page.screenshot(path="amfi_filter.png")
-
-            # Step 2: Now find and select city from the expanded filter
-            city_input_selectors = [
-                'input[placeholder*="City"]',
-                'input[id*="city"]',
-                'input[id*="City"]',
-                'input[name*="city"]',
-                'input[id*="ddlCity"]',
-                'input[id*="loc"]',
-            ]
-
-            city_filled = False
-            for sel in city_input_selectors:
-                try:
-                    input_elem = await page.query_selector(sel)
-                    if input_elem:
-                        await input_elem.click()
-                        await input_elem.fill("")
-                        await asyncio.sleep(0.3)
-
-                        # Type city name
-                        for char in city or "Delhi":
-                            await input_elem.type(char, delay=50)
-
-                        logger.info(f"AMFI: Typed city: {city or 'Delhi'}")
-                        city_filled = True
-                        await asyncio.sleep(1)
-                        break
-                except Exception as e:
-                    logger.debug(f"AMFI: Error with {sel}: {e}")
-                    continue
-
-            # Step 3: Wait for suggestions and select
-            if city_filled:
-                suggestion_selectors = [
-                    'li[class*="suggestion"]',
-                    'li[class*="ui-menu"]',
-                    '[class*="autocomplete"] li',
-                    "ul li",
-                    'li:has-text("' + (city or "Delhi") + '")',
-                ]
-
-                for sug_sel in suggestion_selectors:
-                    try:
-                        suggestions = await page.query_selector_all(sug_sel)
-                        if suggestions and len(suggestions) > 0:
-                            logger.info(f"AMFI: Found {len(suggestions)} suggestions")
-                            # Click first suggestion
-                            await suggestions[0].click()
-                            logger.info("AMFI: Clicked first suggestion")
-                            break
-                    except Exception:
-                        continue
-
-                await asyncio.sleep(1)
-
-            # Step 4: Click Search/Submit button
-            search_button_selectors = [
-                'button:has-text("Search")',
-                'input[type="submit"]',
-                'button[type="submit"]',
-                'input[value*="Search"]',
-                "#search, #btnSearch",
-                'button:has-text("Submit")',
-            ]
-
-            for sel in search_button_selectors:
-                try:
-                    btn = await page.query_selector(sel)
-                    if btn:
-                        await btn.click()
-                        logger.info(f"AMFI: Clicked search button: {sel}")
-                        break
-                except Exception:
-                    continue
-
-            # Wait for results
-            logger.info("AMFI: Waiting for results to load...")
-            await asyncio.sleep(3)
-            await page.wait_for_load_state("networkidle", timeout=15000)
-
-            # Take screenshot of results
-            await page.screenshot(path="amfi_results.png")
-            logger.info("AMFI: Screenshot saved: amfi_results.png")
-
-            # Log current page state
-            body_text = await page.inner_text("body")
-            logger.info(f"AMFI: Page text preview (first 500 chars): {body_text[:500]}")
-
-            # Specific Wait for MUI Grid (Crucial for 2026 update)
+        except Exception as e:
+            logger.debug(f"AMFI: Page-Proxy API failed: {e}. Falling back to UI Scraping.")
+        # Legacy UI Scraping Fallback
+        try:
+            # MUI Grid selectors for 2026 update
             try:
-                await page.wait_for_selector(".MuiBox-root.css-13rzqox, .MuiBox-root.css-ds3kc", timeout=10000)
-                logger.info("AMFI: MUI Grid loaded.")
+                await page.wait_for_selector(".MuiBox-root.css-13rzqox, .MuiBox-root.css-ds3kc", timeout=5000)
             except:
                 logger.warning("AMFI: MUI Grid did not appear via selector, continuing anyway.")
 
@@ -864,220 +766,61 @@ class AMFIScraper(BaseScraper):
                 "#example tbody tr",
                 ".dataTables_scrollBody tbody tr",
                 'div[id*="table"] tbody tr',
-                '[class*="table"] tbody tr',
-                ".table-responsive table tr",
             ]
 
-            rows = []
-            active_selector = None
-            for selector in row_selectors:
-                rows = await page.query_selector_all(selector)
-                if rows:
-                    active_selector = selector
-                    logger.info(
-                        f"AMFI: Found {len(rows)} rows with selector: {selector}"
-                    )
-                    break
-
-            if not rows:
-                # ... (JS fallback logic remains)
-
-                logger.warning("AMFI: No rows found with standard selectors!")
-
-                # Try using JavaScript to get all content
+            cards = []
+            for sel in row_selectors:
                 try:
-                    js_result = await page.evaluate("""() => {
-                        // Get all text content
-                        const body = document.body;
-                        const text = body.innerText;
-                        
-                        // Get all table data
-                        const tables = document.querySelectorAll('table');
-                        let tableData = [];
-                        tables.forEach((table, i) => {
-                            tableData.push({
-                                index: i,
-                                html: table.outerHTML.substring(0, 1000)
-                            });
-                        });
-                        
-                        // Get all divs with data
-                        const divs = document.querySelectorAll('div[class*="row"], div[class*="data"], div[class*="result"]');
-                        let divData = [];
-                        divs.forEach((div, i) => {
-                            if (i < 5) {
-                                divData.push({
-                                    class: div.className,
-                                    text: div.innerText.substring(0, 200)
-                                });
-                            }
-                        });
-                        
-                        return {
-                            textLength: text.length,
-                            textPreview: text.substring(0, 1000),
-                            tableCount: tables.length,
-                            tables: tableData,
-                            divCount: divs.length,
-                            divs: divData
-                        };
-                    }""")
-
-                    logger.info(
-                        f"AMFI: JS Result - text length: {js_result['textLength']}"
-                    )
-                    logger.info(
-                        f"AMFI: JS Result - text preview: {js_result['textPreview'][:500]}"
-                    )
-                    logger.info(
-                        f"AMFI: JS Result - table count: {js_result['tableCount']}"
-                    )
-                    logger.info(f"AMFI: JS Result - div count: {js_result['divCount']}")
-
-                    if js_result["tables"]:
-                        for t in js_result["tables"]:
-                            logger.info(
-                                f"AMFI: JS Table {t['index']}: {t['html'][:300]}"
-                            )
-
-                    if js_result["divs"]:
-                        for d in js_result["divs"]:
-                            logger.info(f"AMFI: JS Div {d['class']}: {d['text'][:100]}")
-
-                    # Try to parse text content for distributor data
-                    text = js_result["textPreview"]
-
-                    # Look for ARN patterns in the text
-                    arn_pattern = re.compile(
-                        r"(\d{6,})\s+([A-Z][A-Z\s]+)\s+(\d{2}/\d{2}/\d{4})",
-                        re.MULTILINE,
-                    )
-                    matches = arn_pattern.findall(text)
-
-                    if matches:
-                        logger.info(
-                            f"AMFI: Found {len(matches)} potential distributor matches via regex"
-                        )
-                        for match in matches[:10]:
-                            arn, name, date = match
-                            if len(name.strip()) > 3:
-                                listings.append(
-                                    {
-                                        "name": name.strip(),
-                                        "arn": arn.strip(),
-                                        "city": city,
-                                        "state": None,
-                                        "phone": None,
-                                        "address": None,
-                                        "area": None,
-                                        "detail_url": None,
-                                    }
-                                )
-                        logger.info(
-                            f"AMFI: Extracted {len(listings)} listings via regex"
-                        )
-
-                except Exception as js_err:
-                    logger.error(f"AMFI: JavaScript evaluation error: {js_err}")
-
-                return listings
-
-            # Extract data from rows
-            for row in rows:
-                try:
-                    # In MUI grid, children are divs. In tables, children are tds.
-                    cols = await row.query_selector_all(
-                        '> div, td, .col, [class*="cell"]'
-                    )
-
-                    if not cols or len(cols) < 2:
-                        continue
-
-                    # If it's the new MUI grid (usually ~11 columns)
-                    if len(cols) >= 8 and "MuiBox-root" in active_selector:
-                        # Based on subagent research April 2026: 
-                        # ARN=1, Name=2, PIN=6, City=7 (0-indexed: 0, 1, 5, 6)
-                        arn_result = await cols[0].inner_text()
-                        name = await cols[1].inner_text()
-                        
-                        # Contact details are often hidden in the "View Details" button in column 5
-                        phone = None
-                        try:
-                            # Optional: We could click View Details here, but it opens a modal 
-                            # which slows down high-volume scraping. For now we extract what's visible.
-                            city_result = await cols[6].inner_text() if len(cols) > 6 else city
-                            pin = await cols[5].inner_text() if len(cols) > 5 else None
-                            if pin:
-                                address = f"PIN: {pin.strip()}"
-                        except:
-                            city_result = city
-                        
-                        state_result = None
-                    else:
-                        # Standard table fallback
-                        name = await cols[0].inner_text()
-                        arn_result = (
-                            await cols[1].inner_text() if len(cols) > 1 else None
-                        )
-                        city_result = (
-                            await cols[2].inner_text() if len(cols) > 2 else city
-                        )
-                        state_result = (
-                            await cols[3].inner_text() if len(cols) > 3 else None
-                        )
-
-                    if name and arn_result and len(name.strip()) > 1:
-                        listings.append(
-                            {
-                                "name": name.strip(),
-                                "arn": arn_result.strip(),
-                                "city": city_result.strip() if city_result else city,
-                                "state": state_result.strip() if state_result else None,
-                                "phone": None,
-                                "address": None,
-                                "area": None,
-                                "detail_url": None,
-                            }
-                        )
-                except Exception as e:
-                    logger.debug(f"AMFI: Row parse error: {e}")
+                    cards = await page.query_selector_all(sel)
+                    if cards and len(cards) > 1:
+                        logger.info(f"AMFI: Found {len(cards)} cards with selector: {sel}")
+                        break
+                except Exception:
                     continue
 
-            logger.info(f"AMFI: Total listings extracted: {len(listings)}")
+            if not cards:
+                # Text-based fallback (regex) - Very powerful for 2026 dynamic sites
+                body_text = await page.inner_text("body")
+                arn_matches = re.finditer(r"ARN-(\d+)", body_text)
+                for match in arn_matches:
+                    arn = match.group(1)
+                    # Simple heuristic: find nearby name
+                    context = body_text[max(0, match.start()-100) : match.end()+100]
+                    lines = context.split("\n")
+                    name = lines[0] if lines else "Distributor " + arn
+                    listings.append({
+                        "name": name.strip(),
+                        "arn": arn,
+                        "city": city,
+                        "phone": None,
+                        "email": None
+                    })
+                return listings
+
+            for card in cards:
+                try:
+                    # AMFI Specific Selector set
+                    name = await self._get_text(card, 'div[class*="HolderName"], .name, b, td:first-child')
+                    arn = await self._get_text(card, 'div[class*="ARN"], .arn, td:nth-child(2)')
+                    phone = await self._get_text(card, 'div[class*="Mobile"], .phone, td:nth-child(4)')
+                    email = await self._get_text(card, 'div[class*="Email"], .email, td:nth-child(5)')
+
+                    if name and len(name.strip()) > 1:
+                        listings.append({
+                            "name": name.strip(),
+                            "arn": arn.strip() if arn else None,
+                            "phone": self._clean_phone(phone) if phone else None,
+                            "email": email.strip() if email else None,
+                            "city": city,
+                            "source": "AMFI"
+                        })
+                except Exception:
+                    continue
 
         except Exception as e:
-            logger.error(f"AMFI: Extraction error: {e}")
-            import traceback
-
-            logger.error(f"AMFI: Traceback: {traceback.format_exc()}")
+            logger.error(f"AMFI UI fallback error: {e}")
 
         return listings
-
-    async def fetch_with_post(
-        self, session: aiohttp.ClientSession, city: str = None, state: str = None
-    ) -> List[Dict]:
-        listings = []
-        try:
-            payload = {}
-            if city:
-                payload["city"] = city
-            if state:
-                payload["state"] = state
-
-            async with session.post(
-                self.ARN_BASE_URL, data=payload, timeout=30
-            ) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    logger.debug(f"AMFI response length: {len(html)}")
-        except Exception as e:
-            logger.warning(f"AMFI POST error: {e}")
-        return listings
-
-    async def _get_text(self, card, selector: str) -> Optional[str]:
-        elem = await card.query_selector(selector)
-        return await elem.inner_text() if elem else None
-
 
 class IRDAIScraper(BaseScraper):
     """Scraper for IRDAI Insurance Agent data (policyholder.gov.in)"""

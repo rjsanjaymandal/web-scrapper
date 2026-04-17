@@ -48,6 +48,12 @@ class FastScraperConfig:
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
         
+        # BANDWIDTH SAVER: Government/API sources that DON'T need expensive residential proxies.
+        # These are public portals that never block scrapers. Using proxy here is pure waste.
+        self.direct_ip_sources = {
+            "AMFI", "IRDAI", "ICAI", "ICSI", "SEBI", "NSE", "BSE", "GST", "RBI",
+        }
+        
         # Enterprise Infrastructure: Global source throttling map
         # Ensures sensitive sites like Google aren't hammered, preventing CAPTCHAs.
         self.delay_map = {
@@ -201,18 +207,23 @@ class ParallelScraper:
             if ctx:
                 await ctx.close()
 
-    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None, force_http1: bool = False) -> BrowserContext:
+    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None, force_http1: bool = False, source_name: str = "") -> BrowserContext:
         user_agent = StealthManager.get_random_ua()
         extra_headers = StealthManager.get_modern_headers(user_agent)
         
         from stealth_utils import DataImpulseManager
 
-        # Selection of proxy if available AND not marked dead
+        # Selection of proxy — SKIP for government sources (saves bandwidth)
         proxy_config = None
-        if self.config.proxy_list and not self.proxy_dead:
+        use_proxy = (
+            self.config.proxy_list 
+            and not self.proxy_dead 
+            and source_name not in self.config.direct_ip_sources
+        )
+        
+        if use_proxy:
             p = random.choice(self.config.proxy_list)
             host = p["host"]
-            # Playwright requires full URL format: http://host:port
             if not host.startswith("http"):
                 host = f"http://{host}"
             proxy_config = {
@@ -225,9 +236,10 @@ class ParallelScraper:
                 ),
                 "password": p.get("password")
             }
-            logger.debug(f"Worker using proxy: {host} (H1={force_http1})")
-        elif self.proxy_dead:
-            logger.debug(f"Worker using DIRECT IP (proxy marked dead)")
+            logger.debug(f"Worker using PROXY: {host} (H1={force_http1})")
+        else:
+            reason = "gov/api source" if source_name in self.config.direct_ip_sources else ("proxy dead" if self.proxy_dead else "no proxy")
+            logger.debug(f"Worker using DIRECT IP for {source_name} ({reason})")
 
         # Select browser based on protocol requirement
         # Lazy-load browser based on protocol requirement
@@ -283,13 +295,14 @@ class ParallelScraper:
 
             async def block_aggressively(route):
                 url = route.request.url.lower()
-                # Enterprise Bandwidth Saving: Block ALL Media, Images, Fonts, AND Stylesheets (CSS)
+                # BANDWIDTH SAVER: Block ALL non-essential resources through proxy
                 if route.request.resource_type in [
-                    "image",
-                    "font",
-                    "media",
-                    "stylesheet"
-                ] or any(domain in url for domain in block_domains):
+                    "image", "font", "media", "stylesheet",
+                    "websocket", "manifest", "texttrack",
+                ] or any(domain in url for domain in block_domains) or any(
+                    ext in url for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+                    ".woff", ".woff2", ".ttf", ".eot", ".ico", ".mp4", ".mp3", ".pdf"]
+                ):
                     await route.abort()
                 else:
                     await route.continue_()
@@ -325,6 +338,17 @@ class ParallelScraper:
                 # ==== PHASE 1: HYBRID HTTP FETCH (Enterprise Speed Loop) ====
                 if AsyncSession and attempt == 0:
                     try:
+                        # NEW: Check if the scraper has a dedicated API extraction method (High Efficiency)
+                        if hasattr(scraper, "scrape_via_api"):
+                            fast_leads = await scraper.scrape_via_api(city)
+                            if fast_leads:
+                                logger.info(f"🚀 HIGH-SPEED API SUCCESS! Extracted {len(fast_leads)} via direct API from {source_name}. Bypassed Browser.")
+                                processed = ProcessingHandler.process_batch(fast_leads)
+                                valid = ProcessingHandler.filter_valid(processed)
+                                if valid:
+                                    await self._batch_insert(valid, category, city, source_name)
+                                return len(valid)
+
                         async with AsyncSession(impersonate="chrome120") as s:
                             headers = {"User-Agent": StealthManager.get_random_ua()}
                             
@@ -346,6 +370,8 @@ class ParallelScraper:
                                     if valid:
                                         await self._batch_insert(valid, category, city, source_name)
                                     return len(valid)
+                            elif fast_resp.status_code in [403, 404]:
+                                logger.warning(f"🛡️  Fast HTTP 403/404 on {source_name}. Likely IP Blocked.")
                     except Exception as e:
                         logger.debug(f"Fast HTTP fetch failed: {e}. Falling back to Browser.")
 
@@ -370,7 +396,7 @@ class ParallelScraper:
 
                     # Use a unique session_id per attempt to force DataImpulse to provide a new IP
                     session_id = f"sess_{int(asyncio.get_event_loop().time())}_{attempt}"
-                    context = await self._setup_context(city=city, session_id=session_id, force_http1=force_h1)
+                    context = await self._setup_context(city=city, session_id=session_id, force_http1=force_h1, source_name=source_name)
                     page = await context.new_page()
                     
                     try:
@@ -405,8 +431,13 @@ class ParallelScraper:
                     is_blocked = any(kw.lower() in page_title.lower() or kw.lower() in body_text.lower() for kw in block_keywords)
                     
                     if is_blocked and not listings:
-                        logger.warning(f"🛡️  WAF/Block detected on {source_name} (Title: {page_title})")
-                        raise Exception(f"WAF Block detected: {page_title}")
+                        logger.error(f"🛡️  CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job to save bandwidth.")
+                        # Early Abort: Don't retry if clearly blocked
+                        return 0
+
+                    if response and response.status in [403, 404]:
+                        logger.error(f"🛡️  CRITICAL HTTP {response.status} on {source_name}. Aborting job to save bandwidth.")
+                        return 0
 
                     logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
 
