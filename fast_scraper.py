@@ -28,6 +28,7 @@ class FastScraperConfig:
         self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 20))
         self.headless = os.environ.get("HEADLESS", "true").lower() == "true"
         self.timeout = int(os.environ.get("TIMEOUT", 60000))
+        self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", 3))
         self.block_resources = True
 
         self.cities = config_dict.get("cities", [])
@@ -205,16 +206,14 @@ class ParallelScraper:
 
             async def block_aggressively(route):
                 url = route.request.url.lower()
+                # Enterprise Bandwidth Saving: Block ALL Media, Images, Fonts, AND Stylesheets (CSS)
                 if route.request.resource_type in [
                     "image",
                     "font",
                     "media",
+                    "stylesheet"
                 ] or any(domain in url for domain in block_domains):
                     await route.abort()
-                elif route.request.resource_type == "stylesheet":
-                    # Only block large sheets or non-critical ones? 
-                    # For now, allow CSS to avoid layout break detection by some sites
-                    await route.continue_()
                 else:
                     await route.continue_()
 
@@ -223,62 +222,62 @@ class ParallelScraper:
         return context
 
     async def scrape_job(self, city: str, category: str, source_name: str) -> int:
-        """Run a single scraper job within the semaphore limit."""
+        """Run a single scraper job within the semaphore limit (With Auto-Retry and Proxy Swap)."""
         async with self.semaphore:
             scraper = ScraperRegistry.get(source_name)
             if not scraper:
                 logger.error(f"No scraper found for {source_name}")
                 return 0
 
-            context = await self._setup_context()
-            page = await context.new_page()
-            url = scraper.build_search_url(city, category)
+            for attempt in range(self.config.max_retries):
+                context = await self._setup_context()
+                page = await context.new_page()
+                url = scraper.build_search_url(city, category)
+                
+                try:
+                    await page.goto(
+                        url, timeout=self.config.timeout, wait_until="domcontentloaded"
+                    )
+                    listings = await scraper.extract_listings(page, city, category)
+                    logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
 
-            try:
-                await page.goto(
-                    url, timeout=self.config.timeout, wait_until="domcontentloaded"
-                )
-                listings = await scraper.extract_listings(page, city, category)
-                logger.info(f"Job: {source_name} | Raw Extracted: {len(listings)} leads")
+                    if not listings:
+                        title = await page.title()
+                        body = await page.inner_text("body")
+                        logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {title} | Body: {body[:100].replace('\\n', ' ')}")
 
-                if not listings:
-                    # Debug: Why was it 0?
-                    title = await page.title()
-                    body = await page.inner_text("body")
-                    logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {title} | Body Snippet: {body[:200].replace('\\n', ' ')}")
-
-                if listings:
-                    # Filter and Process via unified handler
-                    processed = ProcessingHandler.process_batch(listings)
-                    logger.info(f"Job: {source_name} | Processed: {len(processed)} leads")
-                    
-                    valid = ProcessingHandler.filter_valid(processed)
-                    logger.info(f"Job: {source_name} | Valid: {len(valid)} leads")
-                    
-                    # Debug: log first rejected lead to understand why validation fails
-                    if processed and not valid:
-                        sample = processed[0]
-                        logger.warning(
-                            f"Job: {source_name} | ALL REJECTED | Sample: "
-                            f"name='{sample.get('name','')[:40]}' "
-                            f"phone='{sample.get('phone')}' "
-                            f"phone_clean='{sample.get('phone_clean')}' "
-                            f"email='{sample.get('email')}' "
-                            f"email_valid={sample.get('email_valid')}"
-                        )
-                    
-                    if valid:
-                        await self._batch_insert(valid, category, city, source_name)
-                    return len(valid)
-                return 0
-            except Exception as e:
-                logger.error(
-                    f"Job failed: {source_name} | {city}/{category} | Error: {e}"
-                )
-                return 0
-            finally:
-                await page.close()
-                await context.close()
+                    if listings:
+                        processed = ProcessingHandler.process_batch(listings)
+                        valid = ProcessingHandler.filter_valid(processed)
+                        
+                        if processed and not valid:
+                            sample = processed[0]
+                            logger.warning(
+                                f"Job: {source_name} | ALL REJECTED | Sample: "
+                                f"name='{sample.get('name','')[:40]}' "
+                                f"phone='{sample.get('phone')}' "
+                                f"email='{sample.get('email')}'"
+                            )
+                        
+                        if valid:
+                            await self._batch_insert(valid, category, city, source_name)
+                        return len(valid)
+                        
+                    # If we reach here and it's 0 leads, it might be a block. Break if last attempt.
+                    if attempt == self.config.max_retries - 1:
+                        return 0
+                        
+                except Exception as e:
+                    logger.warning(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} Failed: {str(e)[:100]}. Rotating proxy...")
+                    if attempt == self.config.max_retries - 1:
+                        logger.error(f"Job failed completely: {source_name} | {city}/{category}")
+                        return 0
+                finally:
+                    await page.close()
+                    await context.close()
+                    # Sleep briefly to avoid slamming proxies across attempts
+                    if attempt < self.config.max_retries - 1:
+                        await asyncio.sleep(random.uniform(1.5, 4.0))
 
     async def _batch_insert(
         self, listings: List[Dict], category: str, city: str, source: str

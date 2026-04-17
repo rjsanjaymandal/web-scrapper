@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from playwright.async_api import Page
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,48 @@ class BaseScraper(ABC):
     def source_name(self) -> str:
         """Return the name of the data source (e.g., 'JustDial')."""
         pass
+
+    def extract_raw_fallback(self, html_content: str, city: str, category: str) -> List[Dict]:
+        """
+        Enterprise feature: If DOM selectors fail, use raw regex over HTML to catch orphaned leads.
+        """
+        listings = []
+        if not html_content:
+            return listings
+
+        # Match generic emails
+        email_pattern = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
+        # Match Indian mobile patterns, landlines loosely
+        phone_pattern = re.compile(r"(\+91[-.\s]??\d{10}|\b\d{10}\b|\b0\d{10,11}\b)")
+        
+        emails = list(set(email_pattern.findall(html_content)))
+        phones = list(set(phone_pattern.findall(html_content)))
+        
+        # We can't link an email to a phone easily when scraping raw, 
+        # so we inject them individually as "Raw Extract" names.
+        for email in emails:
+            listings.append({
+                "name": "Raw Extracted",
+                "email": email,
+                "phone": None,
+                "city": city,
+                "category": category,
+            })
+        
+        # Don't duplicate if we have more phones than emails, append remaining
+        for phone in phones:
+            listings.append({
+                "name": "Raw Extracted",
+                "email": None,
+                "phone": phone,
+                "city": city,
+                "category": category,
+            })
+            
+        if listings:
+            logger.info(f"Fallback Regex Extracted {len(emails)} emails and {len(phones)} phones.")
+            
+        return listings
 
 
 class ScraperRegistry:
