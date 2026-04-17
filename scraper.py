@@ -446,12 +446,19 @@ class JustDialScraper(BaseScraper):
         try:
             await page.wait_for_selector("body", timeout=15000)
             
+            # 2026 WAF Buffer: JustDial requires a bit more 'settling' time to bypass the pre-load challenge
+            await asyncio.sleep(3)
+            
             # Anti-Lazy Loading: Scroll to reveal cards
-            for _ in range(3):
+            for _ in range(5):
                 await page.evaluate("window.scrollBy(0, 1000)")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.7)
 
-            await asyncio.sleep(1)
+            # Wait for any typical JD container to appear
+            try:
+                await page.wait_for_selector(".store-info, .jsx-762296e8b7880524, .listing-card", timeout=8000)
+            except:
+                pass
 
             page_title = await page.title()
             page_url = page.url
@@ -1806,12 +1813,13 @@ class YellowPagesScraper(BaseScraper):
     BASE_URL = "https://www.yellowpages.in"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # 2026 Fix: search?q= redirects to homepage. Use category-browse path instead.
-        city_slug = city.strip().replace(" ", "-")
-        cat_slug = category.strip().replace(" ", "-")
+        # 2026 Fix: /city/category pattern is 404ing in some regions.
+        # Verified fallback: /city/search/category or direct search.
+        city_slug = city.strip().replace(" ", "-").lower()
+        cat_slug = category.strip().replace(" ", "-").lower()
         if page == 1:
-            return f"{self.BASE_URL}/{city_slug}/{cat_slug}"
-        return f"{self.BASE_URL}/{city_slug}/{cat_slug}?page={page}"
+            return f"{self.BASE_URL}/{city_slug}/search/{cat_slug}"
+        return f"{self.BASE_URL}/{city_slug}/search/{cat_slug}?page={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -1918,9 +1926,13 @@ class TradeIndiaScraper(BaseScraper):
     BASE_URL = "https://www.tradeindia.com"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # 2026 Dynamic Keyword Pattern
-        query = f"{category} in {city}".replace(" ", "+")
-        return f"{self.BASE_URL}/search.html?keyword={query}&page={page}"
+        # 2026 Optimization: search.html with keyword is high-drag and prone to WAF.
+        # Direct paths like /City/Category.html are faster and more stable.
+        city_slug = city.strip().replace(" ", "-").title()
+        cat_slug = category.strip().replace(" ", "-").title()
+        if page == 1:
+            return f"{self.BASE_URL}/{city_slug}/{cat_slug}.html"
+        return f"{self.BASE_URL}/{city_slug}/{cat_slug}.html?page={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2023,10 +2035,11 @@ class IndiaMartScraper(BaseScraper):
     BASE_URL = "https://www.indiamart.com"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # 2026 Fix: dir.indiamart.com/search.mp is dead. Use main domain search.html
+        # 2026 Fix: search.html?ss= lands on landing page. Using 'isearch.php' or 'search.html?m=1'
         cat_slug = category.lower().replace(" ", "+")
         city_slug = city.lower().replace(" ", "+")
-        return f"https://www.indiamart.com/search.html?ss={cat_slug}&cq={city_slug}&prdsrc=1&pn={page}"
+        # 'm=1' forces the results view instead of the landing view on many B2B sites
+        return f"https://www.indiamart.com/search.html?ss={cat_slug}&cq={city_slug}&prdsrc=1&m=1&pn={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:

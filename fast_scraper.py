@@ -350,7 +350,9 @@ class ParallelScraper:
                                 return len(valid)
 
                         async with AsyncSession(impersonate="chrome120") as s:
-                            headers = {"User-Agent": StealthManager.get_random_ua()}
+                            ua = StealthManager.get_random_ua()
+                            headers = StealthManager.get_modern_headers(ua)
+                            headers["User-Agent"] = ua
                             
                             # Inject cached cookies to bypass Cloudflare
                             if self.redis_conn:

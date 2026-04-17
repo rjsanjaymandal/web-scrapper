@@ -75,12 +75,12 @@ class DataImpulseManager:
 class StealthManager:
     """Manages browser stealth, user-agent rotation, and header spoofing."""
     
-    # Fallback pool if fake-useragent fails
+    # Fallback pool for 2026 (Chrome 140+)
     FALLBACK_USER_AGENTS = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     ]
 
     @classmethod
@@ -109,11 +109,25 @@ class StealthManager:
             "User-Agent": user_agent,
         }
         
-        # Add basic Client Hints if it's a Chrome User-Agent
-        if "Chrome" in user_agent:
-            headers["sec-ch-ua"] = '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"'
-            headers["sec-ch-ua-mobile"] = "?0"
-            headers["sec-ch-ua-platform"] = '"Windows"' if "Windows" in user_agent else '"macOS"'
+        # 2026 Enterprise Feature: Dynamic Client Hints Generation
+        # This prevents WAFs from detecting version mismatch between UA and Hints.
+        if "Chrome/" in user_agent:
+            try:
+                # Extract full version and major version (e.g. 147.0.0.0 -> 147)
+                match = re.search(r"Chrome/(\d+)\.", user_agent)
+                major_version = match.group(1) if match else "147"
+                
+                platform = '"Windows"'
+                if "Macintosh" in user_agent: platform = '"macOS"'
+                elif "Linux" in user_agent: platform = '"Linux"'
+                
+                headers["sec-ch-ua"] = f'"Not(A:Brand";v="99", "Google Chrome";v="{major_version}", "Chromium";v="{major_version}"'
+                headers["sec-ch-ua-mobile"] = "?0"
+                headers["sec-ch-ua-platform"] = platform
+            except Exception:
+                headers["sec-ch-ua"] = '"Chromium";v="147", "Not(A:Brand";v="24", "Google Chrome";v="147"'
+                headers["sec-ch-ua-mobile"] = "?0"
+                headers["sec-ch-ua-platform"] = '"Windows"'
             
         return headers
 
@@ -143,9 +157,12 @@ class StealthManager:
                 ]
             });
 
-            // 3. Mask Hardware signatures (Hide 8vCPU/8GB server profile)
-            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
-            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+            // 3. Mask Hardware signatures (Hide lowvCPU/lowRAM server profile)
+            // 2026 Standards: High-entropy randomization
+            const concurrency = [4, 8, 12, 16][Math.floor(Math.random() * 4)];
+            const memory = [8, 16, 32][Math.floor(Math.random() * 3)];
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => concurrency });
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => memory });
             
             // 4. Canvas Fingerprint Jitter
             const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
