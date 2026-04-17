@@ -2063,12 +2063,12 @@ class YellowPagesScraper(BaseScraper):
     BASE_URL = "https://www.yellowpages.in"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # 2026 Resilient pattern for YellowPages
-        # Format: /city/category or /search?q=category+in+city
-        q = f"{category} in {city}".replace(" ", "+")
+        # 2026 Fix: search?q= redirects to homepage. Use category-browse path instead.
+        city_slug = city.strip().replace(" ", "-")
+        cat_slug = category.strip().replace(" ", "-")
         if page == 1:
-            return f"{self.BASE_URL}/search?q={q}"
-        return f"{self.BASE_URL}/search?q={q}&page={page}"
+            return f"{self.BASE_URL}/{city_slug}/{cat_slug}"
+        return f"{self.BASE_URL}/{city_slug}/{cat_slug}?page={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2090,7 +2090,9 @@ class YellowPagesScraper(BaseScraper):
         try:
             await page.wait_for_selector("body", timeout=15000)
 
+            # 2026 Verified selectors from live browser recon
             card_selectors = [
+                "div.eachPopular",
                 ".search-results .result",
                 ".listing-card",
                 ".business-card",
@@ -2111,14 +2113,15 @@ class YellowPagesScraper(BaseScraper):
 
             for card in cards:
                 try:
+                    # 2026 Verified selectors
                     name = await self._get_text(
-                        card, "h2, h3, .business-name, .title, .name"
+                        card, "a.eachPopularTitle, h2, h3, .business-name, .title, .name"
                     )
                     phone = await self._get_text(
-                        card, ".phone, .contact-phone, [class*='phone']"
+                        card, "a.businessContact, .phone, .contact-phone, [class*='phone']"
                     )
                     address = await self._get_text(
-                        card, ".address, .location, .contact-addr"
+                        card, "address.businessArea, .address, .location, .contact-addr"
                     )
                     area = await self._get_text(card, ".area, .locality")
                     email_elem = await card.query_selector("a[href*='mailto']")
@@ -2273,10 +2276,10 @@ class IndiaMartScraper(BaseScraper):
     BASE_URL = "https://www.indiamart.com"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # 2026 Directory Search Pattern
+        # 2026 Fix: dir.indiamart.com/search.mp is dead. Use main domain search.html
         cat_slug = category.lower().replace(" ", "+")
         city_slug = city.lower().replace(" ", "+")
-        return f"https://dir.indiamart.com/search.mp?ss={cat_slug}&cq={city_slug}&pn={page}"
+        return f"https://www.indiamart.com/search.html?ss={cat_slug}&cq={city_slug}&prdsrc=1&pn={page}"
 
     async def get_detail_url(self, card) -> Optional[str]:
         try:
@@ -2298,18 +2301,43 @@ class IndiaMartScraper(BaseScraper):
         try:
             await page.wait_for_selector("body", timeout=15000)
 
+            # 2026 Verified selectors from live browser recon
             cards = await page.query_selector_all(
-                "article.template7-product-card, .prod-list .prod-item, .seller-card, [class*='seller']"
+                ".cl_csCTC, article.template7-product-card, .prod-list .prod-item, .seller-card, [class*='seller']"
             )
 
             if not cards:
+                # Fallback: extract leads from raw page text via regex
+                body_text = await page.inner_text("body")
+                phone_pattern = re.compile(r'(?:\+91[\-\s]?)?[6-9]\d{4}[\-\s]?\d{5}')
+                email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+                phones_found = phone_pattern.findall(body_text)
+                emails_found = email_pattern.findall(body_text)
+                lines = [l.strip() for l in body_text.split("\n") if l.strip() and 10 < len(l.strip()) < 120]
+                name_candidates = [l for l in lines if not re.match(r'^[\d\s\-\+\(\)]+$', l) and '@' not in l]
+
+                seen = set()
+                for i, phone in enumerate(phones_found):
+                    clean = re.sub(r'[^\d]', '', phone)[-10:]
+                    if clean in seen:
+                        continue
+                    seen.add(clean)
+                    listings.append({
+                        "name": (name_candidates[i] if i < len(name_candidates) else f"IndiaMart Lead {i+1}")[:120],
+                        "phone": clean,
+                        "email": emails_found[i] if i < len(emails_found) else None,
+                        "address": None, "city": city, "area": None, "detail_url": None,
+                    })
+                if listings:
+                    logger.info(f"IndiaMart Regex Fallback: Extracted {len(listings)} leads from raw text")
                 return listings
 
             for card in cards:
                 try:
-                    name = await self._get_text(card, ".template7-seller-name, .company-name, .prod-name, h3")
+                    # 2026 Verified selectors: .elps1 = company name, .prd-name = product
+                    name = await self._get_text(card, "a.elps1, .template7-seller-name, .company-name, .prod-name, h3")
                     phone = await self._get_text(
-                        card, ".prod-phn, .contact, [class*='phone']"
+                        card, ".callNowButton, .prod-phn, .contact, [class*='phone']"
                     )
                     address = await self._get_text(card, ".prod-addr, .address")
                     email_elem = await card.query_selector("a[href*='mailto']")

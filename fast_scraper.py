@@ -146,15 +146,6 @@ class ParallelScraper:
         else:
             logger.error("No DATABASE_URL found for parallel scraper pool.")
 
-        logger.info(f"Parallel Engine V2 ready (Lazy Browser): Concurrency={self.config.max_concurrent}")
-
-        if self.config.db_url:
-            self.pool = await asyncpg.create_pool(
-                dsn=self.config.db_url, min_size=5, max_size=self.config.max_concurrent + 5
-            )
-        else:
-            logger.error("No DATABASE_URL found for parallel scraper pool.")
-
         logger.info(f"Parallel Engine V2 ready: Concurrency={self.config.max_concurrent}")
 
         # Proxy connectivity smoke test
