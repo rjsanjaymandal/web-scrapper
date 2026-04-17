@@ -2079,23 +2079,54 @@ class YellowPagesScraper(BaseScraper):
             if not cards:
                 logger.warning("YellowPages: No cards found, trying text extraction")
                 body_text = await page.inner_text("body")
-                lines = [
-                    l.strip() for l in body_text.split("\n") if l.strip() and len(l) > 5
-                ]
-
-                for line in lines[:30]:
-                    if len(line) > 10 and len(line) < 150:
-                        listings.append(
-                            {
-                                "name": line[:100],
-                                "phone": None,
-                                "email": None,
-                                "address": None,
-                                "city": city,
-                                "area": None,
-                                "detail_url": None,
-                            }
-                        )
+                
+                # Extract phone numbers from raw text
+                phone_pattern = re.compile(r'(?:\+91[\-\s]?)?[6-9]\d{4}[\-\s]?\d{5}')
+                email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+                
+                phones_found = phone_pattern.findall(body_text)
+                emails_found = email_pattern.findall(body_text)
+                
+                # Build listings from found contacts
+                # Try to associate names from nearby text lines
+                lines = [l.strip() for l in body_text.split("\n") if l.strip() and 10 < len(l.strip()) < 120]
+                name_candidates = [l for l in lines if not re.match(r'^[\d\s\-\+\(\)]+$', l) and '@' not in l]
+                
+                seen_phones = set()
+                for i, phone in enumerate(phones_found):
+                    clean = re.sub(r'[^\d]', '', phone)
+                    if len(clean) >= 10:
+                        clean = clean[-10:]
+                    if clean in seen_phones:
+                        continue
+                    seen_phones.add(clean)
+                    name = name_candidates[i] if i < len(name_candidates) else f"YellowPages Lead {i+1}"
+                    email = emails_found[i] if i < len(emails_found) else None
+                    listings.append({
+                        "name": name[:100],
+                        "phone": clean,
+                        "email": email,
+                        "address": None,
+                        "city": city,
+                        "area": None,
+                        "detail_url": None,
+                    })
+                
+                # If no phones found, try email-only leads
+                if not seen_phones:
+                    for i, email in enumerate(emails_found[:10]):
+                        name = name_candidates[i] if i < len(name_candidates) else f"YellowPages Lead {i+1}"
+                        listings.append({
+                            "name": name[:100],
+                            "phone": None,
+                            "email": email,
+                            "address": None,
+                            "city": city,
+                            "area": None,
+                            "detail_url": None,
+                        })
+                
+                logger.info(f"YellowPages: Text extraction found {len(listings)} leads ({len(seen_phones)} phones, {len(emails_found)} emails)")
                 return listings
 
             for card in cards:
@@ -2191,23 +2222,24 @@ class TradeIndiaScraper(BaseScraper):
 
             if not cards:
                 body_text = await page.inner_text("body")
-                lines = [
-                    l.strip()
-                    for l in body_text.split("\n")
-                    if l.strip() and 5 < len(l) < 100
-                ]
-                for line in lines[:20]:
-                    listings.append(
-                        {
-                            "name": line[:100],
-                            "phone": None,
-                            "email": None,
-                            "address": None,
-                            "city": city,
-                            "area": None,
-                            "detail_url": None,
-                        }
-                    )
+                phone_pattern = re.compile(r'(?:\+91[\-\s]?)?[6-9]\d{4}[\-\s]?\d{5}')
+                email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+                phones_found = phone_pattern.findall(body_text)
+                emails_found = email_pattern.findall(body_text)
+                lines = [l.strip() for l in body_text.split("\n") if l.strip() and 10 < len(l.strip()) < 120]
+                name_candidates = [l for l in lines if not re.match(r'^[\d\s\-\+\(\)]+$', l) and '@' not in l]
+                
+                seen_phones = set()
+                for i, phone in enumerate(phones_found):
+                    clean = re.sub(r'[^\d]', '', phone)[-10:]
+                    if clean in seen_phones:
+                        continue
+                    seen_phones.add(clean)
+                    listings.append({
+                        "name": (name_candidates[i] if i < len(name_candidates) else f"TradeIndia Lead {i+1}")[:100],
+                        "phone": clean, "email": emails_found[i] if i < len(emails_found) else None,
+                        "address": None, "city": city, "area": None, "detail_url": None,
+                    })
                 return listings
 
             for card in cards:

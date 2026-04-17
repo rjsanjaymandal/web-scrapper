@@ -177,18 +177,48 @@ def main():
         
         elif process_type == "automator":
             port = os.environ.get("PORT", "8080")
-            log("Starting Healthcheck server for Automator...")
-            start_health_server(port)
-            log("🚀 Handoff to Enterprise Automator...")
-            cmd = ["python3", "automate_100_cities.py"]
+            
+            # Run DB init before starting anything
+            log("Running database initialization for Automator+Dashboard...")
+            init_tables()
+            
+            # Launch Gunicorn dashboard as a background subprocess
+            log(f"Starting Dashboard (Gunicorn) on port {port} in background...")
+            gunicorn_cmd = [
+                "gunicorn",
+                "--bind", f"0.0.0.0:{port}",
+                "--workers", "1",
+                "--threads", "4",
+                "--timeout", "300",
+                "--access-logfile", "-",
+                "--error-logfile", "-",
+                "dashboard:app"
+            ]
+            dashboard_proc = subprocess.Popen(gunicorn_cmd)
+            log(f"✅ Dashboard running (PID: {dashboard_proc.pid})")
+            
+            # Give gunicorn a moment to bind the port
+            time.sleep(3)
+            
+            log("🚀 Starting Enterprise Automator...")
+            automator_cmd = ["python3", "automate_100_cities.py"]
             try:
-                subprocess.run(cmd)
+                subprocess.run(automator_cmd)
             except KeyboardInterrupt:
                 log("Automator received interrupt, shutting down...")
+                dashboard_proc.terminate()
                 sys.exit(0)
             except Exception as e:
                 log(f"❌ Automator crashed: {e}")
+                dashboard_proc.terminate()
                 sys.exit(1)
+            finally:
+                # Keep dashboard alive after automator finishes
+                log("Automator cycle complete. Dashboard still running...")
+                try:
+                    dashboard_proc.wait()
+                except KeyboardInterrupt:
+                    dashboard_proc.terminate()
         
         else:
             log(f"❌ Unknown PROCESS_TYPE: {process_type}")

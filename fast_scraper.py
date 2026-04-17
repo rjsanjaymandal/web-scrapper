@@ -226,6 +226,18 @@ class ParallelScraper:
                     valid = ProcessingHandler.filter_valid(processed)
                     logger.info(f"Job: {source_name} | Valid: {len(valid)} leads")
                     
+                    # Debug: log first rejected lead to understand why validation fails
+                    if processed and not valid:
+                        sample = processed[0]
+                        logger.warning(
+                            f"Job: {source_name} | ALL REJECTED | Sample: "
+                            f"name='{sample.get('name','')[:40]}' "
+                            f"phone='{sample.get('phone')}' "
+                            f"phone_clean='{sample.get('phone_clean')}' "
+                            f"email='{sample.get('email')}' "
+                            f"email_valid={sample.get('email_valid')}"
+                        )
+                    
                     if valid:
                         await self._batch_insert(valid, category, city, source_name)
                     return len(valid)
