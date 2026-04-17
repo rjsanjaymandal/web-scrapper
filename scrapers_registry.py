@@ -29,6 +29,11 @@ class BaseScraper(ABC):
         pass
 
     @property
+    def force_http1(self) -> bool:
+        """Whether to force HTTP/1.1 for this source."""
+        return False
+
+    @property
     @abstractmethod
     def source_name(self) -> str:
         """Return the name of the data source (e.g., 'JustDial')."""

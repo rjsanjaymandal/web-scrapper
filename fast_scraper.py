@@ -36,11 +36,12 @@ class FastScraperConfig:
 
         self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 20))
         self.headless = os.environ.get("HEADLESS", "true").lower() == "true"
-        self.timeout = int(os.environ.get("TIMEOUT", 60000))
-        self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", 3))
+        self.timeout = int(os.environ.get("TIMEOUT", config_dict.get("scraper_settings", {}).get("timeout", 60000)))
+        self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", config_dict.get("scraper_settings", {}).get("max_retries", 3)))
         self.block_resources = True
         self.redis_url = os.environ.get("REDIS_URL")
         self.enable_city_targeting = os.environ.get("PROXY_CITY_TARGETING", "false").lower() == "true"
+        self.force_http1_sources = config_dict.get("scraper_settings", {}).get("force_http1_sources", [])
 
         self.cities = config_dict.get("cities", [])
         self.categories = config_dict.get("categories", [])
@@ -143,6 +144,19 @@ class ParallelScraper:
                 "--disable-extensions",
             ],
         )
+        
+        # Secondary browser for "Protocol Stealth" (H2 disabled)
+        self.browser_h1 = await self.playwright.chromium.launch(
+            headless=self.config.headless,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+                "--disable-http2",
+            ],
+        )
 
         if self.config.db_url:
             self.pool = await asyncpg.create_pool(
@@ -160,6 +174,8 @@ class ParallelScraper:
     async def close(self):
         if self.browser:
             await self.browser.close()
+        if hasattr(self, "browser_h1") and self.browser_h1:
+            await self.browser_h1.close()
         if self.playwright:
             await self.playwright.stop()
         if self.pool:
@@ -194,7 +210,7 @@ class ParallelScraper:
             if ctx:
                 await ctx.close()
 
-    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None) -> BrowserContext:
+    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None, force_http1: bool = False) -> BrowserContext:
         user_agent = StealthManager.get_random_ua()
         extra_headers = StealthManager.get_modern_headers(user_agent)
         
@@ -218,9 +234,12 @@ class ParallelScraper:
                 ),
                 "password": p.get("password")
             }
-            logger.debug(f"Worker using proxy: {host}")
+            logger.debug(f"Worker using proxy: {host} (H1={force_http1})")
 
-        context = await self.browser.new_context(
+        # Select browser based on protocol requirement
+        target_browser = self.browser_h1 if force_http1 and hasattr(self, "browser_h1") else self.browser
+
+        context = await target_browser.new_context(
             user_agent=user_agent,
             extra_http_headers=extra_headers,
             viewport={"width": 1280, "height": 720},
@@ -327,11 +346,23 @@ class ParallelScraper:
                             logger.error("🛑 CRITICAL MEMORY: Aborting job to prevent restart.")
                             return 0
 
-                    context = await self._setup_context(city=city, session_id=session_id)
+                    # Enterprise Protocol Selection
+                    force_h1 = scraper.force_http1 or source_name in self.config.force_http1_sources
+                    if attempt > 0 and "http2" in str(getattr(self, 'last_error', '')).lower():
+                        force_h1 = True
+                        logger.warning(f"🛡️  Protocol Error detected previously. Forcing HTTP/1.1 for retry.")
+
+                    context = await self._setup_context(city=city, session_id=session_id, force_http1=force_h1)
                     page = await context.new_page()
-                    await page.goto(
-                        url, timeout=self.config.timeout, wait_until="domcontentloaded"
-                    )
+                    
+                    try:
+                        await page.goto(
+                            url, timeout=self.config.timeout, wait_until="domcontentloaded"
+                        )
+                    except Exception as goto_err:
+                        self.last_error = str(goto_err)
+                        raise goto_err
+
                     listings = await scraper.extract_listings(page, city, category)
                     
                     # WAF / Block Detection Logic

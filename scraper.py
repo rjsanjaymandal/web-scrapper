@@ -145,11 +145,11 @@ class Config:
     dashboard_page_size: int
     categories: List[str]
     cities: List[str]
+    scraper_settings: Dict
 
 
 def load_config() -> Config:
     config_path = Path("config.yaml")
-    data = {}
     if config_path.exists():
         with open(config_path, "r") as f:
             data = yaml.safe_load(f) or {}
@@ -157,6 +157,7 @@ def load_config() -> Config:
     scraper_cfg = data.get("scraper", {})
     db_cfg = data.get("database", {})
     proxy_cfg = data.get("proxy", {})
+    scraper_settings = data.get("scraper_settings", {})
 
     # Environment Variable Support (Prioritize these for Railway)
     # Environment Variable Support (Prioritize these for Railway)
@@ -302,6 +303,7 @@ def load_config() -> Config:
         ),
         categories=data.get("categories", []),
         cities=data.get("cities", []),
+        scraper_settings=scraper_settings
     )
 
 
@@ -380,6 +382,7 @@ class BaseScraperProxy(BaseScraper):
 
 class JustDialScraper(BaseScraper):
     source_name = "JUSTDIAL"
+    force_http1 = True
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         category_slug = category.lower().replace(" ", "-")
@@ -461,7 +464,13 @@ class JustDialScraper(BaseScraper):
         listings = []
         try:
             await page.wait_for_selector("body", timeout=15000)
-            await asyncio.sleep(3)
+            
+            # Anti-Lazy Loading: Scroll to reveal cards
+            for _ in range(3):
+                await page.evaluate("window.scrollBy(0, 1000)")
+                await asyncio.sleep(0.5)
+
+            await asyncio.sleep(1)
 
             page_title = await page.title()
             page_url = page.url
@@ -833,6 +842,13 @@ class AMFIScraper(BaseScraper):
             body_text = await page.inner_text("body")
             logger.info(f"AMFI: Page text preview (first 500 chars): {body_text[:500]}")
 
+            # Specific Wait for MUI Grid (Crucial for 2026 update)
+            try:
+                await page.wait_for_selector(".MuiBox-root.css-13rzqox, .MuiBox-root.css-ds3kc", timeout=10000)
+                logger.info("AMFI: MUI Grid loaded.")
+            except:
+                logger.warning("AMFI: MUI Grid did not appear via selector, continuing anyway.")
+
             # Try multiple row selectors
             row_selectors = [
                 ".MuiBox-root.css-ds3kc",  # New MUI-based grid rows
@@ -976,14 +992,25 @@ class AMFIScraper(BaseScraper):
                         continue
 
                     # If it's the new MUI grid (usually ~11 columns)
-                    if len(cols) >= 10 and "MuiBox-root" in active_selector:
-                        # Based on research: ARN=1, Name=2, City=7 (1-based, so 0, 1, 6)
+                    if len(cols) >= 8 and "MuiBox-root" in active_selector:
+                        # Based on subagent research April 2026: 
+                        # ARN=1, Name=2, PIN=6, City=7 (0-indexed: 0, 1, 5, 6)
                         arn_result = await cols[0].inner_text()
                         name = await cols[1].inner_text()
-                        city_result = (
-                            await cols[6].inner_text() if len(cols) > 6 else city
-                        )
-                        state_result = None  # Might be in there too
+                        
+                        # Contact details are often hidden in the "View Details" button in column 5
+                        phone = None
+                        try:
+                            # Optional: We could click View Details here, but it opens a modal 
+                            # which slows down high-volume scraping. For now we extract what's visible.
+                            city_result = await cols[6].inner_text() if len(cols) > 6 else city
+                            pin = await cols[5].inner_text() if len(cols) > 5 else None
+                            if pin:
+                                address = f"PIN: {pin.strip()}"
+                        except:
+                            city_result = city
+                        
+                        state_result = None
                     else:
                         # Standard table fallback
                         name = await cols[0].inner_text()
@@ -1578,6 +1605,7 @@ class SEBIScraper(BaseScraper):
     """Scraper for SEBI (Securities and Exchange Board of India) registered intermediaries"""
 
     source_name = "SEBI"
+    force_http1 = True
 
     REGISTRAR_URL = (
         "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes"

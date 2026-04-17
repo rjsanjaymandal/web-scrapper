@@ -36,3 +36,10 @@ proxy:
     - host: "gw.dataimpulse.com:823"
       username: "1accade8fd4acb75b8ae"
       password: "c51e0887f7425452"
+
+scraper_settings:
+  # Some sites (JustDial, TradeIndia) block HTTP/2 connections from known proxies.
+  # Forcing HTTP/1.1 improves success rate on these targets.
+  force_http1_sources: ["JUSTDIAL", "TRADEINDIA", "INDIAMART", "AMFI"]
+  max_retries: 5
+  timeout: 45
