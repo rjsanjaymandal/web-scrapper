@@ -40,11 +40,16 @@ class FastScraperConfig:
         # Determine source for logging
         if env_proxy_host:
             source = "Environment (PROXY_HOST)"
-            env_proxy_port = os.environ.get("PROXY_PORT", "")
-            
             # Build host:port string if port is provided separately and not in host
-            if env_proxy_port and ":" not in env_proxy_host:
-                proxy_host = f"{env_proxy_host}:{env_proxy_port}"
+            if ":" not in env_proxy_host:
+                if env_proxy_port:
+                    proxy_host = f"{env_proxy_host}:{env_proxy_port}"
+                elif "dataimpulse.com" in env_proxy_host.lower():
+                    # Fallback to Data Impulse default if missing
+                    proxy_host = f"{env_proxy_host}:823"
+                    logger.warning(f"⚠️  Auto-appending default port :823 for Data Impulse.")
+                else:
+                    proxy_host = env_proxy_host
             else:
                 proxy_host = env_proxy_host
                 
