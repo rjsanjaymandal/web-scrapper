@@ -130,6 +130,8 @@ class ParallelScraper:
         self.browser = None
         self.pool = None
         self.redis_conn = None
+        self.proxy_dead = False  # Tracks if proxy is exhausted/dead
+        self.proxy_failures = 0  # Consecutive proxy failures
 
     async def init(self):
         if self.config.redis_url and redis:
@@ -193,7 +195,8 @@ class ParallelScraper:
             logger.info(f"✅ PROXY OK! Response status={resp.status}, IP={body.strip()[:80]}")
         except Exception as e:
             logger.critical(f"❌ PROXY FAILED! Error: {e}")
-            logger.critical(f"❌ Check PROXY_HOST (must include port) and PROXY_USER/PROXY_PASS env vars!")
+            logger.critical(f"❌ Check PROXY_HOST/PROXY_USER/PROXY_PASS. Falling back to DIRECT IP.")
+            self.proxy_dead = True
         finally:
             if ctx:
                 await ctx.close()
@@ -204,9 +207,9 @@ class ParallelScraper:
         
         from stealth_utils import DataImpulseManager
 
-        # Selection of proxy if available
+        # Selection of proxy if available AND not marked dead
         proxy_config = None
-        if self.config.proxy_list:
+        if self.config.proxy_list and not self.proxy_dead:
             p = random.choice(self.config.proxy_list)
             host = p["host"]
             # Playwright requires full URL format: http://host:port
@@ -223,6 +226,8 @@ class ParallelScraper:
                 "password": p.get("password")
             }
             logger.debug(f"Worker using proxy: {host} (H1={force_http1})")
+        elif self.proxy_dead:
+            logger.debug(f"Worker using DIRECT IP (proxy marked dead)")
 
         # Select browser based on protocol requirement
         # Lazy-load browser based on protocol requirement
@@ -438,7 +443,24 @@ class ParallelScraper:
                         return 0
                         
                 except Exception as e:
-                    logger.warning(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} Failed: {str(e)[:100]}. Rotating proxy...")
+                    err_str = str(e)
+                    logger.warning(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} Failed: {err_str[:100]}. Rotating proxy...")
+                    
+                    # Detect proxy exhaustion / dead proxy
+                    proxy_dead_signals = [
+                        "ERR_TUNNEL_CONNECTION_FAILED",
+                        "ERR_PROXY_CONNECTION_FAILED", 
+                        "ERR_PROXY_AUTH_FAILED",
+                        "407",  # Proxy auth required
+                        "PROXY_TUNNEL",
+                        "Connection refused",
+                    ]
+                    if any(sig in err_str for sig in proxy_dead_signals):
+                        self.proxy_failures += 1
+                        if self.proxy_failures >= 3:
+                            logger.warning("🔌 PROXY EXHAUSTED: 3+ consecutive tunnel failures. Switching to DIRECT IP for remaining jobs.")
+                            self.proxy_dead = True
+                    
                     if attempt == self.config.max_retries - 1:
                         logger.error(f"Job failed completely: {source_name} | {city}/{category}")
                         return 0
