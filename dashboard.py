@@ -473,6 +473,33 @@ HTML = """
         </div>
     </div>
 
+    <!-- NEW: Trigger Section -->
+    <div class="card" style="margin-bottom:24px; border-left: 4px solid #f0883e; background: rgba(240, 136, 62, 0.05);">
+        <h3 style="color:#c9d1d9; font-size:16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">🚀</span> Launch New Scraper Task
+        </h3>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex:1; min-width:200px;">
+                <label style="font-size:11px; color:#8b8fa3; text-transform:uppercase; letter-spacing:0.5px;">City Name</label><br>
+                <input type="text" id="trigger-city" list="cities-list" placeholder="Type city (e.g. Mumbai, Bangalore...)" style="width:100%; padding:10px 14px; background:#0d1117; border:1px solid #2d3148; border-radius:8px; color:#fff; margin-top:4px; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#f0883e'" onblur="this.style.borderColor='#2d3148'">
+                <datalist id="cities-list">
+                    {% for c in cities_default %}<option value="{{c}}">{% endfor %}
+                </datalist>
+            </div>
+            <div style="flex:1; min-width:200px;">
+                <label style="font-size:11px; color:#8b8fa3; text-transform:uppercase; letter-spacing:0.5px;">Business Category</label><br>
+                <input type="text" id="trigger-category" list="cats-list" placeholder="Type category (e.g. CA, Banks...)" style="width:100%; padding:10px 14px; background:#0d1117; border:1px solid #2d3148; border-radius:8px; color:#fff; margin-top:4px; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#f0883e'" onblur="this.style.borderColor='#2d3148'">
+                <datalist id="cats-list">
+                    {% for cat in categories_default %}<option value="{{cat}}">{% endfor %}
+                </datalist>
+            </div>
+            <button class="btn btn-scrape" id="scrape-btn-primary" onclick="startScraperPool()" style="padding:10px 24px; height:42px; display:flex; align-items:center; gap:8px;">
+                Launch Task
+            </button>
+        </div>
+        <p style="font-size:11px; color:#8b8fa3; margin-top:12px; opacity:0.7;">This will start a deep automated search across multiple sources (YellowPages, JustDial, Google, and official registers) for the specified target.</p>
+    </div>
+
     <!-- NEW: Activity Log Section -->
     <div class="card" style="margin-bottom:20px; border-left: 4px solid #58a6ff;">
         <h3 style="display:flex; justify-content:space-between; align-items:center;">
@@ -571,40 +598,60 @@ HTML = """
                     }
                 }
                 
-                document.getElementById('scrape-btn').disabled = true;
-                document.getElementById('scrape-btn').innerText = '🚧 Working...';
+                if(document.getElementById('scrape-btn')) {
+                    document.getElementById('scrape-btn').disabled = true;
+                    document.getElementById('scrape-btn').innerText = '🚧 Working...';
+                }
+                if(document.getElementById('scrape-btn-primary')) {
+                    document.getElementById('scrape-btn-primary').disabled = true;
+                    document.getElementById('scrape-btn-primary').innerText = '🚧 Working...';
+                }
             } else {
                 statusEl.innerText = 'Idle';
                 statusEl.className = 'val status-idle';
                 progressContainer.style.display = 'none';
                 skippedEl.innerText = '';
-                document.getElementById('scrape-btn').disabled = false;
-                document.getElementById('scrape-btn').innerText = '🚀 Start Business Scraper';
-            }
+                if(document.getElementById('scrape-btn')){
+                    document.getElementById('scrape-btn').disabled = false;
+                    document.getElementById('scrape-btn').innerText = '🚀 Start Business Scraper';
+                }
+                if(document.getElementById('scrape-btn-primary')){
+                    document.getElementById('scrape-btn-primary').disabled = false;
+                    document.getElementById('scrape-btn-primary').innerText = '🚀 Launch Task';
+                }
 
             // Update Activity Log
             if (data.activity_logs && data.activity_logs.length > 0) {
                 const logContainer = document.getElementById('activity-log');
                 const logCount = document.getElementById('log-count');
-                logCount.innerText = data.activity_logs.length + ' events';
+                if(logCount) logCount.innerText = data.activity_logs.length + ' events';
                 
                 let html = '';
                 data.activity_logs.forEach(log => {
                     const color = log.level === 'ERROR' ? '#f85149' : (log.level === 'SUCCESS' ? '#3fb950' : '#8b8fa3');
                     html += `<div style="margin-bottom:4px;"><span style="color:#484f58;">[${log.time}]</span> <span style="color:#58a6ff; font-weight:bold;">${log.source || 'SYS'}</span> <span style="color:${color};">${log.message}</span></div>`;
                 });
-                logContainer.innerHTML = html;
+                if(logContainer) logContainer.innerHTML = html;
             }
         };
-
         function startScraperPool() {
-            const city = document.getElementById('filter-city').value;
-            const cat = document.getElementById('filter-category').value;
+            const manualCity = document.getElementById('trigger-city').value;
+            const manualCat = document.getElementById('trigger-category').value;
+            const filterCity = document.getElementById('filter-city').value;
+            const filterCat = document.getElementById('filter-category').value;
+            
+            const city = manualCity || filterCity;
+            const cat = manualCat || filterCat;
             
             if (!city || !cat) {
-                 showNotification("Please select both a City and Category first!", true);
+                 showNotification("Please enter or select both a City and Category first!", true);
                  return;
             }
+
+            const btnPrimary = document.getElementById('scrape-btn-primary');
+            const btnSecondary = document.getElementById('scrape-btn');
+            if(btnPrimary) { btnPrimary.disabled = true; btnPrimary.innerText = '🚧 Launching...'; }
+            if(btnSecondary) { btnSecondary.disabled = true; btnSecondary.innerText = '🚧 Working...'; }
 
             showNotification(`Starting scrape for ${cat} in ${city}...`);
             fetch('/api/trigger/scrape', {
@@ -612,7 +659,15 @@ HTML = """
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({city: city, category: cat, use_business: true})
             }).then(r=>r.json()).then(d=>{
-                showNotification(d.message || d.error);
+                showNotification(d.message || d.error, !!d.error);
+                if(d.error) {
+                    if(btnPrimary) { btnPrimary.disabled = false; btnPrimary.innerText = '🚀 Launch Task'; }
+                    if(btnSecondary) { btnSecondary.disabled = false; btnSecondary.innerText = '🚀 Start Business Scraper'; }
+                }
+            }).catch(err => {
+                showNotification("Failed to trigger: " + err, true);
+                if(btnPrimary) { btnPrimary.disabled = false; btnPrimary.innerText = '🚀 Launch Task'; }
+                if(btnSecondary) { btnSecondary.disabled = false; btnSecondary.innerText = '🚀 Start Business Scraper'; }
             });
         }
 
@@ -1121,6 +1176,8 @@ def index():
         by_cat=by_cat,
         page=page,
         total_pages=total_pages,
+        cities_default=config.get("cities", []),
+        categories_default=config.get("categories", []),
         cities=cities,
         categories=categories,
         sources=sources,
