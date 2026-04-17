@@ -1313,31 +1313,36 @@ def get_log(name):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/trigger/scrape")
+@app.route("/api/trigger/scrape", methods=["POST", "GET"])
 def trigger_scrape():
-    """Trigger scraping tasks. Default: official sources only (AMFI, IRDAI, ICAI)."""
-    from tasks import scrape_all_task
+    """Trigger scraping tasks. Supports single (POST JSON) or batch (default)."""
+    from tasks import scrape_all_task, scrape_category_task
 
-    use_business = request.args.get("business", "false").lower() == "true"
+    # Parse parameters from either GET args or POST JSON
+    data = {}
+    if request.method == "POST":
+        try:
+            data = request.get_json() or {}
+        except:
+            data = {}
+    
+    city = data.get("city")
+    category = data.get("category")
+    use_business = data.get("use_business", False)
+    
+    if not use_business:
+        use_business = request.args.get("business", "false").lower() == "true"
 
-    config = load_config()
-    cities = config.get("cities", [])
-    categories = config.get("categories", [])
-    pair_count = len(cities) * len(categories)
-    scrape_all_task.delay(source=None, use_business=use_business)
-
-    source_type = (
-        "Business Directories"
-        if use_business
-        else "Official Sources (AMFI, IRDAI, ICAI)"
-    )
-    try:
-        data = request.json or {}
-        use_business = data.get("use_business", False)
+    if city and category:
+        # Single target scrape
+        scrape_category_task.delay(city=city, category=category, use_business=use_business)
+        msg = f"🚀 Scrape queued for {category} in {city}!"
+    else:
+        # Batch scrape for everything in config
         scrape_all_task.delay(use_business=use_business)
-        return jsonify({"message": "🚀 Batch scrape queued for all cities/categories!"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        msg = f"🚀 Batch scrape queued for {'Business' if use_business else 'Official'} sources!"
+    
+    return jsonify({"message": msg})
 
 @app.route("/api/trigger/fast-scrape", methods=["POST"])
 def trigger_fast_scrape():

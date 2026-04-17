@@ -240,40 +240,31 @@ def scrape_all_task(source: str = None, use_business: bool = False):
 
 
 @celery_app.task(name="tasks.fast_scrape_task")
-def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = 5):
-    """Enhanced fast parallel scraping task"""
-    import yaml
-    import scraper # trigger registration
-    import enhanced_utils # trigger registration
+def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = None):
+    """Enhanced fast parallel scraping task using the high-performance engine"""
+    from scraper import load_config
     from fast_scraper import fast_scrape_all
     
     async def _run_fast():
-        config_path = Path(__file__).parent / 'config.yaml'
-        if config_path.exists():
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-        else:
-            config = {}
+        config = load_config()
         
-        config_dict = {
-            'db_host': os.environ.get('DB_HOST', config.get('db_host')),
-            'db_port': int(os.environ.get('DB_PORT', config.get('db_port', 5432))),
-            'db_name': os.environ.get('DB_NAME', config.get('db_name')),
-            'db_user': os.environ.get('DB_USER', config.get('db_user')),
-            'db_password': os.environ.get('DB_PASSWORD', config.get('db_password')),
-            'cities': config.get('cities', []),
-            'categories': config.get('categories', []),
-        }
+        # Override concurrency if requested
+        if max_concurrent:
+            config.max_concurrent = max_concurrent
         
-        cities = config.get('cities', [])
-        categories = config.get('categories', [])
+        cities = config.cities
+        categories = config.categories
         
-        set_status(f"⚡ High-Speed Scrape: {len(cities)} cities x {len(categories)} categories (parallel={max_concurrent})")
+        set_status(f"⚡ High-Speed Scrape: {len(cities)} cities x {len(categories)} categories (parallel={config.max_concurrent})")
         
-        total_found = await fast_scrape_all(config_dict, cities, categories)
-        
-        set_status(f"✅ Fast scrape complete: Found {total_found} leads", False)
-        return {"status": "completed", "total_found": total_found}
+        try:
+            total_found = await fast_scrape_all(config, cities, categories)
+            set_status(f"✅ Fast scrape complete: Found {total_found} leads", False)
+            return {"status": "completed", "total_found": total_found}
+        except Exception as e:
+            logger.error(f"Fast scrape failed: {e}")
+            set_status(f"❌ Fast scrape Error: {str(e)}", False)
+            return {"status": "failed", "error": str(e)}
     
     return asyncio.run(_run_fast())
 
