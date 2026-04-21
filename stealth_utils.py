@@ -85,6 +85,14 @@ class StealthManager:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     ]
 
+    # 2026 Persistent Identity: Static MacOS signature for proxy-less sessions
+    PERSISTENT_MACOS_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
+    @classmethod
+    def get_persistent_ua(cls) -> str:
+        """Returns the fixed MacOS User-Agent for the entire session."""
+        return cls.PERSISTENT_MACOS_UA
+
     @classmethod
     def get_random_ua(cls) -> str:
         if ua_generator:
@@ -129,33 +137,51 @@ class StealthManager:
                 if "Macintosh" in user_agent: platform = '"macOS"'
                 elif "Linux" in user_agent: platform = '"Linux"'
                 
+                platform = '"macOS"'
+                headers["sec-ch-ua-platform"] = platform
+                
+                # 2026 Refined Client Hints: Full Version List
+                headers["sec-ch-ua-full-version-list"] = f'"Not(A:Brand";v="99", "Google Chrome";v="{major_version}.0.0.0", "Chromium";v="{major_version}.0.0.0"'
                 headers["sec-ch-ua"] = f'"Not(A:Brand";v="99", "Google Chrome";v="{major_version}", "Chromium";v="{major_version}"'
                 headers["sec-ch-ua-mobile"] = "?0"
-                headers["sec-ch-ua-platform"] = platform
             except Exception:
                 headers["sec-ch-ua"] = '"Chromium";v="147", "Not(A:Brand";v="24", "Google Chrome";v="147"'
                 headers["sec-ch-ua-mobile"] = "?0"
-                headers["sec-ch-ua-platform"] = '"Windows"'
+                headers["sec-ch-ua-platform"] = '"macOS"'
             
         return headers
 
     @classmethod
     async def apply_stealth(cls, context: BrowserContext):
-        """Apply playwright-stealth patches and custom evasions."""
+        """Apply playwright-stealth patches and custom evasions at the context level."""
         if stealth_async:
             await stealth_async(context)
         
-        # Additional custom evasions that might not be in the library
-        for page in context.pages:
-            await cls.apply_stealth_to_page(page)
-
-    @classmethod
-    async def apply_stealth_to_page(cls, page: Page):
-        """Apply stealth patches to a specific page."""
-        await page.add_init_script("""
-            // 1. Hide Webdriver
+        # 2026 Core Evasion: Context-wide initialization script
+        # This ensures ALL new pages (including those opened by links) inherit the fingerprints.
+        await context.add_init_script("""
+            // 1. Hide Webdriver & Fix Platform/Vendor
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+            Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
             
+            // 1.5. Spoof WebGL Renderer (The "Direct3D" giveaway)
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37445) return 'Apple Inc.';
+                // UNMASKED_RENDERER_WEBGL
+                if (parameter === 37446) return 'Apple M3';
+                return getParameter.apply(this, arguments);
+            };
+
+            const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+            WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) return 'Apple Inc.';
+                if (parameter === 37446) return 'Apple M3';
+                return getParameter2.apply(this, arguments);
+            };
+
             // 2. Fix Plugins & MimeTypes
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [
@@ -166,7 +192,6 @@ class StealthManager:
             });
 
             // 3. Mask Hardware signatures (Hide lowvCPU/lowRAM server profile)
-            // 2026 Standards: High-entropy randomization
             const concurrency = [4, 8, 12, 16][Math.floor(Math.random() * 4)];
             const memory = [8, 16, 32][Math.floor(Math.random() * 3)];
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => concurrency });
@@ -176,7 +201,6 @@ class StealthManager:
             const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
             CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
                 const imageData = originalGetImageData.apply(this, arguments);
-                // Subtly jitter one pixel to change the resulting hash without breaking UI
                 if (imageData.data.length > 0) {
                     imageData.data[0] = imageData.data[0] + (Math.random() > 0.5 ? 1 : -1);
                 }
@@ -201,3 +225,8 @@ class StealthManager:
                 }
             };
         """)
+
+    @classmethod
+    async def apply_stealth_to_page(cls, page: Page):
+        """Apply stealth patches to a specific page. Deprecated: use apply_stealth for context initialization."""
+        pass

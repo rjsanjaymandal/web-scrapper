@@ -33,7 +33,7 @@ scraper_settings:
   timeout: 60
   request_delay_min: 5
   request_delay_max: 15
-  max_concurrent: 5
+  max_concurrent: 1
   max_pages_per_source: 3
 
 distributed:

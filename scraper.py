@@ -150,6 +150,7 @@ class Config:
 
 
 def load_config() -> Config:
+    data = {}
     config_path = Path("config.yaml")
     if config_path.exists():
         with open(config_path, "r") as f:
@@ -298,11 +299,6 @@ def load_config() -> Config:
             )
         ),
         dashboard_page_size=scraper_settings.get("dashboard_page_size", 50),
-        categories=data.get("categories", []),
-        cities=data.get("cities", []),
-        scraper_settings=scraper_settings,
-        redis_url=os.environ.get("REDIS_URL"),
-    )
         categories=data.get("categories", []),
         cities=data.get("cities", []),
         scraper_settings=scraper_settings,
@@ -2236,6 +2232,10 @@ class ContactScraper:
         self.browser_proxy_disabled = False
         self.sqlite_conn = None
         self.use_sqlite = False
+        
+        # 2026 Persistence State
+        self.session_ua = None
+        self.session_leads_count = 0  
 
         self.scrapers: List[BaseScraper] = [
             AMFIScraper(),
@@ -2532,8 +2532,11 @@ class ContactScraper:
                     headless=self.config.headless, args=launch_args
                 )
 
-                # Get dynamic User-Agent and modern headers
-                user_agent = StealthManager.get_random_ua()
+                # Get Persistent MacOS User-Agent for the entire session
+                if not self.session_ua:
+                    self.session_ua = StealthManager.get_persistent_ua()
+                
+                user_agent = self.session_ua
                 extra_headers = StealthManager.get_modern_headers(user_agent)
 
                 context_kwargs = {
@@ -2541,6 +2544,9 @@ class ContactScraper:
                     "extra_http_headers": extra_headers,
                     "viewport": {"width": 1920, "height": 1080},
                     "ignore_https_errors": True,
+                    "locale": "en-US",
+                    "timezone_id": "America/Los_Angeles",
+                    "color_scheme": "dark",
                 }
                 if proxy_dict:
                     context_kwargs["proxy"] = proxy_dict
@@ -2553,7 +2559,7 @@ class ContactScraper:
                 self.page = await self.context.new_page()
 
                 logger.info(
-                    f"Browser initialized with dynamic UA: {user_agent[:40]}..."
+                    f"Browser session persist: UA={user_agent[:40]}... (MacOS Persistent)"
                 )
                 return
 
@@ -2702,6 +2708,13 @@ class ContactScraper:
                 continue
 
             processed_listings.append(listing)
+            
+            # 2026 Stealth Break: Sleep for 1-2 mins after every 5 leads (Proxy-less logic)
+            self.session_leads_count += 1
+            if self.session_leads_count % 5 == 0:
+                break_time = random.uniform(60, 120)
+                logger.info(f"Stealth Break Mode: Extracted {self.session_leads_count} leads. Taking a long human-like break for {break_time:.1f}s...")
+                await asyncio.sleep(break_time)
 
         # FINAL QUALITY GATE: Only keep contacts with at least one valid method (Phone or Email)
         final_listings = ProcessingHandler.filter_valid(processed_listings)
@@ -2997,24 +3010,27 @@ class ContactScraper:
         return all_listings
 
     async def human_scroll(self, page: Page):
-        """Perform human-like scrolling to trigger lazy loading and evade detection."""
+        """Perform human-like scrolling using mouse.wheel to trigger lazy loading and evade detection."""
         try:
-            # 1. Randomized scroll steps
-            for _ in range(random.randint(2, 5)):
-                amount = random.randint(300, 700)
-                await page.evaluate(f"window.scrollBy(0, {amount})")
-                await asyncio.sleep(random.uniform(0.5, 1.5))
+            # 1. Randomized scroll steps using physical mouse wheel simulation
+            for _ in range(random.randint(3, 7)):
+                # Simulate a human finger flick on the scroll wheel/trackpad
+                scroll_delta = random.randint(400, 700)
+                await page.mouse.wheel(0, scroll_delta)
+                
+                # Randomized pause to 'read' the middle area
+                await asyncio.sleep(random.uniform(0.8, 1.8))
             
-            # 2. Scroll to bottom sometimes
-            if random.random() > 0.7:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            # 2. Scroll to bottom sometimes (more natural)
+            if random.random() > 0.6:
+                await page.mouse.wheel(0, 2000)
                 await asyncio.sleep(random.uniform(1.0, 2.0))
             
-            # 3. Scroll back up slightly
-            await page.evaluate("window.scrollBy(0, -200)")
-            await asyncio.sleep(random.uniform(0.3, 0.8))
+            # 3. Scroll back up slightly to simulate re-reading
+            await page.mouse.wheel(0, -300)
+            await asyncio.sleep(random.uniform(0.5, 1.2))
         except Exception as e:
-            logger.debug(f"Behavioral simulation error: {e}")
+            logger.debug(f"Human scrolling simulation error: {e}")
 
     async def _extract_current_page(
         self,
