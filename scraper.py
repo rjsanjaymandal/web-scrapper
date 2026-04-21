@@ -2840,68 +2840,40 @@ class ContactScraper:
         """
         High-speed extraction bypassing the browser.
         Targets official registries and open APIs.
+        Optimized for Railway 512MB RAM tiers.
         """
         from fast_scraper import FastHTTPScraper
+        from api_handlers import OfficialAPIHandlers
         
         # Determine the target source
         sources = self._select_scrapers(category, source_name, use_business=False)
         total_extracted = 0
         
-        # Use FastHTTPScraper for high-speed extraction
         async with FastHTTPScraper(max_concurrent=5) as fast_engine:
             for scraper_obj in sources:
                 source = scraper_obj.source_name
-                logger.info(f"⚡ Fast Extraction started: {source} for {category} in {city}")
+                logger.info(f"⚡ Fast Extraction: {source} | {category} | {city}")
                 
                 try:
-                    # Specialized logic for official sources that have open APIs or lightweight paths
-                    if source == "AMFI":
-                        # We use the existing scrape_amfi_api logic refactored for the fast engine
-                        results = await self.scrape_amfi_api(scraper_obj, city, category)
-                        total_extracted += len(results)
-                    elif source == "SEBI":
-                        # SEBI direct regulatory list
-                        # Example endpoint found during research
-                        results = await fast_engine.scrape_json_api(
-                            "https://www.sebi.gov.in/sebiweb/other/OtherAction.do",
-                            params={"doRegistrants": "yes", "intmId": "13", "city": city}
-                        )
-                        if results:
-                            formatted = self._format_listings(results, city, category, source)
-                            for item in formatted:
-                                await self.save_to_db([item], category, city, source, "https://www.sebi.gov.in")
-                                total_extracted += 1
-                    else:
-                        # Fallback: Many official sites have basic HTTP tables that BeautifulSoup can handle
-                        logger.warning(f"Fast extraction for {source} falling back to standard fetch (No browser).")
-                        # This would use aiohttp directly in the fast engine
-                        continue
-                            
-                    logger.info(f"✅ Fast Extraction complete: {source} found success.")
+                    # 1. Specialized API Handlers (High-Speed)
+                    batch = await OfficialAPIHandlers.dispatch(source, fast_engine, city)
                     
+                    # 2. Legacy API Fallback (AMFI)
+                    if not batch and source == "AMFI":
+                        batch = await self.scrape_amfi_api(scraper_obj, city, category)
+                    
+                    # 3. Save to DB
+                    if batch:
+                        await self.save_to_db(batch, category, city, source, "Official API")
+                        total_extracted += len(batch)
+                        logger.info(f"✅ Extracted {len(batch)} from {source}")
+                    else:
+                        logger.warning(f"No results for {source} in {city} via fast engine.")
+                        
                 except Exception as e:
                     logger.error(f"Fast extraction failed for {source}: {e}")
                     
         return total_extracted
-
-    def _format_listings(self, raw_data, city, category, source):
-        """Uniformity for different API responses"""
-        formatted = []
-        if source == "SEBI":
-            # Parsing logic based on SEBI's known response structure
-            items = raw_data.get("registrants", []) or raw_data.get("data", [])
-            for r in items:
-                formatted.append({
-                    "name": r.get("name") or r.get("Name"),
-                    "phone": r.get("contact_no") or r.get("Mobile"),
-                    "email": r.get("email_id") or r.get("Email"),
-                    "address": r.get("reg_address") or r.get("Address"),
-                    "category": category,
-                    "city": city,
-                    "source": source,
-                    "license_no": r.get("reg_no")
-                })
-        return formatted
 
     async def scrape_page(
         self,

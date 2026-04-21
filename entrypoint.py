@@ -162,7 +162,8 @@ def main():
                 "worker",
                 "--loglevel=info",
                 "--concurrency=1",
-                "--pool=solo"
+                "--pool=solo",
+                "--max-tasks-per-child=5" # Guard against memory leaks
             ]
             
             try:
