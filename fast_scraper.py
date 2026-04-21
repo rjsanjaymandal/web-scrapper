@@ -62,30 +62,45 @@ class FastHTTPScraper:
                     await asyncio.sleep(1)
         return None
 
-    async def scrape_json_api(self, target_endpoint: str, payload: Dict = None, method: str = "POST", pagination_key: str = "page", start_page: int = 1, max_pages: int = 10) -> List[Dict]:
+    async def scrape_json_api(self, target_endpoint: str, params: Dict = None, payload: Dict = None, method: str = "GET", pagination_key: str = "page", start_page: int = 1, max_pages: int = 10) -> List[Dict]:
         """
         Generic function to loop through paginated JSON endpoints.
         """
         all_results = []
         current_page = start_page
         
+        # Determine internal method if not explicitly set (handle params vs payload)
+        if payload and method == "GET":
+            method = "POST" # Usually if we have a payload we want POST
+
         while current_page <= max_pages:
             logger.info(f"Scraping API page {current_page}...")
             
             # Prepare request parameters
-            params = payload.copy() if payload else {}
-            params[pagination_key] = current_page
+            current_params = params.copy() if params else {}
+            current_payload = payload.copy() if payload else {}
+            
+            # Add pagination to the correct bucket
+            if method == "GET" or not current_payload:
+                current_params[pagination_key] = current_page
+            else:
+                current_payload[pagination_key] = current_page
             
             try:
-                if method == "POST":
-                    async with self.session.post(target_endpoint, json=params) as resp:
-                        data = await resp.json()
-                else:
-                    async with self.session.get(target_endpoint, params=params) as resp:
-                        data = await resp.json()
+                async with self.session.request(
+                    method, 
+                    target_endpoint, 
+                    params=current_params if current_params else None,
+                    json=current_payload if current_payload else None,
+                    timeout=30
+                ) as resp:
+                    if resp.status != 200:
+                        logger.error(f"API returned status {resp.status} on page {current_page}")
+                        break
+                        
+                    data = await resp.json()
                 
                 # Extract results (Assuming standard list in response)
-                # This part usually needs source-specific override
                 results = self._parse_json_response(data)
                 if not results:
                     logger.info("No more results in JSON API.")
@@ -108,8 +123,8 @@ class FastHTTPScraper:
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
-            # Look for common result keys
-            for key in ['data', 'results', 'members', 'list', 'items']:
+            # Look for common result keys (Added registrants for SEBI)
+            for key in ['data', 'results', 'registrants', 'members', 'list', 'items', 'entities']:
                 if key in data and isinstance(data[key], list):
                     return data[key]
         return []

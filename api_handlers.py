@@ -24,12 +24,10 @@ class OfficialAPIHandlers:
             "city": city.title()
         }
         
-        data = await engine.scrape_json_api(url, params=params)
-        # Parse the 'registrants' or 'data' field from SEBI's response
-        items = data.get("registrants", []) or data.get("data", [])
+        leads_data = await engine.scrape_json_api(url, params=params)
         
         leads = []
-        for r in items:
+        for r in leads_data:
             leads.append({
                 "name": r.get("name") or r.get("Name"),
                 "phone": r.get("contact_no") or r.get("Mobile"),
@@ -48,11 +46,10 @@ class OfficialAPIHandlers:
         # IBBI usually accepts city/state filter in JSON payload or params
         params = {"city": city.title()}
         
-        data = await engine.scrape_json_api(url, params=params)
-        items = data.get("data", [])
+        leads_data = await engine.scrape_json_api(url, params=params)
         
         leads = []
-        for r in items:
+        for r in leads_data:
             leads.append({
                 "name": r.get("name"),
                 "phone": r.get("mobile"),

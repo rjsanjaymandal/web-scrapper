@@ -107,10 +107,8 @@ def init_tables():
         return False
 
 def main():
-    # START HEALTH SERVER IMMEDIATELY (Railway requirement)
+    # Process detection logic
     port = os.environ.get("PORT", "8080")
-    log(f"Initializing Worker Health Server on port {port}...")
-    start_health_server(port)
 
     try:
         # Detect service type
@@ -170,7 +168,10 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            # Re-read port just in case, though it's already started
+            # Start Health Server ONLY for worker process (since it doesn't bind a port otherwise)
+            log(f"Initializing Worker Health Server on port {port}...")
+            start_health_server(port)
+            
             log("[LAUNCH] Handoff to Celery Worker...")
             # Run Celery as subprocess to keep the healthcheck thread alive
             cmd = [
@@ -201,7 +202,7 @@ def main():
             init_tables()
             
             # Launch Gunicorn dashboard as a background subprocess
-            log(f"Starting Dashboard (Gunicorn) on port {port} in background...")
+            log(f"Starting Dashboard (Gunicorn) on port {port} in background (Handles healthchecks)...")
             gunicorn_cmd = [
                 "gunicorn",
                 "--bind", f"0.0.0.0:{port}",
