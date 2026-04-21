@@ -26,7 +26,7 @@ class DataImpulseManager:
         city: Optional[str] = None, 
         session_id: Optional[str] = None, 
         duration: int = 300,
-        enable_city: bool = False
+        enable_city: bool = False 
     ) -> str:
         """
         Formats username with sticky sessions and location parameters.
