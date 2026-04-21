@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import signal
 from typing import List, Dict
 
 # Ensure current directory is in path for imports
@@ -35,6 +36,17 @@ async def main():
     engine = ParallelScraper(scraper_config)
     await engine.init()
 
+    # 4. Graceful Shutdown Handling (Critical for Railway)
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    def shutdown():
+        logger.info("🛑 Received shutdown signal. Cleaning up...")
+        stop_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown)
+
     logger.info("👷 Worker Started. Waiting for tasks...")
 
     async def push_to_redis_buffer(valid_records: List[Dict], category: str, city: str, source: str):
@@ -44,11 +56,14 @@ async def main():
             logger.info(f"📤 Pushed {len(valid_records)} records to Redis buffer ({source} | {city})")
 
     try:
-        while True:
-            # 4. Consume Task
-            task = await queue.pop_task(timeout=30)
+        while not stop_event.is_set():
+            # 5. Consume Task
+            try:
+                task = await asyncio.wait_for(queue.pop_task(timeout=10), timeout=11)
+            except asyncio.TimeoutError:
+                continue
+            
             if not task:
-                # No tasks found, keep waiting or sleep briefly
                 continue
             
             logger.info(f"📥 Received Task: {task}")

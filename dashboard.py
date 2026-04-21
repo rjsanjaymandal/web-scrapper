@@ -211,6 +211,7 @@ def init_tables():
                 membership_no VARCHAR(100),
                 quality_score INTEGER DEFAULT 0,
                 quality_tier VARCHAR(20) DEFAULT 'low',
+                blockchain_ca VARCHAR(255),
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -228,6 +229,7 @@ def init_tables():
             "membership_no": "VARCHAR(100)",
             "quality_score": "INTEGER DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
+            "blockchain_ca": "VARCHAR(255)",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         }
 

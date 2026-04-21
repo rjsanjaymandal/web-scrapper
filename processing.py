@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
+from blockchain_utils import BlockchainUtils
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +109,12 @@ class ProcessingHandler:
             score += 15
             
         # Address/Location (15 points)
-        if contact.get('address'):
-            score += 10
         if contact.get('city'):
             score += 5
+            
+        # Blockchain/Web3 Factors (25 points) - NEW for 2026
+        if contact.get('blockchain_ca'):
+            score += 25  # Contract addresses are high-value signals
             
         # Industry specific/Trust factors (10 points)
         source = contact.get('source', '').upper()
@@ -167,7 +170,15 @@ class ProcessingHandler:
                     val = val.title()
                 contact[field] = val
         
-        # 4. Calculate Quality
+        # 4. Extract Blockchain Contract Addresses (CAs)
+        # We check address, name, and any detail text for CAs
+        combined_text = f"{contact.get('name', '')} {contact.get('address', '')}"
+        cas = BlockchainUtils.extract_cas(combined_text)
+        if cas:
+            contact['blockchain_ca'] = cas[0] # Take the first one found
+            logger.info(f"💎 Found CA: {contact['blockchain_ca']} for {contact.get('name')}")
+        
+        # 5. Calculate Quality
         contact['quality_score'] = cls.calculate_quality_score(contact)
         contact['quality_tier'] = cls.get_quality_tier(contact['quality_score'])
         

@@ -138,6 +138,7 @@ class ParallelScraper:
         self.redis_conn = None
         self.proxy_dead = False  # Tracks if proxy is exhausted/dead
         self.proxy_failures = 0  # Consecutive proxy failures
+        self.source_backoff = {}  # Tracks backoff timestamps per source: {source: timestamp}
 
     async def init(self):
         if self.config.redis_url and redis:
@@ -220,6 +221,26 @@ class ParallelScraper:
         finally:
             if ctx:
                 await ctx.close()
+
+    def _check_backoff(self, source_name: str) -> bool:
+        """Checks if a source is currently in a 'Backoff' state due to previous blocks."""
+        if source_name not in self.source_backoff:
+            return False
+            
+        backoff_until = self.source_backoff[source_name]
+        if asyncio.get_event_loop().time() < backoff_until:
+            wait_remaining = int(backoff_until - asyncio.get_event_loop().time())
+            logger.warning(f"🛑 [BACKOFF] Skipping {source_name}! Locked due to 429/403 blocks. Remaining: {wait_remaining}s")
+            return True
+        else:
+            # Backoff expired
+            del self.source_backoff[source_name]
+            return False
+
+    def _trigger_backoff(self, source_name: str, duration: int = 600):
+        """Triggers a backoff lock for a specific source."""
+        logger.critical(f"🚨 [ALERT] PAUSE: Rate Limit / WAF Block hit on {source_name}. Locking for {duration}s.")
+        self.source_backoff[source_name] = asyncio.get_event_loop().time() + duration
 
     async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None, force_http1: bool = False, source_name: str = "") -> BrowserContext:
         user_agent = StealthManager.get_random_ua()
@@ -346,6 +367,14 @@ class ParallelScraper:
 
         url = scraper.build_search_url(city, category, page_num)
         logger.info(f"🚀 Starting Job: {source_name} | {city} | {category} | Page {page_num}")
+
+        # Check for global backoff before proceeding
+        if self._check_backoff(source_name):
+            return []
+
+        # Jitter: Random delay BEFORE starting the job to prevent spike patterns
+        pre_delay = StealthManager.get_jitter_delay(1.0, 5.0)
+        await asyncio.sleep(pre_delay)
 
         async with self.semaphore:
             context = None
@@ -478,12 +507,18 @@ class ParallelScraper:
                     is_blocked = any(kw.lower() in page_title.lower() or kw.lower() in body_text.lower() for kw in block_keywords)
                     
                     if is_blocked and not listings:
-                        logger.error(f"[HARDEN] CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job to save bandwidth.")
-                        # Early Abort: Don't retry if clearly blocked
+                        logger.error(f"[HARDEN] CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job.")
+                        self._trigger_backoff(source_name, duration=1800) # 30 min lock
+                        return []
+
+                    if response and response.status == 429:
+                        logger.error(f"[HARDEN] CRITICAL 429 on {source_name}. Aborting job.")
+                        self._trigger_backoff(source_name, duration=3600) # 1 hour lock
                         return []
 
                     if response and response.status in [403, 404]:
-                        logger.error(f"[HARDEN] CRITICAL HTTP {response.status} on {source_name}. Aborting job to save bandwidth.")
+                        logger.error(f"[HARDEN] CRITICAL HTTP {response.status} on {source_name}. Aborting job.")
+                        self._trigger_backoff(source_name, duration=900) # 15 min lock
                         return []
 
                     logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
@@ -583,6 +618,7 @@ class ParallelScraper:
                 rec.get("membership_no", "")[:100],
                 rec.get("quality_score", 0),
                 rec.get("quality_tier", "low"),
+                rec.get("blockchain_ca", "")[:255],
             )
             for rec in listings
             if rec.get("name")
@@ -594,13 +630,14 @@ class ParallelScraper:
                 INSERT INTO contacts (
                     name, phone, email, address, category, city, area, state, source, 
                     source_url, phone_clean, email_valid, enriched, arn, license_no, 
-                    membership_no, quality_score, quality_tier
+                    membership_no, quality_score, quality_tier, blockchain_ca
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
                 DO UPDATE SET
                     quality_score = EXCLUDED.quality_score,
                     quality_tier = EXCLUDED.quality_tier,
+                    blockchain_ca = COALESCE(contacts.blockchain_ca, EXCLUDED.blockchain_ca),
                     scraped_at = EXCLUDED.scraped_at,
                     enriched = TRUE
                 WHERE EXCLUDED.quality_score >= contacts.quality_score
