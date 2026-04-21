@@ -11,9 +11,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 def log(msg):
     print(f"[BOOTSTRAP] {msg}", flush=True)
 
-def log(msg):
-    print(f"[BOOTSTRAP] {msg}", flush=True)
-
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -122,11 +119,9 @@ def main():
 
         # Web-specific Init
         if process_type == "web":
-            # Late loading dashboard logic
-            from dashboard import init_tables
-            
             log("Running eager database initialization for Web module...")
             init_start = time.time()
+            # Use the global init_tables() helper which imports dashboard locally
             if not init_tables():
                 log("[ERROR] Database initialization failed. Process will exit.")
                 sys.exit(1)

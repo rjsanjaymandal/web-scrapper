@@ -6,7 +6,9 @@ import re
 from typing import List, Dict, Optional, Any
 from bs4 import BeautifulSoup
 from lxml import etree
+from datetime import datetime
 import json
+import os
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -153,6 +155,59 @@ class FastHTTPScraper:
         if not html:
             return None
         return parse_callback(html, url)
+
+async def fast_scrape_all(config_dict: Dict, cities: List[str], categories: List[str]) -> int:
+    """
+    STANDALONE entry point for automatic, high-speed extraction.
+    Used by automate_100_cities.py to run mass-scraping logic.
+    """
+    from api_handlers import OfficialAPIHandlers
+    from redis_manager import RedisQueueManager
+    
+    total_leads = 0
+    redis_url = os.environ.get("REDIS_URL") or config_dict.get("scraper_settings", {}).get("redis_url")
+    
+    if not redis_url:
+        logger.error("REDIS_URL not found. Cannot push results.")
+        return 0
+
+    redis_manager = RedisQueueManager(redis_url)
+    try:
+        await redis_manager.connect()
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        return 0
+
+    async with FastHTTPScraper(max_concurrent=config_dict.get("scraper_settings", {}).get("max_concurrent", 5)) as engine:
+        for city in cities:
+            for category in categories:
+                logger.info(f"⚡ High-Speed Cycle: {city} | {category}")
+                
+                # Official Registries are usually category-agnostic or broad
+                # We'll map category names to registry sources if possible
+                target_sources = ["SEBI", "IBBI"] # Default low-hanging fruit
+                
+                for source in target_sources:
+                    try:
+                        leads = await OfficialAPIHandlers.dispatch(source, engine, city)
+                        if leads:
+                            # Add metadata before pushing to Redis
+                            for lead in leads:
+                                lead["category"] = category
+                                lead["city"] = city
+                                lead["scraped_at"] = datetime.now().isoformat()
+                            
+                            await redis_manager.push_results(leads)
+                            total_leads += len(leads)
+                            logger.info(f"✅ Discovered {len(leads)} leads from {source} in {city}")
+                    except Exception as e:
+                        logger.error(f"Error extracting from {source}: {e}")
+                
+                # Polite delay between city/category pairs
+                await asyncio.sleep(random.uniform(1, 3))
+                
+    await redis_manager.disconnect()
+    return total_leads
 
 # --- EXAMPLE USAGE ---
 if __name__ == "__main__":
