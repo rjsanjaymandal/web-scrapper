@@ -1,676 +1,170 @@
-import random
+import aiohttp
 import asyncio
 import logging
-import os
-import psutil
+import random
 import re
-from typing import Dict, List, Optional
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-import asyncpg
-try:
-    import redis.asyncio as redis
-except ImportError:
-    redis = None
-try:
-    from curl_cffi.requests import AsyncSession
-except ImportError:
-    AsyncSession = None
+from typing import List, Dict, Optional, Any
+from bs4 import BeautifulSoup
+from lxml import etree
+import json
 
-# Trigger scraper registration before using ScraperRegistry
-import scraper  # noqa: F401
-import enhanced_utils  # noqa: F401
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("fast_http_scraper")
 
-from scrapers_registry import ScraperRegistry
-from processing import ProcessingHandler
-from stealth_utils import StealthManager
+class FastHTTPScraper:
+    """
+    Ultra-fast, lightweight HTTP scraper using aiohttp.
+    Bypasses Playwright/Puppeteer for low-security targets and direct APIs.
+    """
+    
+    DEFAULT_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/html, application/xhtml+xml, application/xml;q=0.9, image/avif, image/webp, */*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
 
+    def __init__(self, max_concurrent: int = 10):
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.session: Optional[aiohttp.ClientSession] = None
 
-logger = logging.getLogger(__name__)
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession(headers=self.DEFAULT_HEADERS)
+        return self
 
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
 
-class FastScraperConfig:
-    def __init__(self, config_dict: Dict):
-        self.db_url = os.environ.get("DATABASE_URL")
-        if self.db_url and self.db_url.startswith("postgres://"):
-            self.db_url = self.db_url.replace("postgres://", "postgresql://", 1)
-
-        self.max_concurrent = int(os.environ.get("MAX_CONCURRENT", 20))
-        self.headless = os.environ.get("HEADLESS", "true").lower() == "true"
-        # Convert seconds from config to milliseconds for Playwright
-        timeout_sec = int(os.environ.get("TIMEOUT", config_dict.get("scraper_settings", {}).get("timeout", 60)))
-        self.timeout = timeout_sec * 1000
-        self.max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", config_dict.get("scraper_settings", {}).get("max_retries", 3)))
-        self.block_resources = True
-        self.redis_url = os.environ.get("REDIS_URL")
-        self.enable_city_targeting = os.environ.get("PROXY_CITY_TARGETING", "false").lower() == "true"
-        self.force_http1_sources = config_dict.get("scraper_settings", {}).get("force_http1_sources", [])
-
-        self.cities = config_dict.get("cities", [])
-        self.categories = config_dict.get("categories", [])
-        
-        # BANDWIDTH SAVER: Government/API sources that DON'T need expensive residential proxies.
-        # These are public portals that never block scrapers. Using proxy here is pure waste.
-        self.direct_ip_sources = {
-            "AMFI", "IRDAI", "ICAI", "ICSI", "SEBI", "NSE", "BSE", "GST", "RBI",
-        }
-        
-        # Enterprise Infrastructure: Global source throttling map
-        # Ensures sensitive sites like Google aren't hammered, preventing CAPTCHAs.
-        self.delay_map = {
-            "FOOTPRINT": 15.0,  # High Cooldown for Google
-            "NSE": 5.0,
-            "BSE": 5.0,
-            "SEBI": 3.0,
-            "AMFI": 1.0,        # Trusted APIs can be faster
-            "DEFAULT": 2.0
-        }
-        
-        # Memory Safety: Railway vCPU/RAM monitoring threshold
-        self.memory_threshold = 0.85 
-        
-        # Security: Prefer environment variables for proxies (Railway best practice)
-        self.proxy_list = []
-        env_proxy_host = os.environ.get("PROXY_HOST")
-        
-        # Determine source for logging
-        if env_proxy_host:
-            env_proxy_host = env_proxy_host.strip()
-            source = "Environment (PROXY_HOST)"
-            env_proxy_port = os.environ.get("PROXY_PORT", "").strip()
-            
-            # Build host:port string if port is provided separately and not in host
-            if ":" not in env_proxy_host:
-                if env_proxy_port:
-                    proxy_host = f"{env_proxy_host}:{env_proxy_port}"
-                elif "dataimpulse.com" in env_proxy_host.lower():
-                    # Fallback to Data Impulse default if missing
-                    proxy_host = f"{env_proxy_host}:823"
-                    logger.warning(f"⚠️  Auto-appending default port :823 for Data Impulse.")
-                else:
-                    proxy_host = env_proxy_host
-            else:
-                proxy_host = env_proxy_host
-                
-            proxy_user = os.environ.get("PROXY_USER", "").strip()
-            proxy_pass = os.environ.get("PROXY_PASS", "").strip()
-            
-            # Enterprise Update: Auto-append country suffix for DataImpulse Indian residential proxies
-            # This fixes 'ERR_TUNNEL_CONNECTION_FAILED' caused by missing geo-targeting strings.
-            if proxy_user and "dataimpulse.com" in env_proxy_host.lower() and "__cr." not in proxy_user:
-                proxy_user = f"{proxy_user}__cr.in"
-                logger.info(f"[HARDEN] Auto-appended country suffix to proxy user: {proxy_user[:5]}...__cr.in")
-
-            # If they are empty strings after stripping, set to None so we don't pass empty auth
-            proxy_user = proxy_user if proxy_user else None
-            proxy_pass = proxy_pass if proxy_pass else None
-            
-            self.proxy_list.append({
-                "host": proxy_host,
-                "username": proxy_user,
-                "password": proxy_pass
-            })
-            
-            # Security-aware logging: Mask sensitive parts
-            masked_host = proxy_host.split("@")[-1]  # In case host string already contains credentials
-            logger.info(f"✅ Proxy configured from {source}: {masked_host}")
-            
-            # Validation: Port is critical for residential proxies
-            if ":" not in proxy_host.split("//")[-1]:
-                logger.warning(f"⚠️  PROXY MUDDLED! Host '{masked_host}' has no port. Residents usually need :80, :823, etc.")
-        else:
-            config_proxies = config_dict.get("proxies", [])
-            if config_proxies:
-                self.proxy_list = config_proxies
-                logger.info(f"✅ Proxy configured from Config File: {len(self.proxy_list)} proxies")
-            else:
-                logger.warning("⚠️  NO PROXY CONFIGURED! Running on direct IP (Risk of ban).")
-
-
-class ParallelScraper:
-    """Efficient parallel engine using Playwright & asyncpg."""
-
-    def __init__(self, config: FastScraperConfig):
-        self.config = config
-        self.semaphore = asyncio.Semaphore(config.max_concurrent)
-        self.playwright = None
-        self.browser = None
-        self.pool = None
-        self.redis_conn = None
-        self.proxy_dead = False  # Tracks if proxy is exhausted/dead
-        self.proxy_failures = 0  # Consecutive proxy failures
-        self.source_backoff = {}  # Tracks backoff timestamps per source: {source: timestamp}
-
-    async def init(self):
-        if self.config.redis_url and redis:
-            self.redis_conn = await redis.from_url(self.config.redis_url)
-        
-        self.playwright = await async_playwright().start()
-        # Browsers will be lazy-loaded in _setup_context to save memory
-        
-        if self.config.db_url and asyncpg:
-            try:
-                self.pool = await asyncpg.create_pool(self.config.db_url, min_size=1, max_size=self.config.max_concurrent)
-            except Exception as e:
-                logger.error(f"Failed to create DB pool: {e}")
-        else:
-            logger.error("No DATABASE_URL found for parallel scraper pool.")
-
-        logger.info(f"Parallel Engine V2 ready: Concurrency={self.config.max_concurrent}")
-
-        # Proxy connectivity smoke test
-        if self.config.proxy_list:
-            await self._test_proxy_connectivity()
-
-    async def _launch_browser(self, force_http1: bool = False):
-        """Centralized browser launch with memory-safe args for Railway."""
-        args = [
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-software-rasterizer",
-            "--disable-extensions",
-        ]
-        if force_http1:
-            args.append("--disable-http2")
-        
-        return await self.playwright.chromium.launch(
-            headless=self.config.headless,
-            args=args,
-        )
-
-    async def close(self):
-        if self.browser:
-            await self.browser.close()
-        if hasattr(self, "browser_h1") and self.browser_h1:
-            await self.browser_h1.close()
-        if self.playwright:
-            await self.playwright.stop()
-        if self.pool:
-            await self.pool.close()
-
-    async def _test_proxy_connectivity(self):
-        """Quick smoke test: one page load through the proxy to validate connectivity."""
-        p = self.config.proxy_list[0]
-        host = p["host"]
-        if not host.startswith("http"):
-            host = f"http://{host}"
-        proxy_config = {
-            "server": host,
-            "username": p.get("username"),
-            "password": p.get("password"),
-        }
-        logger.info(f"🔍 Testing proxy: server={host}")
-        # Ensure browser is launched for the test
-        if not self.browser:
-            self.browser = await self._launch_browser()
-            
-        ctx = None
-        try:
-            ctx = await self.browser.new_context(
-                proxy=proxy_config,
-                ignore_https_errors=True,
-            )
-            page = await ctx.new_page()
-            resp = await page.goto("https://httpbin.org/ip", timeout=30000, wait_until="domcontentloaded")
-            body = await page.inner_text("body")
-            logger.info(f"✅ PROXY OK! Response status={resp.status}, IP={body.strip()[:80]}")
-        except Exception as e:
-            logger.critical(f"❌ PROXY FAILED! Error: {e}")
-            logger.critical(f"❌ Check PROXY_HOST/PROXY_USER/PROXY_PASS. Falling back to DIRECT IP.")
-            self.proxy_dead = True
-        finally:
-            if ctx:
-                await ctx.close()
-
-    def _check_backoff(self, source_name: str) -> bool:
-        """Checks if a source is currently in a 'Backoff' state due to previous blocks."""
-        if source_name not in self.source_backoff:
-            return False
-            
-        backoff_until = self.source_backoff[source_name]
-        if asyncio.get_event_loop().time() < backoff_until:
-            wait_remaining = int(backoff_until - asyncio.get_event_loop().time())
-            logger.warning(f"🛑 [BACKOFF] Skipping {source_name}! Locked due to 429/403 blocks. Remaining: {wait_remaining}s")
-            return True
-        else:
-            # Backoff expired
-            del self.source_backoff[source_name]
-            return False
-
-    def _trigger_backoff(self, source_name: str, duration: int = 600):
-        """Triggers a backoff lock for a specific source."""
-        logger.critical(f"🚨 [ALERT] PAUSE: Rate Limit / WAF Block hit on {source_name}. Locking for {duration}s.")
-        self.source_backoff[source_name] = asyncio.get_event_loop().time() + duration
-
-    async def _setup_context(self, city: Optional[str] = None, session_id: Optional[str] = None, force_http1: bool = False, source_name: str = "") -> BrowserContext:
-        user_agent = StealthManager.get_random_ua()
-        extra_headers = StealthManager.get_modern_headers(user_agent)
-        
-        from stealth_utils import DataImpulseManager
-
-        # Selection of proxy — SKIP for government sources (saves bandwidth)
-        proxy_config = None
-        use_proxy = (
-            self.config.proxy_list 
-            and not self.proxy_dead 
-            and source_name not in self.config.direct_ip_sources
-        )
-        
-        if use_proxy:
-            p = random.choice(self.config.proxy_list)
-            host = p["host"]
-            if not host.startswith("http"):
-                host = f"http://{host}"
-            proxy_config = {
-                "server": host,
-                "username": DataImpulseManager.format_auth(
-                    p.get("username"), 
-                    city=city, 
-                    session_id=session_id,
-                    enable_city=self.config.enable_city_targeting
-                ),
-                "password": p.get("password")
-            }
-            logger.debug(f"Worker using PROXY: {host} (H1={force_http1})")
-        else:
-            reason = "gov/api source" if source_name in self.config.direct_ip_sources else ("proxy dead" if self.proxy_dead else "no proxy")
-            logger.debug(f"Worker using DIRECT IP for {source_name} ({reason})")
-
-        # Select browser based on protocol requirement
-        # Lazy-load browser based on protocol requirement
-        if force_http1:
-            if not getattr(self, "browser_h1", None) or not self.browser_h1.is_connected():
-                if getattr(self, "browser_h1", None):
-                    logger.warning("[RECOVER] H1 Browser crashed. Relaunching...")
-                    try: await self.browser_h1.close()
-                    except: pass
-                logger.info("[LAUNCH] Launching Stealth HTTP/1.1 Engine...")
-                self.browser_h1 = await self._launch_browser(force_http1=True)
-            target_browser = self.browser_h1
-        else:
-            if not getattr(self, "browser", None) or not self.browser.is_connected():
-                if getattr(self, "browser", None):
-                    logger.warning("[RECOVER] Standard Browser crashed. Relaunching...")
-                    try: await self.browser.close()
-                    except: pass
-                logger.info("[LAUNCH] Launching Standard Engine...")
-                self.browser = await self._launch_browser()
-            target_browser = self.browser
-
-        context = await target_browser.new_context(
-            user_agent=user_agent,
-            extra_http_headers=extra_headers,
-            viewport={"width": 1280, "height": 720},
-            device_scale_factor=random.choice([1, 2]),
-            has_touch=random.choice([True, False]),
-            ignore_https_errors=True,
-            proxy=proxy_config,
-        )
-
-        # Apply advanced stealth patches
-        await StealthManager.apply_stealth(context)
-
-        # Block heavy and tracking resources
-        if self.config.block_resources:
-            # Domain blocklist for trackers/analytics
-            block_domains = [
-                "google-analytics.com",
-                "googletagmanager.com",
-                "facebook.net",
-                "hotjar.com",
-                "clarity.ms",
-                "doubleclick.net",
-                "adnxs.com",
-            ]
-
-            async def block_aggressively(route):
-                url = route.request.url.lower()
-                # BANDWIDTH SAVER: Block ALL non-essential resources through proxy
-                if route.request.resource_type in [
-                    "image", "font", "media", "stylesheet",
-                    "websocket", "manifest", "texttrack",
-                ] or any(domain in url for domain in block_domains) or any(
-                    ext in url for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
-                    ".woff", ".woff2", ".ttf", ".eot", ".ico", ".mp4", ".mp3", ".pdf"]
-                ):
-                    await route.abort()
-                else:
-                    await route.continue_()
-            await context.route("**/*", block_aggressively)
-
-        return context
-
-    async def _safe_get_title(self, page: Page) -> str:
-        """Safely gets page title even if context is destroyed."""
-        try:
-            return await page.title()
-        except Exception:
-            return "Unknown (Navigation Context Destroyed)"
-
-    async def _safe_get_url(self, page: Page) -> str:
-        """Safely gets page URL."""
-        try:
-            return page.url
-        except Exception:
-            return ""
-
-    async def scrape_job(self, city: str, category: str, source_name: str, page_num: int = 1, results_handler=None) -> List[Dict]:
-        """
-        Executes a scraper job for a specific source, city, and category.
-        Returns the list of valid contacts found.
-        """
-        url = ""
-        scraper = ScraperRegistry.get(source_name)
-        if not scraper:
-            logger.error(f"Scraper not found for source: {source_name}")
-            return []
-
-        url = scraper.build_search_url(city, category, page_num)
-        logger.info(f"🚀 Starting Job: {source_name} | {city} | {category} | Page {page_num}")
-
-        # Check for global backoff before proceeding
-        if self._check_backoff(source_name):
-            return []
-
-        # Jitter: Random delay BEFORE starting the job to prevent spike patterns
-        pre_delay = StealthManager.get_jitter_delay(1.0, 5.0)
-        await asyncio.sleep(pre_delay)
-
+    async def fetch(self, url: str, method: str = "GET", **kwargs) -> Optional[str]:
+        """Fetch URL with concurrency limit and retries."""
         async with self.semaphore:
-            context = None
-            page = None
-            
-            # Generate a unique session ID for this job to maintain Sticky IP consistency
-            import uuid
-            session_id = str(uuid.uuid4())[:8]
-            
-            for attempt in range(self.config.max_retries):
-                # If we detected a block in the previous attempt, 
-                # rotate the session_id to get a fresh IP for the retry.
-                if attempt > 0:
-                    session_id = str(uuid.uuid4())[:8]
-                    logger.info(f"[HARDEN] Rotating Sticky Session: New IP requested for attempt {attempt+1}")
-
-                url = scraper.build_search_url(city, category)
-                
-                # ==== PHASE 1: HYBRID HTTP FETCH (Enterprise Speed Loop) ====
-                if AsyncSession and attempt == 0:
-                    try:
-                        # NEW: Check if the scraper has a dedicated API extraction method (High Efficiency)
-                        if hasattr(scraper, "scrape_via_api"):
-                            fast_leads = await scraper.scrape_via_api(city)
-                            if fast_leads:
-                                logger.info(f"[SUCCESS] HIGH-SPEED API SUCCESS! Extracted {len(fast_leads)} via direct API from {source_name}. Bypassed Browser.")
-                                processed = ProcessingHandler.process_batch(fast_leads)
-                                valid = ProcessingHandler.filter_valid(processed)
-                                if valid:
-                                     if results_handler:
-                                         await results_handler(valid, category, city, source_name)
-                                     else:
-                                         await self._batch_insert(valid, category, city, source_name)
-                                return valid
-
-                        async with AsyncSession(impersonate="chrome120") as s:
-                            ua = StealthManager.get_random_ua()
-                            headers = StealthManager.get_modern_headers(ua)
-                            headers["User-Agent"] = ua
-                            
-                            # Inject cached cookies to bypass Cloudflare
-                            if self.redis_conn:
-                                cached = await self.redis_conn.get(f"cookies_{source_name}")
-                                if cached:
-                                    headers["Cookie"] = cached.decode("utf-8")
-                                    
-                            fast_resp = await s.get(url, headers=headers, timeout=10)
-                            html = fast_resp.text
-                            # Heuristic check for WAF/Cloudflare
-                            if fast_resp.status_code == 200 and "Just a moment" not in html and "Verify you are human" not in html:
-                                fast_leads = scraper.extract_raw_fallback(html, city, category)
-                                if fast_leads:
-                                    logger.info(f"⚡ FAST HTTP SUCCESS! Extracted {len(fast_leads)} via curl_cffi regex from {source_name}. Bypassed Playwright.")
-                                    processed = ProcessingHandler.process_batch(fast_leads)
-                                    valid = ProcessingHandler.filter_valid(processed)
-                                    if valid:
-                                     if results_handler:
-                                         await results_handler(valid, category, city, source_name)
-                                     else:
-                                         await self._batch_insert(valid, category, city, source_name)
-                                    return valid
-                            elif fast_resp.status_code in [403, 404]:
-                                logger.warning(f"[HARDEN] Fast HTTP 403/404 on {source_name}. Likely IP Blocked.")
-                    except Exception as e:
-                        logger.debug(f"Fast HTTP fetch failed: {e}. Falling back to Browser.")
-
-                # ==== PHASE 2: BROWSER FALLBACK ====
-                # Skip browser entirely for API-only sources (saves RAM)
-                API_ONLY_SOURCES = ["AMFI"]
-                if source_name in API_ONLY_SOURCES:
-                    logger.info(f"[SKIP] {source_name} is API-only. No browser needed.")
-                    return []
-
+            for attempt in range(3):
                 try:
-                    # Memory Safety Check: Prevent OOM on Railway
-                    mem_percent = psutil.virtual_memory().percent
-                    if mem_percent > self.config.memory_threshold * 100:
-                        wait_time = random.uniform(5.0, 10.0)
-                        logger.warning(f"⚠️  High Memory Usage ({mem_percent}%). Cooling down for {wait_time:.1f}s...")
-                        await asyncio.sleep(wait_time)
-                        mem_percent = psutil.virtual_memory().percent
-                        if mem_percent > 95:
-                            logger.error("[ABORT] CRITICAL MEMORY: Aborting job to prevent restart.")
-                            return []
-
-                    # Enterprise Protocol Selection
-                    force_h1 = scraper.force_http1 or source_name in self.config.force_http1_sources
-                    if attempt > 0 and "http2" in str(getattr(self, 'last_error', '')).lower():
-                        force_h1 = True
-                        logger.warning(f"[HARDEN] Protocol Error detected previously. Forcing HTTP/1.1 for retry.")
-
-                    # Use a unique session_id per attempt to force DataImpulse to provide a new IP
-                    session_id = f"sess_{int(asyncio.get_event_loop().time())}_{attempt}"
-                    context = await self._setup_context(city=city, session_id=session_id, force_http1=force_h1, source_name=source_name)
-                    page = await context.new_page()
-                    
-                    try:
-                        response = await page.goto(
-                            url, timeout=self.config.timeout, wait_until="domcontentloaded"
-                        )
-                        status_code = response.status if response else 0
-                        
-                        if status_code in [403, 404, 429] and source_name in ["TRADEINDIA", "INDIAMART", "YELLOWPAGES"]:
-                             logger.warning(f"[HARDEN] {source_name} returned {status_code}. Likely URL deprecated or IP Blocked.")
-                             raise Exception(f"WAF Block/URL Error: HTTP {status_code}")
-                             
-                    except Exception as goto_err:
-                        self.last_error = str(goto_err)
-                        # Specific handling for Playwright navigation errors that are often WAF stealth blocks
-                        if any(x in str(goto_err) for x in ["ERR_ABORTED", "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET"]):
-                            logger.warning(f"[HARDEN] Connection error on {source_name}: likely WAF block. Retrying...")
-                        raise goto_err
-
-                    listings = await scraper.extract_listings(page, city, category)
-                    
-                    # WAF / Block Detection Logic
-                    page_title = await self._safe_get_title(page)
-                    body_text = ""
-                    try:
-                        body_text = await page.evaluate("() => document.body ? document.body.innerText.substring(0, 500) : ''")
-                    except Exception:
-                        pass
-                    
-                    block_keywords = [
-                        "Access Denied", "Forbidden", "403", "404", "Not Found", 
-                        "Resource cannot be found", "Unusual traffic", "Verify you are human",
-                        "Checking your browser", "Cloudflare", "Server Error"
-                    ]
-                    
-                    is_blocked = any(kw.lower() in page_title.lower() or kw.lower() in body_text.lower() for kw in block_keywords)
-                    
-                    if is_blocked and not listings:
-                        logger.error(f"[HARDEN] CRITICAL WAF BLOCK on {source_name} (Title: {page_title}). Aborting job.")
-                        self._trigger_backoff(source_name, duration=1800) # 30 min lock
-                        return []
-
-                    if response and response.status == 429:
-                        logger.error(f"[HARDEN] CRITICAL 429 on {source_name}. Aborting job.")
-                        self._trigger_backoff(source_name, duration=3600) # 1 hour lock
-                        return []
-
-                    if response and response.status in [403, 404]:
-                        logger.error(f"[HARDEN] CRITICAL HTTP {response.status} on {source_name}. Aborting job.")
-                        self._trigger_backoff(source_name, duration=900) # 15 min lock
-                        return []
-
-                    logger.info(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} | Raw Extracted: {len(listings)} leads")
-
-                    if not listings:
-                        logger.warning(f"Job: {source_name} | 0 Leads | Page Title: {page_title} | Body: {body_text[:100].replace('\n', ' ')}")
-
-                    if listings:
-                        processed = ProcessingHandler.process_batch(listings)
-                        valid = ProcessingHandler.filter_valid(processed)
-                        
-                        if processed and not valid:
-                            sample = processed[0]
-                            logger.warning(
-                                f"Job: {source_name} | ALL REJECTED | Sample: "
-                                f"name='{sample.get('name','')[:40]}' "
-                                f"phone='{sample.get('phone')}' "
-                                f"email='{sample.get('email')}'"
-                            )
-                        
-                        if valid:
-                            if results_handler:
-                                await results_handler(valid, category, city, source_name)
-                            else:
-                                await self._batch_insert(valid, category, city, source_name)
-
-                            # Phase 4: Cache Authorized Cookies (Immunity Vault)
-                            if self.redis_conn and context:
-                                new_cookies = await context.cookies()
-                                # Only store cookies if we got valid lists
-                                cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in new_cookies])
-                                if cookie_str:
-                                    await self.redis_conn.setex(f"cookies_{source_name}", 3600, cookie_str)
-                                    logger.debug(f"Saved authorized session cookie to Redis for {source_name}")
-                        return valid
-                        
-                    # If we reach here and it's 0 leads, it might be a block. Break if last attempt.
-                    if attempt == self.config.max_retries - 1:
-                        return []
-                        
+                    logger.info(f"Fetching: {url} (Attempt {attempt+1})")
+                    async with self.session.request(method, url, timeout=30, **kwargs) as response:
+                        if response.status == 200:
+                            return await response.text()
+                        elif response.status == 429:
+                            wait = 2 ** attempt + random.random()
+                            logger.warning(f"Rate limited on {url}. Waiting {wait:.2f}s")
+                            await asyncio.sleep(wait)
+                        else:
+                            logger.error(f"Failed to fetch {url}: Status {response.status}")
+                            break
                 except Exception as e:
-                    err_str = str(e)
-                    logger.warning(f"Job: {source_name} | Attempt {attempt + 1}/{self.config.max_retries} Failed: {err_str[:100]}. Rotating proxy...")
+                    logger.error(f"Error fetching {url}: {e}")
+                    await asyncio.sleep(1)
+        return None
+
+    async def scrape_json_api(self, target_endpoint: str, payload: Dict = None, method: str = "POST", pagination_key: str = "page", start_page: int = 1, max_pages: int = 10) -> List[Dict]:
+        """
+        Generic function to loop through paginated JSON endpoints.
+        """
+        all_results = []
+        current_page = start_page
+        
+        while current_page <= max_pages:
+            logger.info(f"Scraping API page {current_page}...")
+            
+            # Prepare request parameters
+            params = payload.copy() if payload else {}
+            params[pagination_key] = current_page
+            
+            try:
+                if method == "POST":
+                    async with self.session.post(target_endpoint, json=params) as resp:
+                        data = await resp.json()
+                else:
+                    async with self.session.get(target_endpoint, params=params) as resp:
+                        data = await resp.json()
+                
+                # Extract results (Assuming standard list in response)
+                # This part usually needs source-specific override
+                results = self._parse_json_response(data)
+                if not results:
+                    logger.info("No more results in JSON API.")
+                    break
                     
-                    # Detect proxy exhaustion / dead proxy
-                    proxy_dead_signals = [
-                        "ERR_TUNNEL_CONNECTION_FAILED",
-                        "ERR_PROXY_CONNECTION_FAILED", 
-                        "ERR_PROXY_AUTH_FAILED",
-                        "407",  # Proxy auth required
-                        "PROXY_TUNNEL",
-                        "Connection refused",
-                    ]
-                    if any(sig in err_str for sig in proxy_dead_signals):
-                        self.proxy_failures += 1
-                        if self.proxy_failures >= 3:
-                            logger.warning("🔌 PROXY EXHAUSTED: 3+ consecutive tunnel failures. Switching to DIRECT IP for remaining jobs.")
-                            self.proxy_dead = True
-                    
-                    if attempt == self.config.max_retries - 1:
-                        logger.error(f"Job failed completely: {source_name} | {city}/{category}")
-                        return []
-                finally:
-                    if page:
-                        await page.close()
-                    if context:
-                        await context.close()
-                    # Sleep based on Adaptive Delay Map
-                    delay = self.config.delay_map.get(source_name, self.config.delay_map["DEFAULT"])
-                    if attempt < self.config.max_retries - 1:
-                        # Add some jitter to avoid pattern detection
-                        await asyncio.sleep(delay + random.uniform(2.0, 5.0))
+                all_results.extend(results)
+                logger.info(f"Extracted {len(results)} items from page {current_page}")
+                
+                current_page += 1
+                await asyncio.sleep(random.uniform(1, 3)) # Polite jitter
+                
+            except Exception as e:
+                logger.error(f"API scraping error on page {current_page}: {e}")
+                break
+                
+        return all_results
 
-    async def _batch_insert(
-        self, listings: List[Dict], category: str, city: str, source: str
-    ):
-        if not self.pool:
-            return
+    def _parse_json_response(self, data: Any) -> List[Dict]:
+        """Override this to handle specific JSON structures."""
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            # Look for common result keys
+            for key in ['data', 'results', 'members', 'list', 'items']:
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+        return []
 
-        records = [
-            (
-                rec.get("name", "")[:255],
-                rec.get("phone", "")[:50],
-                rec.get("email", "")[:255],
-                rec.get("address", ""),
-                category[:100],
-                city[:100],
-                rec.get("area", "")[:100],
-                rec.get("state", "")[:100],
-                source[:100],
-                rec.get("detail_url", ""),
-                rec.get("phone_clean", "")[:50],
-                rec.get("email_valid", False),
-                True,  # enriched
-                rec.get("arn", "")[:50],
-                rec.get("license_no", "")[:100],
-                rec.get("membership_no", "")[:100],
-                rec.get("quality_score", 0),
-                rec.get("quality_tier", "low"),
-                rec.get("blockchain_ca", "")[:255],
-            )
-            for rec in listings
-            if rec.get("name")
-        ]
+    async def extract_urls_from_sitemap(self, sitemap_url: str, filter_pattern: str = None) -> List[str]:
+        """
+        Downloads a sitemap.xml, parses it, and returns profile URLs.
+        """
+        xml_content = await self.fetch(sitemap_url)
+        if not xml_content:
+            return []
+            
+        urls = []
+        try:
+            root = etree.fromstring(xml_content.encode('utf-8'))
+            # Support both standard sitemap and sitemap index namespaces
+            ns = {'ns': root.nsmap.get(None, 'http://www.sitemaps.org/schemas/sitemap/0.9')}
+            
+            locs = root.xpath('//ns:loc', namespaces=ns)
+            for loc in locs:
+                url = loc.text
+                if filter_pattern and not re.search(filter_pattern, url):
+                    continue
+                urls.append(url)
+                
+            logger.info(f"Extracted {len(urls)} URLs from sitemap: {sitemap_url}")
+        except Exception as e:
+            logger.error(f"Sitemap parsing error: {e}")
+            
+        return urls
 
-        async with self.pool.acquire() as conn:
-            await conn.executemany(
-                """
-                INSERT INTO contacts (
-                    name, phone, email, address, category, city, area, state, source, 
-                    source_url, phone_clean, email_valid, enriched, arn, license_no, 
-                    membership_no, quality_score, quality_tier, blockchain_ca
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-                ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
-                DO UPDATE SET
-                    quality_score = EXCLUDED.quality_score,
-                    quality_tier = EXCLUDED.quality_tier,
-                    blockchain_ca = COALESCE(contacts.blockchain_ca, EXCLUDED.blockchain_ca),
-                    scraped_at = EXCLUDED.scraped_at,
-                    enriched = TRUE
-                WHERE EXCLUDED.quality_score >= contacts.quality_score
-            """,
-                records,
-            )
-
-    async def run_parallel_suite(self, jobs: List[tuple]):
-        tasks = [self.scrape_job(city, cat, src) for city, cat, src in jobs]
+    async def scrape_profiles_parallel(self, urls: List[str], parse_callback) -> List[Dict]:
+        """Scrape multiple profile URLs in parallel (high speed)."""
+        tasks = []
+        for url in urls:
+            tasks.append(self._scrape_single_profile(url, parse_callback))
+        
         results = await asyncio.gather(*tasks)
-        # Results are lists now, so we sum their lengths
-        total_leads = sum(len(r) if isinstance(r, list) else 0 for r in results)
-        logger.info(f"Parallel Suite Complete: Total Leads Found: {total_leads}")
-        return total_leads
+        return [r for r in results if r]
 
+    async def _scrape_single_profile(self, url: str, parse_callback) -> Optional[Dict]:
+        html = await self.fetch(url)
+        if not html:
+            return None
+        return parse_callback(html, url)
 
-async def fast_scrape_all(config_dict: Dict, cities: List[str], categories: List[str]):
-    config = FastScraperConfig(config_dict)
-    engine = ParallelScraper(config)
-    await engine.init()
-
-    try:
-        jobs = []
-        for city in cities:
-            for cat in categories:
-                # Get ALL sources for this category, not just one
-                sources = ScraperRegistry.get_all_sources_for_category(cat)
-                for source in sources:
-                    jobs.append((city, cat, source))
-
-        logger.info(
-            f"Total scraping jobs: {len(jobs)} (cities: {len(cities)}, categories: {len(categories)})"
-        )
-        return await engine.run_parallel_suite(jobs)
-    finally:
-        await engine.close()
+# --- EXAMPLE USAGE ---
+if __name__ == "__main__":
+    async def test():
+        async with FastHTTPScraper(max_concurrent=5) as scraper:
+            # Test Sitemap
+            # urls = await scraper.extract_urls_from_sitemap("https://example.com/sitemap.xml", filter_pattern="/profile/")
+            # print(f"Found {len(urls)} target URLs")
+            
+            # Test JSON API Template
+            # results = await scraper.scrape_json_api("https://api.example.com/v1/search", {"q": "financial"})
+            # print(f"Scraped {len(results)} items")
+            pass
+            
+    asyncio.run(test())

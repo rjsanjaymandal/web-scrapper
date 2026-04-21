@@ -12,9 +12,6 @@ from pathlib import Path
 sys.path.append(os.getcwd())
 PROJ_DIR = Path(__file__).parent
 
-# Heavy imports are now inside the task to ensure registration never fails
-# from scraper import ContactScraper, load_config
-
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -24,10 +21,7 @@ redis_url = os.environ.get('REDIS_URL')
 redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
 def set_status(msg, is_running=True, stats=None):
-    """
-    Update status for the dashboard.
-    Priority: Redis (fast) -> Database (persistent fallback)
-    """
+    """Update status for the dashboard."""
     data = {
         "message": msg, 
         "running": is_running, 
@@ -35,45 +29,35 @@ def set_status(msg, is_running=True, stats=None):
         "stats": stats or {}
     }
     
-    # 1. Update Redis (for real-time SSE)
     if redis_client:
         try:
             redis_client.set("scraper_status", json.dumps(data), ex=3600)
         except Exception as e:
             logger.error(f"Redis status update failed: {e}")
             
-    # 2. Update Database (for persistence and non-redis environments)
     db_set_status(data)
     
-    # 3. Log to Dashboard Activity Log if meaningful
-    # We log starts, ends, page updates, and error messages
-    log_triggers = ["Scraping", "Page", "Started", "Finished", "Cleaned", "Deep", "Error", "Batch", "Parallel", "High-Speed", "Validation"]
-    
-    # Extract source Safely
+    log_triggers = ["Scraping", "Page", "Started", "Finished", "Error", "High-Speed", "API", "Sitemap"]
     source = "SCRAPER"
     if stats and isinstance(stats, dict):
         source = stats.get("source", "SCRAPER")
     
     if is_running and any(t in msg for t in log_triggers):
         db_log("INFO", msg, source)
-    elif not is_running and any(t in msg for t in ["Finished", "Complete", "Batch"]):
+    elif not is_running and any(t in msg for t in ["Finished", "Complete", "Batch", "Found"]):
         db_log("SUCCESS", msg, source)
     elif "Error" in msg or "Failed" in msg:
         db_log("ERROR", msg, source)
 
-    logger.info(f"STATUS UPDATE: {msg} {stats if stats else ''}")
+    logger.info(f"STATUS UPDATE: {msg}")
 
 def db_set_status(data):
     """Fallback status storage in Database"""
     import sqlite3
     import psycopg2
-    from scraper import load_config
     
     try:
-        config = load_config()
         db_url = os.environ.get('DATABASE_URL')
-        
-        # Determine connection type
         is_sqlite = not db_url
         if db_url and db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
@@ -107,7 +91,6 @@ def db_log(level, message, source=None):
     """Write an entry to the Dashboard Activity Log"""
     import sqlite3
     import psycopg2
-    from scraper import load_config
     
     try:
         db_url = os.environ.get('DATABASE_URL')
@@ -137,225 +120,107 @@ def db_log(level, message, source=None):
         logger.warning(f"DB log write failed: {e}")
 
 if not redis_url:
-    logger.warning("REDIS_URL not found. Celery tasks will run locally (always_eager).")
+    logger.warning("REDIS_URL not found. Celery tasks will run locally.")
     celery_app = Celery('web_scraper_app')
-    celery_app.conf.update(
-        task_always_eager=True,
-        task_eager_propagates=True
-    )
+    celery_app.conf.update(task_always_eager=True)
 else:
-    celery_app = Celery('web_scraper_app', 
-                        broker=redis_url, 
-                        backend=redis_url)
+    celery_app = Celery('web_scraper_app', broker=redis_url, backend=redis_url)
     celery_app.conf.update(
         task_track_started=True,
         task_acks_late=True,
         worker_prefetch_multiplier=1,
-        worker_concurrency=int(os.environ.get('CELERY_WORKER_CONCURRENCY', '1')),
-        worker_pool=os.environ.get('CELERY_WORKER_POOL', 'solo'),
+        worker_concurrency=1,
         broker_connection_retry_on_startup=True,
     )
 
-
 def _load_runtime_config():
     from scraper import load_config
-
     config = load_config()
     config.scheduler_enabled = False
     return config
 
+# DEACTIVATED: High-Security / Browser-Heavy Targets
+# JustDial, YellowPages, Google Footprints are strictly disabled to save memory and bypass WAFs.
+DEACTIVATED_SOURCES = ["JustDial", "YellowPages", "Google", "IndiaMart", "Sulekha", "ClickIndia"]
+
 @celery_app.task(name="tasks.scrape_category_task")
 def scrape_category_task(city: str, category: str, source: str = None, use_business: bool = False):
     """
-    Background task to scrape a specific category in a city from a specific source.
-    use_business: If True, use business directories (JustDial, etc). If False (default), use official sources (AMFI, IRDAI, ICAI).
+    Main entry point for scraping.
+    Pivoted to High-Speed HTTP Scraper for official registries.
     """
-    from scraper import ContactScraper
-    set_status(f"Scraping {category} in {city}...")
+    # Block heavy targets immediately
+    if source in DEACTIVATED_SOURCES or (use_business and source is None):
+        msg = f"Skipping {source or 'Business'} target - Deactivated (WAF protection/Resource heavy)."
+        logger.warning(msg)
+        set_status(msg, False)
+        return {"status": "skipped", "reason": "deactivated"}
+
+    from fast_scraper import FastHTTPScraper
+    from scraper import ContactScraper, load_config
+    
+    set_status(f"🚀 High-Speed Scraping {category} in {city}...")
     
     async def _run_scrape():
-        config = _load_runtime_config()
-        scraper = ContactScraper(config)
-        await scraper.init_db()
-        
-        # Progress callback to update Redis in real-time
-        def on_progress(stats):
-            msg = f"Reading Page {stats['page']}/{stats['total_pages']} on {stats['source']}..."
-            set_status(msg, True, stats)
-
-        try:
-            await scraper.scrape_category(city, category, source, use_business, on_progress=on_progress)
-            set_status(f"✅ Finished: {category} in {city}", False)
-            return {"status": "completed", "city": city, "category": category, "source": source, "use_business": use_business}
-        except Exception as e:
-            set_status(f"❌ Failed: {str(e)}", False)
-            logger.error(f"Task failed: {e}")
-            return {"status": "failed", "error": str(e)}
-        finally:
-            await scraper.close()
+        config = load_config()
+        # Initialize the lightweight engine
+        async with FastHTTPScraper(max_concurrent=5) as fast_engine:
+            scraper = ContactScraper(config)
+            await scraper.init_db()
+            
+            try:
+                # Use the new high-speed extraction methods
+                # This bypasses Playwright/Puppeteer entirely for supported sources
+                count = await scraper.scrape_category_fast(city, category, source)
+                set_status(f"✅ Success: Extracted {count} leads from {source or 'Official Registries'}", False)
+                return {"status": "completed", "count": count}
+            except Exception as e:
+                set_status(f"❌ Error: {str(e)}", False)
+                logger.error(f"Task failed: {e}")
+                return {"status": "failed", "error": str(e)}
+            finally:
+                await scraper.close()
 
     return asyncio.run(_run_scrape())
 
-
-@celery_app.task(name="tasks.scrape_all_task")
-def scrape_all_task(source: str = None, use_business: bool = False):
-    from scraper import ContactScraper
-
-    async def _run_batch():
-        config = _load_runtime_config()
-        jobs = [(city, category) for city in config.cities for category in config.categories]
-        scraper = ContactScraper(config)
-        results = []
-
-        await scraper.init_db()
-        try:
-            total_jobs = len(jobs)
-            for index, (city, category) in enumerate(jobs, start=1):
-                set_status(f"[{index}/{total_jobs}] Scraping {category} in {city}...")
-                try:
-                    await scraper.scrape_category(city, category, source, use_business)
-                    results.append({"city": city, "category": category, "status": "completed"})
-                except Exception as exc:
-                    logger.error(f"Batch item failed for {category} in {city}: {exc}")
-                    results.append({"city": city, "category": category, "status": "failed", "error": str(exc)})
-
-            failures = [item for item in results if item["status"] == "failed"]
-            if failures:
-                set_status(f"⚠️ Batch finished with {len(failures)} failures", False)
-            else:
-                set_status(f"✅ Batch finished ({len(results)} jobs)", False)
-
-            return {
-                "status": "completed",
-                "jobs": len(results),
-                "failures": len(failures),
-                "results": results,
-                "source": source,
-                "use_business": use_business,
-            }
-        finally:
-            await scraper.close()
-
-    return asyncio.run(_run_batch())
-
-
 @celery_app.task(name="tasks.fast_scrape_task")
-def fast_scrape_task(source: str = None, use_business: bool = False, max_concurrent: int = None):
-    """Enhanced fast parallel scraping task using the high-performance engine"""
-    from scraper import load_config
-    from fast_scraper import fast_scrape_all
+def fast_scrape_task(source: str = None):
+    """Drains all open APIs and sitemaps for the 2 Lakh target."""
+    from fast_scraper import FastHTTPScraper
+    from scraper import load_config, ContactScraper
     
     async def _run_fast():
         config = load_config()
+        set_status("⚡ Draining Official APIs (High Speed)...")
         
-        # Override concurrency if requested
-        if max_concurrent:
-            config.max_concurrent = max_concurrent
-        
-        cities = config.cities
-        categories = config.categories
-        
-        set_status(f"⚡ High-Speed Scrape: {len(cities)} cities x {len(categories)} categories (parallel={config.max_concurrent})")
-        
-        try:
-            total_found = await fast_scrape_all(config, cities, categories)
-            set_status(f"✅ Fast scrape complete: Found {total_found} leads", False)
-            return {"status": "completed", "total_found": total_found}
-        except Exception as e:
-            logger.error(f"Fast scrape failed: {e}")
-            set_status(f"❌ Fast scrape Error: {str(e)}", False)
-            return {"status": "failed", "error": str(e)}
-    
+        async with FastHTTPScraper(max_concurrent=10) as engine:
+            scraper = ContactScraper(config)
+            await scraper.init_db()
+            
+            try:
+                # Optimized batch extraction for all cities and categories
+                total = 0
+                for city in config.cities:
+                    for cat in config.categories:
+                        count = await scraper.scrape_category_fast(city, cat, source)
+                        total += count
+                        if count > 0:
+                            set_status(f"Progress: Found {total} leads total...")
+                
+                set_status(f"✅ Success: Drained {total} records from official APIs.", False)
+                return {"status": "completed", "total": total}
+            finally:
+                await scraper.close()
+                
     return asyncio.run(_run_fast())
 
-    """Periodic task to re-score and enrich all leads in the DB."""
-    from processing import ProcessingHandler
-    from scraper import load_config
-    import asyncpg
-    
-    async def _run_enrich():
-        config = load_config()
-        db_url = os.environ.get('DATABASE_URL')
-        if db_url and db_url.startswith('postgres://'):
-            db_url = db_url.replace('postgres://', 'postgresql://', 1)
-            
-        set_status("Enriching and scoring all leads...")
-        
-        conn = await asyncpg.connect(dsn=db_url)
-        try:
-            contacts = await conn.fetch('SELECT id, name, phone, email, address, city, area, source FROM contacts WHERE enriched = FALSE OR quality_score = 0')
-            
-            count = 0
-            for c in contacts:
-                contact_dict = dict(c)
-                # Use unified processing handler
-                enriched = ProcessingHandler.process_contact(contact_dict)
-                
-                await conn.execute('''
-                    UPDATE contacts SET 
-                        phone_clean = $1, email_valid = $2, quality_score = $3, 
-                        quality_tier = $4, enriched = TRUE 
-                    WHERE id = $5
-                ''', enriched.get('phone_clean'), enriched.get('email_valid'), 
-                     enriched.get('quality_score'), enriched.get('quality_tier'), c['id'])
-                count += 1
-                
-                if count % 10 == 0:
-                    set_status(f"Enriched {count} leads...")
-                
-            set_status(f"Success: Enriched {count} leads", False)
-            return {"status": "completed", "enriched_count": count}
-        finally:
-            await conn.close()
-
-    return asyncio.run(_run_enrich())
-
-
-@celery_app.task(name="tasks.validate_all_contacts_task")
-def validate_all_contacts_task():
-    from scraper import ContactScraper
-    set_status("Validating all contacts...")
-    async def _run_validation():
-        config = _load_runtime_config()
-        scraper = ContactScraper(config)
-        await scraper.init_db()
-        try:
-            async with scraper.pool.acquire() as conn:
-                contacts = await conn.fetch('SELECT id, phone, email FROM contacts')
-                set_status(f"✅ Validation finished ({len(contacts)} records)", False)
-                return {"status": "completed", "validated": len(contacts)}
-        finally:
-            await scraper.close()
-    return asyncio.run(_run_validation())
-
 @celery_app.task(name="tasks.export_data_task")
-def export_data_task(export_format: str = "csv"):
-    from scraper import ContactScraper
-    async def _run_export():
-        config = _load_runtime_config()
-        scraper = ContactScraper(config)
+def export_data_task():
+    from scraper import ContactScraper, load_config
+    async def _run():
+        scraper = ContactScraper(load_config())
         await scraper.init_db()
         try:
-            filename = await scraper.export_to_csv()
-            return {"status": "completed", "filename": str(filename)}
-        finally:
-            await scraper.close()
-    return asyncio.run(_run_export())
-
-@celery_app.task(name="tasks.cleanup_old_data_task")
-def cleanup_old_data_task(days: int = 90):
-    from scraper import ContactScraper
-    async def _run_cleanup():
-        config = _load_runtime_config()
-        scraper = ContactScraper(config)
-        await scraper.init_db()
-        try:
-            async with scraper.pool.acquire() as conn:
-                res = await conn.execute(
-                    "DELETE FROM contacts WHERE scraped_at < NOW() - make_interval(days => $1)",
-                    days,
-                )
-                return {"status": "completed", "deleted": res}
-        finally:
-            await scraper.close()
-    return asyncio.run(_run_cleanup())
+            return await scraper.export_to_csv()
+        finally: await scraper.close()
+    return asyncio.run(_run())
