@@ -7,14 +7,9 @@ import socket
 import threading
 from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from dashboard import init_tables, logger
-
-# Global diagnostic wrapper to catch early import errors
-try:
-    import psycopg2
-except ImportError as e:
-    print(f"[ERROR] [BOOTSTRAP] CRITICAL: Missing dependency 'psycopg2': {e}", flush=True)
-    sys.exit(1)
+# Global diagnostic wrapper moved inside functions for faster initial bootstrap
+def log(msg):
+    print(f"[BOOTSTRAP] {msg}", flush=True)
 
 def log(msg):
     print(f"[BOOTSTRAP] {msg}", flush=True)
@@ -22,8 +17,12 @@ def log(msg):
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"OK")
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
     def log_message(self, format, *args):
         return
 
@@ -49,6 +48,10 @@ def wait_for_db():
         log(f"Waiting for database at {host}:{port}...")
         start_time = time.time()
         timeout = 90
+        
+        # Late import to speed up initial port binding
+        import psycopg2
+        
         while time.time() - start_time < timeout:
             try:
                 conn = psycopg2.connect(
@@ -89,11 +92,13 @@ def init_tables():
         return False
 
 def main():
+    # START HEALTH SERVER IMMEDIATELY (Railway requirement)
+    port = os.environ.get("PORT", "8080")
+    log(f"Initializing Worker Health Server on port {port}...")
+    start_health_server(port)
+
     try:
         # Detect service type
-        # 1. Check command line flags (highest priority)
-        # 2. Check explicitly set PROCESS_TYPE env var
-        # 3. Auto-detect from RAILWAY_SERVICE_NAME
         is_worker_flag = "--worker" in sys.argv
         env_process_type = os.environ.get("PROCESS_TYPE")
         railway_service = os.environ.get("RAILWAY_SERVICE_NAME", "").lower()
@@ -117,8 +122,10 @@ def main():
 
         # Web-specific Init
         if process_type == "web":
+            # Late loading dashboard logic
+            from dashboard import init_tables
+            
             log("Running eager database initialization for Web module...")
-            # Time the initialization to diagnose performance
             init_start = time.time()
             if not init_tables():
                 log("[ERROR] Database initialization failed. Process will exit.")
@@ -126,7 +133,6 @@ def main():
             init_duration = time.time() - init_start
             log(f"[SUCCESS] Database tables ready in {init_duration:.2f}s!")
             
-            port = os.environ.get("PORT", "8080")
             log(f"Finalizing environment for Web Service on port {port}...")
             
             # Diagnostic: Verify command existence before handoff
@@ -151,9 +157,7 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            port = os.environ.get("PORT", "8080")
-            log("Starting Healthcheck server for Worker...")
-            start_health_server(port)
+            # Re-read port just in case, though it's already started
             log("[LAUNCH] Handoff to Celery Worker...")
             # Run Celery as subprocess to keep the healthcheck thread alive
             cmd = [
