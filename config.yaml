@@ -30,7 +30,9 @@ scraper_settings:
   # Forcing HTTP/1.1 improves success rate on these targets.
   force_http1_sources: ["JUSTDIAL", "TRADEINDIA", "INDIAMART", "AMFI"]
   max_retries: 5
-  timeout: 45
+  timeout: 60
+  request_delay_min: 5
+  request_delay_max: 15
   max_concurrent: 5
   max_pages_per_source: 3
 

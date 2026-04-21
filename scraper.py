@@ -233,75 +233,76 @@ def load_config() -> Config:
         db_password=db_password,
         proxies=proxies,
         request_delay_min=int(
-            os.environ.get("SCRAPER_DELAY_MIN", scraper_cfg.get("request_delay_min", 2))
+            os.environ.get("SCRAPER_DELAY_MIN", scraper_settings.get("request_delay_min", 5))
         ),
         request_delay_max=int(
-            os.environ.get("SCRAPER_DELAY_MAX", scraper_cfg.get("request_delay_max", 5))
+            os.environ.get("SCRAPER_DELAY_MAX", scraper_settings.get("request_delay_max", 15))
         ),
         max_retries=int(
-            os.environ.get("SCRAPER_MAX_RETRIES", scraper_cfg.get("max_retries", 3))
+            os.environ.get("SCRAPER_MAX_RETRIES", scraper_settings.get("max_retries", 3))
         ),
         timeout_seconds=int(
-            os.environ.get("SCRAPER_TIMEOUT", scraper_cfg.get("timeout_seconds", 30))
+            os.environ.get("SCRAPER_TIMEOUT", scraper_settings.get("timeout", 60))
         ),
         headless=os.environ.get(
-            "SCRAPER_HEADLESS", str(scraper_cfg.get("headless", True))
+            "SCRAPER_HEADLESS", str(scraper_settings.get("headless", True))
         ).lower()
         == "true",
         test_mode=os.environ.get(
-            "SCRAPER_TEST_MODE", str(scraper_cfg.get("test_mode", False))
+            "SCRAPER_TEST_MODE", str(scraper_settings.get("test_mode", False))
         ).lower()
         == "true",
         export_csv=os.environ.get(
-            "SCRAPER_EXPORT_CSV", str(scraper_cfg.get("export_csv", True))
+            "SCRAPER_EXPORT_CSV", str(scraper_settings.get("export_csv", True))
         ).lower()
         == "true",
         csv_output_dir=os.environ.get(
-            "SCRAPER_EXPORT_DIR", scraper_cfg.get("csv_output_dir", "exports")
+            "SCRAPER_EXPORT_DIR", scraper_settings.get("csv_output_dir", "exports")
         ),
         enable_email_extraction=os.environ.get(
             "SCRAPER_ENABLE_EMAIL",
-            str(scraper_cfg.get("enable_email_extraction", True)),
+            str(scraper_settings.get("enable_email_extraction", True)),
         ).lower()
         == "true",
         enable_sitemap=os.environ.get(
-            "SCRAPER_ENABLE_SITEMAP", str(scraper_cfg.get("enable_sitemap", False))
+            "SCRAPER_ENABLE_SITEMAP", str(scraper_settings.get("enable_sitemap", False))
         ).lower()
         == "true",
         enable_deduplication=os.environ.get(
-            "SCRAPER_ENABLE_DEDUPE", str(scraper_cfg.get("enable_deduplication", True))
+            "SCRAPER_ENABLE_DEDUPE", str(scraper_settings.get("enable_deduplication", True))
         ).lower()
         == "true",
         enable_email_verify=os.environ.get(
             "SCRAPER_ENABLE_EMAIL_VERIFY",
-            str(scraper_cfg.get("enable_email_verify", False)),
+            str(scraper_settings.get("enable_email_verify", False)),
         ).lower()
         == "true",
         enable_enrichment=os.environ.get(
-            "SCRAPER_ENABLE_ENRICH", str(scraper_cfg.get("enable_enrichment", False))
+            "SCRAPER_ENABLE_ENRICH", str(scraper_settings.get("enable_enrichment", False))
         ).lower()
         == "true",
         scheduler_enabled=os.environ.get(
             "SCRAPER_SCHEDULER_ENABLED",
-            str(scraper_cfg.get("scheduler_enabled", False)),
+            str(scraper_settings.get("scheduler_enabled", False)),
         ).lower()
         == "true",
         scheduler_interval_hours=int(
             os.environ.get(
                 "SCRAPER_SCHEDULER_INTERVAL",
-                scraper_cfg.get("scheduler_interval_hours", 24),
+                str(scraper_settings.get("scheduler_interval_hours", 24)),
             )
         ),
         max_pages=int(
             os.environ.get(
-                "SCRAPER_MAX_PAGES", scraper_cfg.get("max_pages_per_source", 3)
+                "SCRAPER_MAX_PAGES", scraper_settings.get("max_pages_per_source", 5)
             )
         ),
-        dashboard_page_size=int(
-            os.environ.get(
-                "DASHBOARD_PAGE_SIZE", scraper_cfg.get("dashboard_page_size", 50)
-            )
-        ),
+        dashboard_page_size=scraper_settings.get("dashboard_page_size", 50),
+        categories=data.get("categories", []),
+        cities=data.get("cities", []),
+        scraper_settings=scraper_settings,
+        redis_url=os.environ.get("REDIS_URL"),
+    )
         categories=data.get("categories", []),
         cities=data.get("cities", []),
         scraper_settings=scraper_settings,
@@ -2807,6 +2808,14 @@ class ContactScraper:
                     break
 
                 page_num += 1
+                
+                # Anti-Detection: Randomized delay between page requests (Phase 2)
+                delay = random.uniform(
+                    self.config.request_delay_min, self.config.request_delay_max
+                )
+                logger.info(f"Stealth jitter: Sleeping for {delay:.2f}s before next page")
+                await asyncio.sleep(delay)
+                
                 await self.rate_limiter.wait()
 
         logger.info(f"AMFI API extracted {len(all_listings)} listings for {city}")
@@ -2910,10 +2919,11 @@ class ContactScraper:
                     if raw_path:
                         logger.info(f"[STORAGE] Raw HTML saved: {raw_path}")
 
-                    # Anti-Detection: Standard randomized jitter delay (12:56)
+                    # Anti-Detection: Standard randomized jitter delay (Updated to 5-15s)
                     jitter = random.uniform(
                         self.config.request_delay_min, self.config.request_delay_max
                     )
+                    logger.info(f"Stealth jitter: Sleeping for {jitter:.2f}s")
                     await asyncio.sleep(jitter)
 
                     # Extract data from current page (Optionally using raw HTML)
@@ -3035,8 +3045,17 @@ class ContactScraper:
                     scraper = JustDialScraper()
 
             listings = await scraper.extract_listings(self.page, city, category)
+            
+            # Phase 4: Regex Extraction Fallback if DOM selectors fail
+            if not listings and html_content:
+                logger.info(f"[FALLBACK] No listings found with CSS selectors. Attempting Raw Regex extraction for {scraper.source_name}")
+                listings = scraper.extract_raw_fallback(html_content, city, category)
         except Exception as e:
             logger.warning(f"Extraction error: {e}")
+            
+            # Additional fallback on error
+            if html_content and scraper:
+                 listings = scraper.extract_raw_fallback(html_content, city, category)
         return listings
 
     async def save_to_db(
