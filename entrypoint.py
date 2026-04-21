@@ -1,5 +1,11 @@
 import os
 import sys
+# IMMEDIATE STDOUT/STDERR UNBUFFERING
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
+
+print("--- [DEBUG] ENTRYPOINT LOADED ---", file=sys.stderr, flush=True)
+
 import time
 import subprocess
 import traceback
@@ -9,26 +15,38 @@ from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 # Global diagnostic wrapper moved inside functions for faster initial bootstrap
 def log(msg):
-    print(f"[BOOTSTRAP] {msg}", flush=True)
+    # Use stderr to ensure logs appear immediately in Railway (stdout can be buffered)
+    print(f"[BOOTSTRAP] {msg}", file=sys.stderr, flush=True)
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # Log incoming healthchecks for easier debugging in Railway
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain')
+        self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(b"OK")
+        log(f"[HEALTH] Responded with 200 OK to {self.path}")
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
     def log_message(self, format, *args):
         return
 
-def start_health_server(port):
+def start_health_server(port_str):
     def run_server():
-        server = HTTPServer(('0.0.0.0', int(port)), HealthCheckHandler)
-        server.serve_forever()
+        try:
+            port = int(port_str)
+            log(f"Starting Health Server on 0.0.0.0:{port}...")
+            server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+            server.serve_forever()
+        except Exception as e:
+            log(f"❌ HEALTH SERVER CRITICAL ERROR: {e}")
+            traceback.print_exc()
+
     thread = threading.Thread(target=run_server, daemon=True)
     thread.start()
+    log("Health Server thread spawned.")
 
 def wait_for_db():
     try:
@@ -111,7 +129,7 @@ def main():
         else:
             process_type = "web"
         
-        log(f"Starting {process_type} process sequence (Detected service: {railway_service})...")
+        log(f"Starting {process_type} process sequence (Detected: {process_type}, Service: {railway_service or 'N/A'})...")
 
         # Shared DB Check
         if not wait_for_db():
