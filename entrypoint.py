@@ -5,6 +5,7 @@ sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure'
 sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
 
 print("--- [DEBUG] ENTRYPOINT LOADED ---", file=sys.stderr, flush=True)
+print("--- [DEBUG] ENTRYPOINT LOADED (STDOUT) ---", flush=True)
 
 import time
 import subprocess
@@ -20,17 +21,25 @@ def log(msg):
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Log incoming healthchecks for easier debugging in Railway
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/plain')
-        self.send_header('Connection', 'close')
-        self.end_headers()
-        self.wfile.write(b"OK")
-        log(f"[HEALTH] Responded with 200 OK to {self.path}")
+        # Respond to both / and /health for maximum compatibility
+        if self.path in ['/', '/health']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            self.wfile.write(b"OK")
+            log(f"[HEALTH] 200 OK -> {self.path}")
+        else:
+            self.send_response(404)
+            self.end_headers()
+            log(f"[HEALTH] 404 Not Found -> {self.path}")
+
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
+
     def log_message(self, format, *args):
+        # Silence default logging to keep bootstrap logs clean
         return
 
 def start_health_server(port_str):

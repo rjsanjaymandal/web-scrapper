@@ -42,6 +42,12 @@ def health_check():
     }), 200
 
 
+@app.route("/")
+def home():
+    """Redirect or serve index"""
+    return index()
+
+
 @app.route("/up")
 def up():
     """Detailed health check for internal status."""
