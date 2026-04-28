@@ -17,6 +17,34 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Initialize Celery & Redis for Status
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+    def log_message(self, format, *args):
+        pass
+
+def start_health_server():
+    port = int(os.environ.get("PORT", "8080"))
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        logger.info(f"Background Health Server started on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        logger.warning(f"Health server could not start: {e}")
+
+if not os.environ.get('CELERY_HEALTH_SERVER_STARTED'):
+    os.environ['CELERY_HEALTH_SERVER_STARTED'] = '1'
+    threading.Thread(target=start_health_server, daemon=True).start()
+
 redis_url = os.environ.get('REDIS_URL')
 redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
