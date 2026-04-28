@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 redis_url = os.environ.get('REDIS_URL')
 redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
+if redis_client:
+    try:
+        # Reconfigure Redis to be less aggressive about background saving
+        # Default "save 60 1" causes continuous high IO and log spam
+        redis_client.config_set("save", "900 1 300 10 60 10000")
+        logger.info("Configured Redis background save intervals to be less aggressive.")
+    except Exception as e:
+        logger.warning(f"Could not configure Redis save intervals: {e}")
+
 def set_status(msg, is_running=True, stats=None):
     """Update status for the dashboard."""
     data = {
