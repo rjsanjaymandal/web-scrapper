@@ -3,12 +3,7 @@ import logging
 import asyncio
 import re
 from typing import Dict, List, Optional
-from playwright.async_api import BrowserContext, Page
-try:
-    from playwright_stealth import stealth_async
-except ImportError:
-    stealth_async = None
-
+# Removed Playwright dependencies to save memory and avoid WAFs
 try:
     from fake_useragent import UserAgent
     ua_generator = UserAgent()
@@ -151,82 +146,4 @@ class StealthManager:
             
         return headers
 
-    @classmethod
-    async def apply_stealth(cls, context: BrowserContext):
-        """Apply playwright-stealth patches and custom evasions at the context level."""
-        if stealth_async:
-            await stealth_async(context)
-        
-        # 2026 Core Evasion: Context-wide initialization script
-        # This ensures ALL new pages (including those opened by links) inherit the fingerprints.
-        await context.add_init_script("""
-            // 1. Hide Webdriver & Fix Platform/Vendor
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
-            Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
-            
-            // 1.5. Spoof WebGL Renderer (The "Direct3D" giveaway)
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL
-                if (parameter === 37445) return 'Apple Inc.';
-                // UNMASKED_RENDERER_WEBGL
-                if (parameter === 37446) return 'Apple M3';
-                return getParameter.apply(this, arguments);
-            };
 
-            const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-            WebGL2RenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) return 'Apple Inc.';
-                if (parameter === 37446) return 'Apple M3';
-                return getParameter2.apply(this, arguments);
-            };
-
-            // 2. Fix Plugins & MimeTypes
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [
-                    { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                    { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
-                ]
-            });
-
-            // 3. Mask Hardware signatures (Hide lowvCPU/lowRAM server profile)
-            const concurrency = [4, 8, 12, 16][Math.floor(Math.random() * 4)];
-            const memory = [8, 16, 32][Math.floor(Math.random() * 3)];
-            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => concurrency });
-            Object.defineProperty(navigator, 'deviceMemory', { get: () => memory });
-            
-            // 4. Canvas Fingerprint Jitter
-            const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-            CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
-                const imageData = originalGetImageData.apply(this, arguments);
-                if (imageData.data.length > 0) {
-                    imageData.data[0] = imageData.data[0] + (Math.random() > 0.5 ? 1 : -1);
-                }
-                return imageData;
-            };
-
-            // 5. Fix Chrome Runtime & Permissions
-            window.chrome = { runtime: {} };
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-            
-            // 6. Audio Context Spoofing
-            const originalGetByteFrequencyData = AudioAnalyserNode.prototype.getByteFrequencyData;
-            AudioAnalyserNode.prototype.getByteFrequencyData = function(array) {
-                originalGetByteFrequencyData.apply(this, arguments);
-                for (let i = 0; i < 5; i++) {
-                    array[i] = array[i] + (Math.random() > 0.5 ? 1 : -1);
-                }
-            };
-        """)
-
-    @classmethod
-    async def apply_stealth_to_page(cls, page: Page):
-        """Apply stealth patches to a specific page. Deprecated: use apply_stealth for context initialization."""
-        pass

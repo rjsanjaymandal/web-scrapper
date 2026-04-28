@@ -2,8 +2,10 @@ import asyncio
 import logging
 import re
 import random
+from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
-from playwright.async_api import Page
+# from playwright.async_api import Page
+Page = dict
 from scrapers_registry import BaseScraper
 from processing import ProcessingHandler
 

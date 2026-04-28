@@ -10,7 +10,8 @@ import aiohttp
 import hashlib
 from typing import Optional, Dict, List
 from datetime import datetime
-from playwright.async_api import Page
+# from playwright.async_api import Page
+Page = dict
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
-from playwright.async_api import Page
+from typing import List, Dict, Optional, Type
+# from playwright.async_api import Page
+Page = dict
 import logging
 import re
 try:

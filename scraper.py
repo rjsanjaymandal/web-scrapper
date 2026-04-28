@@ -11,7 +11,8 @@ import re
 import aiohttp
 import json
 from datetime import datetime, timedelta
-from playwright.async_api import async_playwright, Page, Browser, Playwright
+# from playwright.async_api import async_playwright, Page, Browser, Playwright
+Page = dict # Mock type for disabled Playwright
 from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup
