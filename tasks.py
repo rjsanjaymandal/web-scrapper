@@ -163,25 +163,24 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
     
     async def _run_scrape():
         config = load_config()
-        # Initialize the lightweight engine
-        async with FastHTTPScraper(max_concurrent=5) as fast_engine:
-            scraper = ContactScraper(config)
-            await scraper.init_db()
-            
-            try:
-                # Use the new high-speed extraction methods
-                # This bypasses Playwright/Puppeteer entirely for supported sources
-                count = await scraper.scrape_category_fast(city, category, source)
-                set_status(f"✅ Success: Extracted {count} leads from {source or 'Official Registries'}", False)
-                return {"status": "completed", "count": count}
-            except Exception as e:
-                set_status(f"❌ Error: {str(e)}", False)
-                logger.error(f"Task failed: {e}")
-                return {"status": "failed", "error": str(e)}
-            finally:
-                await scraper.close()
+        scraper = ContactScraper(config)
+        await scraper.init_db()
+        
+        try:
+            # Use the new high-speed extraction methods
+            # This bypasses Playwright/Puppeteer entirely for supported sources
+            count = await scraper.scrape_category_fast(city, category, source)
+            set_status(f"✅ Success: Extracted {count} leads from {source or 'Official Registries'}", False)
+            return {"status": "completed", "count": count}
+        except Exception as e:
+            set_status(f"❌ Error: {str(e)}", False)
+            logger.error(f"Task failed: {e}")
+            return {"status": "failed", "error": str(e)}
+        finally:
+            await scraper.close()
 
     return asyncio.run(_run_scrape())
+
 
 @celery_app.task(name="tasks.fast_scrape_task")
 def fast_scrape_task(source: str = None):
@@ -193,25 +192,24 @@ def fast_scrape_task(source: str = None):
         config = load_config()
         set_status("⚡ Draining Official APIs (High Speed)...")
         
-        async with FastHTTPScraper(max_concurrent=10) as engine:
-            scraper = ContactScraper(config)
-            await scraper.init_db()
+        scraper = ContactScraper(config)
+        await scraper.init_db()
+        
+        try:
+            # Optimized batch extraction for all cities and categories
+            total = 0
+            for city in config.cities:
+                for cat in config.categories:
+                    count = await scraper.scrape_category_fast(city, cat, source)
+                    total += count
+                    if count > 0:
+                        set_status(f"Progress: Found {total} leads total...")
             
-            try:
-                # Optimized batch extraction for all cities and categories
-                total = 0
-                for city in config.cities:
-                    for cat in config.categories:
-                        count = await scraper.scrape_category_fast(city, cat, source)
-                        total += count
-                        if count > 0:
-                            set_status(f"Progress: Found {total} leads total...")
-                
-                set_status(f"✅ Success: Drained {total} records from official APIs.", False)
-                return {"status": "completed", "total": total}
-            finally:
-                await scraper.close()
-                
+            set_status(f"✅ Success: Drained {total} records from official APIs.", False)
+            return {"status": "completed", "total": total}
+        finally:
+            await scraper.close()
+            
     return asyncio.run(_run_fast())
 
 @celery_app.task(name="tasks.export_data_task")

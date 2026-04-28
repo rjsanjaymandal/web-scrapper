@@ -44,6 +44,11 @@ CITY_STATE_MAP = {
     "vadodara": "GUJARAT",
 }
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 try:
     from processing import ProcessingHandler
     from enhanced_utils import (
@@ -60,11 +65,6 @@ try:
     pass
 except ImportError as e:
     logger.warning(f"Failed to import/register enhanced scrapers: {e}")
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 PROJ_DIR = Path(__file__).parent
 EXPORTS_DIR = PROJ_DIR / "exports"
