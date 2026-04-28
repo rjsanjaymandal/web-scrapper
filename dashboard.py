@@ -36,16 +36,12 @@ def health_check():
     """Lightweight health check for Railway"""
     return jsonify({
         "status": "healthy",
+        "dashboard": "ready",
         "database": "ready" if DB_INIT_READY else "pending",
         "timestamp": int(time.time()),
+        "process_type": os.environ.get("PROCESS_TYPE", "web").lower(),
         "service": "contact-scraper-dashboard"
     }), 200
-
-
-@app.route("/")
-def home():
-    """Redirect or serve index"""
-    return index()
 
 
 @app.route("/up")
@@ -275,7 +271,7 @@ def init_tables():
                 pass
 
         if not index_exists:
-            logger.info("🧹 Deduplication Index missing. Running one-time cleanup...")
+            logger.info("Deduplication index missing. Running one-time cleanup...")
             
             # 1. Ensure phone_clean has a basic index to speed up the join
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_phone_clean ON contacts(phone_clean)")
@@ -306,7 +302,7 @@ def init_tables():
             
             # 3. Drop temporary index
             cur.execute("DROP INDEX IF EXISTS idx_tmp_phone_clean")
-            logger.info("✅ Cleanup completed.")
+            logger.info("Cleanup completed.")
 
         # Constraints for Deduplication (UPSERT support)
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_unique_phone ON contacts(phone_clean) WHERE phone_clean IS NOT NULL")

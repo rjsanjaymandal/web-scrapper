@@ -13,6 +13,7 @@ import traceback
 import socket
 import threading
 from urllib.parse import urlparse
+from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 # Global diagnostic wrapper moved inside functions for faster initial bootstrap
 def log(msg):
@@ -50,7 +51,7 @@ def start_health_server(port_str):
             server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
             server.serve_forever()
         except Exception as e:
-            log(f"❌ HEALTH SERVER CRITICAL ERROR: {e}")
+            log(f"[ERROR] HEALTH SERVER CRITICAL ERROR: {e}")
             traceback.print_exc()
 
     thread = threading.Thread(target=run_server, daemon=True)
@@ -93,10 +94,10 @@ def wait_for_db():
             except Exception:
                 time.sleep(1)
         
-        log("❌ Timeout waiting for database after 90s")
+        log("[ERROR] Timeout waiting for database after 90s")
         return False
     except Exception as e:
-        log(f"❌ Error in wait_for_db: {e}")
+        log(f"[ERROR] Error in wait_for_db: {e}")
         traceback.print_exc()
         return False
 
@@ -106,14 +107,38 @@ def init_tables():
         import dashboard
         success = dashboard.init_tables()
         if not success:
-            log("❌ Database initialization failed via dashboard.init_tables()")
+            log("[ERROR] Database initialization failed via dashboard.init_tables()")
             return False
-        log("✅ Database tables ready!")
+        log("[OK] Database tables ready!")
         return True
     except Exception as e:
-        log(f"❌ Failed to import or run dashboard init: {e}")
+        log(f"[ERROR] Failed to import or run dashboard init: {e}")
         traceback.print_exc()
         return False
+
+def wait_for_http(port, path="/health", timeout=30, process=None):
+    """Wait until the local dashboard answers HTTP, failing early if it exits."""
+    url = f"http://127.0.0.1:{port}{path}"
+    start_time = time.time()
+    last_error = None
+
+    while time.time() - start_time < timeout:
+        if process and process.poll() is not None:
+            log(f"[ERROR] Dashboard process exited before becoming healthy (code={process.returncode}).")
+            return False
+
+        try:
+            with urlopen(url, timeout=2) as response:
+                if 200 <= response.status < 500:
+                    log(f"Dashboard answered {path} with HTTP {response.status}.")
+                    return True
+        except Exception as e:
+            last_error = e
+
+        time.sleep(1)
+
+    log(f"[ERROR] Dashboard did not answer {url} within {timeout}s. Last error: {last_error}")
+    return False
 
 def main():
     # Process detection logic
@@ -128,7 +153,7 @@ def main():
         if is_worker_flag:
             process_type = "worker"
         elif env_process_type:
-            process_type = env_process_type
+            process_type = env_process_type.strip().lower()
         elif "worker" in railway_service:
             process_type = "worker"
         elif "automator" in railway_service or "enterprise" in railway_service:
@@ -208,7 +233,9 @@ def main():
             
             # Run DB init before starting anything
             log("Running database initialization for Automator+Dashboard...")
-            init_tables()
+            if not init_tables():
+                log("[ERROR] Database initialization failed. Process will exit.")
+                sys.exit(1)
             
             # Launch Gunicorn dashboard as a background subprocess
             log(f"Starting Dashboard (Gunicorn) on port {port} in background (Handles healthchecks)...")
@@ -224,14 +251,26 @@ def main():
             ]
             dashboard_proc = subprocess.Popen(gunicorn_cmd)
             log(f"[SUCCESS] Dashboard running (PID: {dashboard_proc.pid})")
+
+            if not wait_for_http(port, process=dashboard_proc):
+                dashboard_proc.terminate()
+                try:
+                    dashboard_proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    dashboard_proc.kill()
+                sys.exit(1)
             
-            # Give gunicorn a moment to bind the port
-            time.sleep(3)
+            # Short settle time after the verified bind before scraper load begins.
+            time.sleep(1)
             
             log("[LAUNCH] Starting Enterprise Automator...")
             automator_cmd = ["python3", "automate_100_cities.py"]
             try:
-                subprocess.run(automator_cmd)
+                result = subprocess.run(automator_cmd)
+                if result.returncode != 0:
+                    log(f"[ERROR] Automator exited with code {result.returncode}.")
+                    dashboard_proc.terminate()
+                    sys.exit(result.returncode)
             except KeyboardInterrupt:
                 log("Automator received interrupt, shutting down...")
                 dashboard_proc.terminate()
@@ -240,13 +279,15 @@ def main():
                 log(f"[ERROR] Automator crashed: {e}")
                 dashboard_proc.terminate()
                 sys.exit(1)
-            finally:
-                # Keep dashboard alive after automator finishes
-                log("Automator cycle complete. Dashboard still running...")
-                try:
-                    dashboard_proc.wait()
-                except KeyboardInterrupt:
-                    dashboard_proc.terminate()
+
+            # Keep dashboard alive after a successful automator run.
+            log("Automator cycle complete. Dashboard still running...")
+            try:
+                exit_code = dashboard_proc.wait()
+                log(f"[ERROR] Dashboard process exited with code {exit_code}.")
+                sys.exit(exit_code if exit_code else 1)
+            except KeyboardInterrupt:
+                dashboard_proc.terminate()
         
         else:
             log(f"[ERROR] Unknown PROCESS_TYPE: {process_type}")
