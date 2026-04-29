@@ -2737,7 +2737,7 @@ class ContactScraper:
         sources = self._select_scrapers(category, source_name, use_business=False)
         total_extracted = 0
         
-        async with PoliteHTTPScraper(max_concurrent=5) as fast_engine:
+        async with PoliteHTTPScraper(max_concurrent=self.config.max_concurrent) as fast_engine:
             for scraper_obj in sources:
                 source = scraper_obj.source_name
                 logger.info(f"⚡ Fast Extraction: {source} | {category} | {city}")
