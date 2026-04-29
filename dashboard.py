@@ -652,18 +652,18 @@ HTML = """
         </div>
 
         <!-- Charts Section -->
-        <div class="charts-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px;">
-            <div class="glass-card" style="padding: 20px;">
-                <p class="label" style="margin-bottom: 16px;">Leads by Source</p>
-                <canvas id="sourceChart" height="200"></canvas>
+        <div class="charts-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px;">
+            <div class="glass-card" style="padding: 20px !important;">
+                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Leads by Source</p>
+                <canvas id="sourceChart"></canvas>
             </div>
-            <div class="glass-card" style="padding: 20px;">
-                <p class="label" style="margin-bottom: 16px;">Top Categories</p>
-                <canvas id="categoryChart" height="200"></canvas>
+            <div class="glass-card" style="padding: 20px !important;">
+                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Top Categories</p>
+                <canvas id="categoryChart"></canvas>
             </div>
-            <div class="glass-card" style="padding: 20px;">
-                <p class="label" style="margin-bottom: 16px;">Growth Trend</p>
-                <canvas id="trendChart" height="200"></canvas>
+            <div class="glass-card" style="padding: 20px !important;">
+                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Growth Trend</p>
+                <canvas id="trendChart"></canvas>
             </div>
         </div>
 
