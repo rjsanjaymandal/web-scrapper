@@ -2521,6 +2521,23 @@ class ContactScraper:
                 if cursor.fetchone():
                     return True
             return False
+        
+        # PostgreSQL support
+        if self.pool:
+            async with self.pool.acquire() as conn:
+                if phone:
+                    row = await conn.fetchrow(
+                        "SELECT 1 FROM contacts WHERE phone_clean = $1 LIMIT 1", phone
+                    )
+                    if row:
+                        return True
+                if email:
+                    row = await conn.fetchrow(
+                        "SELECT 1 FROM contacts WHERE email = $1 LIMIT 1", email
+                    )
+                    if row:
+                        return True
+        return False
 
     async def _filter_duplicates_bulk(self, listings: List[Dict]) -> List[Dict]:
         if not self.config.enable_deduplication or not listings:
@@ -2673,6 +2690,10 @@ class ContactScraper:
                         raise RuntimeError(f"AMFI API returned HTTP {response.status}")
 
                     payload = await response.json(content_type=None)
+
+                if not payload or not isinstance(payload, dict):
+                    logger.warning(f"AMFI API returned empty or invalid payload for {city}")
+                    break
 
                 records = payload.get("data") or []
                 if not records:
@@ -3063,8 +3084,9 @@ class ContactScraper:
             logger.info(f"Saved {len(valid_listings)} records to SQLite")
             return
 
-        records = [
-            (
+        records = []
+        for listing in valid_listings:
+            r = (
                 listing.get("name"),
                 listing.get("phone"),
                 listing.get("email"),
@@ -3081,9 +3103,10 @@ class ContactScraper:
                 listing.get("arn"),
                 listing.get("license_no"),
                 listing.get("membership_no"),
+                listing.get("quality_score", 0),
+                listing.get("quality_tier", "low"),
             )
-            for listing in valid_listings
-        ]
+            records.append(r)
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -3102,14 +3125,7 @@ class ContactScraper:
                         scraped_at = EXCLUDED.scraped_at,
                         source = CASE WHEN EXCLUDED.quality_score > contacts.quality_score THEN EXCLUDED.source ELSE contacts.source END
                 """,
-                    [
-                        r
-                        + (
-                            listing.get("quality_score", 0),
-                            listing.get("quality_tier", "low"),
-                        )
-                        for r, listing in zip(records, valid_listings)
-                    ],
+                    records,
                 )
 
         logger.info(f"Saved {len(listings)} records to database")
