@@ -687,6 +687,14 @@ class AMFIScraper(BaseScraper):
         clean_city = (city or "").replace(' ', '+')
         return f"https://www.amfiindia.com/api/distributor-agent?strOpt=ALL&city={clean_city}&page={page}&pageSize=100"
 
+    def get_search_params(self, city: str, page: int, page_size: int = 100) -> Dict[str, str]:
+        return {
+            "strOpt": "ALL",
+            "city": city or "",
+            "page": str(page),
+            "pageSize": str(page_size)
+        }
+
     async def scrape_via_api(self, city: str, page_num: int = 1) -> List[Dict]:
         """High-speed API extraction for AMFI (saves 95% bandwidth)"""
         listings = []
