@@ -16,48 +16,66 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_sebi_ria(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Registered Investment Advisors from SEBI"""
-        # SEBI Search Endpoint
-        url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do"
-        params = {
-            "doRegistrants": "yes",
-            "intmId": "13", # 13 = Registered Investment Advisor
-            "city": city.title()
-        }
-        
-        leads_data = await engine.scrape_json_api(url, params=params)
+        url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes&intmId=13"
+        response = await engine.fetch(url, method="GET")
+        if not response:
+            return []
+            
+        html = await response.text()
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'lxml')
         
         leads = []
-        for r in leads_data:
-            leads.append({
-                "name": r.get("name") or r.get("Name"),
-                "phone": r.get("contact_no") or r.get("Mobile"),
-                "email": r.get("email_id") or r.get("Email"),
-                "address": r.get("reg_address") or r.get("Address"),
-                "source": "SEBI",
-                "city": city,
-                "license_no": r.get("reg_no")
-            })
+        table = soup.select_one('table#sample_1, .table-striped')
+        if not table:
+            return []
+            
+        rows = table.select('tr')[1:] # Skip header
+        for row in rows:
+            cols = row.select('td')
+            if len(cols) >= 3:
+                name = cols[1].get_text(strip=True)
+                addr = cols[2].get_text(strip=True)
+                # SEBI usually requires clicking for detail, but we can extract what's there
+                leads.append({
+                    "name": name,
+                    "address": addr,
+                    "source": "SEBI",
+                    "city": city,
+                    "category": "sebi-advisor"
+                })
         return leads
 
     @staticmethod
     async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Insolvency Professionals from IBBI"""
+        # Official IP Registry JSON Endpoint
         url = "https://ibbi.gov.in/en/insolvency-professional/export-data-json"
-        # IBBI usually accepts city/state filter in JSON payload or params
-        params = {"city": city.title()}
-        
-        leads_data = await engine.scrape_json_api(url, params=params)
-        
+        response = await engine.fetch(url, method="GET")
+        if not response:
+            return []
+            
+        try:
+            data = await response.json(content_type=None)
+            leads_data = data if isinstance(data, list) else data.get("data", [])
+        except:
+            return []
+            
         leads = []
         for r in leads_data:
+            # Filter by city if possible (Support "all" for bulk draining)
+            r_city = str(r.get("city", "")).lower()
+            if city.lower() != "all" and city.lower() not in r_city and r_city:
+                continue
+                
             leads.append({
-                "name": r.get("name"),
-                "phone": r.get("mobile"),
-                "email": r.get("email"),
-                "address": r.get("address"),
+                "name": r.get("name") or r.get("Name"),
+                "phone": r.get("mobile") or r.get("Phone"),
+                "email": r.get("email") or r.get("Email"),
+                "address": r.get("address") or r.get("Address"),
                 "source": "IBBI",
                 "city": city,
-                "license_no": r.get("registration_number")
+                "license_no": r.get("registration_number") or r.get("RegNo")
             })
         return leads
 

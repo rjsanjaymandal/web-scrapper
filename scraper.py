@@ -98,6 +98,12 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "investment-adviser": ["SEBI"],
     "advisor": ["SEBI", "JUSTDIAL", "YELLOWPAGES"],
     "gst-practitioners": ["GST"],
+    "insolvency-professionals": ["IBBI"],
+    "insolvency-professional": ["IBBI"],
+    "lawyers": ["BAR_COUNCIL", "YELLOWPAGES"],
+    "lawyer": ["BAR_COUNCIL", "YELLOWPAGES"],
+    "advocates": ["BAR_COUNCIL", "YELLOWPAGES"],
+    "advocate": ["BAR_COUNCIL", "YELLOWPAGES"],
     "gst-consultant": ["GST"],
     "gst": ["GST"],
     "rbi-regulated": ["RBI"],
@@ -1066,6 +1072,16 @@ class IRDAIScraper(BaseScraper):
         elem = await card.query_selector(selector)
         return await elem.inner_text() if elem else None
 
+
+class IBBIScraper(BaseScraper):
+    """Scraper for IBBI Insolvency Professionals"""
+    source_name = "IBBI"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return "https://ibbi.gov.in/en/insolvency-professional/export-data-json"
+    
+    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        return [] # Handled by OfficialAPIHandlers.dispatch
 
 class ICAIScraper(BaseScraper):
     """Modernized Scraper for ICAI (Chartered Accountants) - Handles 2026 portal"""
@@ -2782,9 +2798,13 @@ class ContactScraper:
                     
                     # 2. Legacy API Fallback (AMFI)
                     if not batch and source == "AMFI":
+                        # scrape_amfi_api handles its own internal saving to optimize memory
                         batch = await self.scrape_amfi_api(scraper_obj, city, category)
+                        total_extracted += len(batch)
+                        logger.info(f"✅ Extracted {len(batch)} from {source}")
+                        continue
                     
-                    # 3. Save to DB
+                    # 3. Save to DB for other handlers
                     if batch:
                         await self.save_to_db(batch, category, city, source, "Official API")
                         total_extracted += len(batch)
@@ -3327,6 +3347,7 @@ try:
     ScraperRegistry.register(ICAIScraper())           # ICAI (Tax/CA)
     ScraperRegistry.register(ICSIScraper())           # ICSI (Company Secretaries)
     ScraperRegistry.register(SEBIScraper())           # SEBI (Investment Advisors)
+    ScraperRegistry.register(IBBIScraper())           # IBBI (Insolvency Professionals)
     ScraperRegistry.register(NSEBrokerScraper())      # NSE (Stock Brokers)
     ScraperRegistry.register(BSEBrokerScraper())      # BSE (Stock Brokers)
     ScraperRegistry.register(GSTPractitionerScraper()) # GST Practitioners

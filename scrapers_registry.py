@@ -199,6 +199,12 @@ class ScraperRegistry:
             or "investment" in cat_lower
         ):
             sources = ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
+        
+        elif "insolvency" in cat_lower:
+            sources = ["IBBI", "FOOTPRINT"]
+        
+        elif "lawyer" in cat_lower or "advocate" in cat_lower or "bar" in cat_lower:
+            sources = ["BAR_COUNCIL", "YELLOWPAGES", "JUSTDIAL", "FOOTPRINT"]
 
         # Business/Professional - multiple directories
         else:
