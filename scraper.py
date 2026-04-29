@@ -147,6 +147,7 @@ class Config:
     categories: List[str]
     cities: List[str]
     scraper_settings: Dict
+    max_concurrent: int
     redis_url: Optional[str] = None
 
 
@@ -245,6 +246,9 @@ def load_config() -> Config:
         ),
         timeout_seconds=int(
             os.environ.get("SCRAPER_TIMEOUT", scraper_settings.get("timeout", 60))
+        ),
+        max_concurrent=int(
+            os.environ.get("MAX_CONCURRENT", scraper_settings.get("max_concurrent", 5))
         ),
         headless=os.environ.get(
             "SCRAPER_HEADLESS", str(scraper_settings.get("headless", True))
@@ -2384,6 +2388,8 @@ class ContactScraper:
                     arn VARCHAR(50),
                     license_no VARCHAR(100),
                     membership_no VARCHAR(100),
+                    quality_score INT DEFAULT 0,
+                    quality_tier VARCHAR(20) DEFAULT 'low',
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -2409,6 +2415,8 @@ class ContactScraper:
             "arn": "VARCHAR(50)",
             "license_no": "VARCHAR(100)",
             "membership_no": "VARCHAR(100)",
+            "quality_score": "INT DEFAULT 0",
+            "quality_tier": "VARCHAR(20) DEFAULT 'low'",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         }
 

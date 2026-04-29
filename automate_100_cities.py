@@ -72,6 +72,7 @@ async def run_enterprise_cycle():
             logger.error(f"⚠️ Cycle encountered an error: {e}")
             logger.info("Restarting loop in 60s...")
             await asyncio.sleep(60)
+            continue
         finally:
             await scraper.close()
             

@@ -163,3 +163,25 @@ class PoliteHTTPScraper:
             logger.error(f"Sitemap parsing error: {e}")
             
         return urls
+
+    @staticmethod
+    def extract_viewstate(html_content: str) -> Dict[str, str]:
+        """
+        Extracts ASP.NET hidden fields (__VIEWSTATE, __EVENTVALIDATION, etc.)
+        Required for interaction with government portals like IRDAI and ICAI.
+        """
+        tokens = {}
+        patterns = {
+            '__VIEWSTATE': r'id="__VIEWSTATE"\s+value="([^"]+)"',
+            '__EVENTVALIDATION': r'id="__EVENTVALIDATION"\s+value="([^"]+)"',
+            '__VIEWSTATEGENERATOR': r'id="__VIEWSTATEGENERATOR"\s+value="([^"]+)"',
+            '__EVENTTARGET': r'id="__EVENTTARGET"\s+value="([^"]+)"',
+            '__EVENTARGUMENT': r'id="__EVENTARGUMENT"\s+value="([^"]+)"',
+        }
+        
+        for name, pattern in patterns.items():
+            match = re.search(pattern, html_content)
+            if match:
+                tokens[name] = match.group(1)
+        
+        return tokens

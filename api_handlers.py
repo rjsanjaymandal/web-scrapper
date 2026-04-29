@@ -75,7 +75,7 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Chartered Accountants from ICAI"""
-        url = "https://traceamember.icai.org/"
+        url = "https://www.icai.org/post.html?post_id=538"
         # Initial probe to check connectivity
         await engine.fetch(url, method="GET")
         # ASP.NET parsing logic for ICAI would go here
@@ -84,7 +84,7 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_irdai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Insurance Agents from IRDAI"""
-        url = "https://agencyportal.irdai.gov.in"
+        url = "https://agencyportal.irdai.gov.in/PublicAccess/AgentLocator.aspx"
         # Initial probe to check connectivity
         await engine.fetch(url, method="GET")
         # Agent search logic for IRDAI would go here
