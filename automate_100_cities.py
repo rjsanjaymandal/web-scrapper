@@ -13,40 +13,66 @@ logging.basicConfig(
 logger = logging.getLogger("EnterpriseAutomator")
 
 async def run_enterprise_cycle():
-    logger.info("Starting Enterprise Automation Cycle (100+ Cities)...")
+    logger.info("🚀 Enterprise Automation Engine: INFINITE MODE ACTIVATED")
     
-    # 1. Load Configuration
-    config = load_config()
-    cities = config.cities
-    categories = config.categories
-    
-    start_time = datetime.now()
-    logger.info(f"Target: {len(cities)} Cities | {len(categories)} Categories")
-    
-    scraper = ContactScraper(config)
-    await scraper.init_db()
-    
-    # 3. Execute High-Speed Scraping Suite
-    try:
-        total_leads = 0
-        for city in cities:
-            for cat in categories:
-                count = await scraper.scrape_category_fast(city, cat, None)
-                total_leads += count
-
-        duration = datetime.now() - start_time
-        logger.info("=" * 50)
-        logger.info("AUTOMATION CYCLE COMPLETE")
-        logger.info(f"Total Leads Discovered: {total_leads}")
-        logger.info(f"Total Duration: {duration}")
-        logger.info(f"Average Speed: {total_leads / max(duration.total_seconds(), 1):.2f} leads/sec")
-        logger.info("=" * 50)
+    while True:
+        # 1. Load/Reload Configuration every cycle
+        config = load_config()
+        cities = config.cities
+        categories = config.categories
+        cycle_delay = getattr(config, 'cycle_delay', 3600) # Default to 1 hour
         
-    except Exception as e:
-        logger.error(f"Automation Cycle crashed: {e}")
-        raise
-    finally:
-        await scraper.close()
+        start_time = datetime.now()
+        logger.info("=" * 60)
+        logger.info(f"🔄 NEW AUTOMATION CYCLE STARTED AT {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"📍 Targets: {len(cities)} Cities | 🏷️ Categories: {len(categories)}")
+        logger.info(f"⏳ Cycle Interval: {cycle_delay}s | 🛡️ Stealth: High")
+        logger.info("=" * 60)
+        
+        scraper = ContactScraper(config)
+        try:
+            await scraper.init_db()
+            total_leads = 0
+            
+            # Shuffle cities/categories for more organic-looking traffic
+            import random
+            shuffled_cities = list(cities)
+            random.shuffle(shuffled_cities)
+            
+            for city in shuffled_cities:
+                shuffled_cats = list(categories)
+                random.shuffle(shuffled_cats)
+                
+                for cat in shuffled_cats:
+                    logger.info(f"Processing: {cat} in {city}...")
+                    count = await scraper.scrape_category_fast(city, cat, None)
+                    total_leads += count
+                    
+                    # Politeness: Small jittered sleep between tasks (5-15s)
+                    # This prevents slamming multiple targets in a tight sequence
+                    task_delay = random.uniform(5.0, 15.0)
+                    await asyncio.sleep(task_delay)
+
+            duration = datetime.now() - start_time
+            logger.info("=" * 50)
+            logger.info("CYCLE SUMMARY")
+            logger.info(f"Leads Found: {total_leads}")
+            logger.info(f"Duration: {duration}")
+            logger.info(f"Sleeping for {cycle_delay}s before next cycle...")
+            logger.info("=" * 50)
+            
+        except Exception as e:
+            logger.error(f"⚠️ Cycle encountered an error: {e}")
+            logger.info("Restarting loop in 60s...")
+            await asyncio.sleep(60)
+        finally:
+            await scraper.close()
+            
+        # Full Cycle Delay
+        await asyncio.sleep(cycle_delay)
 
 if __name__ == "__main__":
-    asyncio.run(run_enterprise_cycle())
+    try:
+        asyncio.run(run_enterprise_cycle())
+    except KeyboardInterrupt:
+        logger.info("Manual shutdown received.")

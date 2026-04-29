@@ -5,6 +5,7 @@ import random
 import re
 from typing import List, Dict, Optional, Any
 from lxml import etree
+from stealth_utils import StealthManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("polite_http_scraper")
@@ -15,27 +16,16 @@ class PoliteHTTPScraper:
     No Playwright, no Proxies. Strict randomized delays to prevent DDoS/rate limits.
     """
     
-    DEFAULT_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/html, application/xhtml+xml, application/xml;q=0.9, image/avif, image/webp, */*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
-    }
-
     def __init__(self, max_concurrent: int = 5):
         # Even with max_concurrent, we enforce strict domain politeness
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.session: Optional[aiohttp.ClientSession] = None
+        # Generate persistent identity for this session (2026 Stealth Standard)
+        self.ua = StealthManager.get_persistent_ua()
+        self.base_headers = StealthManager.get_modern_headers(self.ua)
 
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession(headers=self.DEFAULT_HEADERS)
+        self.session = aiohttp.ClientSession(headers=self.base_headers)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -71,11 +61,14 @@ class PoliteHTTPScraper:
                         await self._polite_delay()
                         return response # Return it anyway, caller can handle 404/403
                         
-                except Exception as e:
-                    logger.error(f"Error fetching {url}: {e}")
-                    backoff = random.uniform(30.0, 60.0)
-                    logger.warning(f"Exception during fetch. Backing off for {backoff:.2f} seconds...")
+                except (asyncio.TimeoutError, aiohttp.ClientError, ConnectionResetError) as e:
+                    logger.warning(f"Network error on {url} (Attempt {attempt}): {e}")
+                    backoff = random.uniform(10.0, 30.0) * attempt # Exponential-ish backoff
+                    logger.info(f"Retrying in {backoff:.2f}s...")
                     await asyncio.sleep(backoff)
+                except Exception as e:
+                    logger.error(f"Unexpected error fetching {url}: {e}")
+                    break # Don't retry on logic errors
             
             return None
 
