@@ -652,7 +652,10 @@ HTML = """
             const city = manualCity || filterCity;
             const cat = manualCat || filterCat;
             
-            if (!city || !cat) {
+            if (!city && !cat) {
+                // If both are empty, we'll let it trigger a batch/fast scrape
+                showNotification(`No specific targets selected. Launching batch extraction...`);
+            } else if (!city || !cat) {
                 const missing = [];
                 if (!city) missing.push("City");
                 if (!cat) missing.push("Category");
@@ -1347,8 +1350,9 @@ def trigger_scrape():
         msg = f"🚀 Scrape queued for {category} in {city}!"
     else:
         # Batch scrape for everything in config
-        scrape_all_task.delay(use_business=use_business)
-        msg = f"🚀 Batch scrape queued for {'Business' if use_business else 'Official'} sources!"
+        from tasks import fast_scrape_task
+        fast_scrape_task.delay()
+        msg = f"🚀 Batch fast-scrape queued for all Official sources!"
     
     return jsonify({"message": msg})
 
