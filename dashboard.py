@@ -541,8 +541,10 @@ HTML = """
         .glass-card { background: var(--card-glass); border-radius: 20px; border: 1px solid var(--border-muted); padding: 24px; }
         
         /* Charts */
-        .chart-card { background: var(--card-glass); border-radius: 20px; border: 1px solid var(--border-muted); padding: 20px; }
-        .chart-card p { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; letter-spacing: 1px; }
+        .charts-row { display: flex; gap: 16px; margin-bottom: 24px; }
+        .chart-card { flex: 1; background: var(--card-glass); border-radius: 12px; border: 1px solid var(--border-muted); padding: 12px; min-height: 180px; }
+        .chart-card p { font-size: 9px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+        .chart-container { position: relative; height: 150px; width: 100%; }
         
         /* Terminal & Feed */
         .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -660,18 +662,18 @@ HTML = """
         </div>
 
         <!-- Charts Section -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+        <div class="charts-row">
             <div class="chart-card">
                 <p>Leads by Source</p>
-                <canvas id="sourceChart" style="max-height: 140px;"></canvas>
+                <div class="chart-container"><canvas id="sourceChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <p>Top Categories</p>
-                <canvas id="categoryChart" style="max-height: 140px;"></canvas>
+                <div class="chart-container"><canvas id="categoryChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <p>Growth Trend</p>
-                <canvas id="trendChart" style="max-height: 140px;"></canvas>
+                <div class="chart-container"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
 
@@ -856,75 +858,42 @@ HTML = """
         
         async function initCharts() {
             const chartColors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+            const baseOpt = { responsive: true, maintainAspectRatio: false, animation: false };
 
-            // Doughnut - Leads by Source
-            const sourceCtx = document.getElementById('sourceChart').getContext('2d');
-            sourceChart = new Chart(sourceCtx, {
+            sourceChart = new Chart(document.getElementById('sourceChart'), {
                 type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: chartColors, borderWidth: 0 }] },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'right', labels: { color: '#64748b', font: { size: 9 }, padding: 8 } } },
-                    cutout: '60%'
-                }
+                data: { labels: [], datasets: [{ data: [], backgroundColor: chartColors }] },
+                options: { ...baseOpt, plugins: { legend: { position: 'bottom', labels: { color: '#64748b', font: { size: 8 }, padding: 4 } } }, cutout: '50%' }
             });
 
-            // Bar - Top Categories
-            const catCtx = document.getElementById('categoryChart').getContext('2d');
-            categoryChart = new Chart(catCtx, {
+            categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'bar',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981', borderRadius: 3 }] },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { display: false } },
-                        y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                    }
-                }
+                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981' }] },
+                options: { ...baseOpt, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', font: { size: 7 } }, grid: { display: false } }, y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } }
             });
 
-            // Line - Growth Trend
-            const trendCtx = document.getElementById('trendChart').getContext('2d');
-            trendChart = new Chart(trendCtx, {
+            trendChart = new Chart(document.getElementById('trendChart'), {
                 type: 'line',
-                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#3b82f6' }] },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { display: false } },
-                        y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                    }
-                }
+                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 2 }] },
+                options: { ...baseOpt, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { display: false } }, y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } }
             });
 
-            await refreshCharts();
+            refreshCharts();
             setInterval(refreshCharts, 30000);
         }
 
         async function refreshCharts() {
             try {
-                const res = await fetch('/api/stats/charts');
-                const stats = await res.json();
-                
-                if (!stats.sources || !stats.categories || !stats.trend) return;
-
+                const stats = await fetch('/api/stats/charts').then(r => r.json());
+                if (!stats.sources) return;
                 sourceChart.data.labels = stats.sources.map(s => s.source);
                 sourceChart.data.datasets[0].data = stats.sources.map(s => s.count);
-                sourceChart.update();
-
-                categoryChart.data.labels = stats.categories.slice(0, 6).map(c => c.category);
-                categoryChart.data.datasets[0].data = stats.categories.slice(0, 6).map(c => c.count);
-                categoryChart.update();
-
+                categoryChart.data.labels = stats.categories.slice(0,5).map(c => c.category);
+                categoryChart.data.datasets[0].data = stats.categories.slice(0,5).map(c => c.count);
                 trendChart.data.labels = stats.trend.map(t => t.date);
                 trendChart.data.datasets[0].data = stats.trend.map(t => t.count);
-                trendChart.update();
-            } catch(e) { console.error('Chart refresh failed:', e); }
+                sourceChart.update(); categoryChart.update(); trendChart.update();
+            } catch(e) { console.log('Chart error:', e); }
         }
 
         initCharts();
