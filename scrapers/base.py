@@ -135,8 +135,8 @@ class ScraperRegistry:
         return cls._scrapers.get(name.upper())
 
     @classmethod
-    def list_scrapers(cls) -> List[str]:
-        return list(cls._scrapers.keys())
+    def list_scrapers(cls) -> List[BaseScraper]:
+        return list(cls._scrapers.values())
 
     @classmethod
     def get_all_sources_for_category(cls, category: str) -> List[str]:

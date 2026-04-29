@@ -156,3 +156,24 @@ ScraperRegistry.register("GROTAL", GrotalScraper)
 ScraperRegistry.register("YELLOWPAGES", YellowPagesScraper)
 ScraperRegistry.register("TRADEINDIA", TradeIndiaScraper)
 ScraperRegistry.register("EXPORTERSINDIA", ExportersIndiaScraper)
+
+class AskLailaScraper(BaseScraper):
+    source_name = "ASKLAILA"
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return f"https://www.asklaila.com/search/{city}/{category}/{page}/"
+    
+    async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        return self.extract_raw_fallback(content, city, category)
+
+class VykariScraper(BaseScraper):
+    source_name = "VYKARI"
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return f"https://www.vykari.com/search?q={category}&l={city}&p={page}"
+    
+    async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        return self.extract_raw_fallback(content, city, category)
+
+ScraperRegistry.register("ASKLAILA", AskLailaScraper)
+ScraperRegistry.register("VYKARI", VykariScraper)

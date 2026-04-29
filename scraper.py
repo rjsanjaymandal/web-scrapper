@@ -52,23 +52,13 @@ logger = logging.getLogger(__name__)
 
 try:
     from processing import ProcessingHandler
+    import scrapers # This triggers registration of all scrapers via scrapers/__init__.py
     from scrapers.base import ScraperRegistry
-    from scrapers.directory import (
-        SitemapScraper, YellowPagesIndiaScraper, GoogleMapsScraper, 
-        LinkedInGoogleScraper, GoogleDorkScraper
-    )
-    from scrapers.official import (
-        AMFIScraper, IRDAIScraper, ICAIScraper, ICSIScraper, 
-        SEBIScraper, IBBIScraper, NSEScraper, BSEScraper, 
-        GSTPractitionerScraper, RBIRegulatedScraper, BarCouncilScraper
-    )
-    from scrapers.business import (
-        JustDialScraper, IndiaMartScraper, SulekhaScraper, 
-        ClickIndiaScraper, GrotalScraper, TradeIndiaScraper,
-        ExportersIndiaScraper, AskLailaScraper, VykariScraper
-    )
     
     # Legacy fallbacks for naming consistency in older code
+    # These are only needed if some parts of the code still reference them directly
+    # But since we use ScraperRegistry, we can just define them as None or their actual class if needed
+    from scrapers.official import NSEScraper, BSEScraper
     NSEBrokerScraper = NSEScraper
     BSEBrokerScraper = BSEScraper
     
@@ -1439,7 +1429,7 @@ class ContactScraper:
 
             self.stats["total_scrape"] += 1
             try:
-                if isinstance(scraper, AMFIScraper):
+                if scraper.source_name == "AMFI":
                     listings = await self.scrape_amfi_api(
                         scraper, city, category, on_progress=on_progress
                     )
@@ -1545,38 +1535,6 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-# Global Scraper Registry Initialization
-# We register all available scrapers here to ensure ScraperRegistry.get() works across the app.
-try:
-    # Official / Regulated Sources
-    ScraperRegistry.register(AMFIScraper())           # AMFI (Mutual Funds)
-    ScraperRegistry.register(IRDAIScraper())          # IRDAI (Insurance)
-    ScraperRegistry.register(ICAIScraper())           # ICAI (Tax/CA)
-    ScraperRegistry.register(ICSIScraper())           # ICSI (Company Secretaries)
-    ScraperRegistry.register(SEBIScraper())           # SEBI (Investment Advisors)
-    ScraperRegistry.register(IBBIScraper())           # IBBI (Insolvency Professionals)
-    ScraperRegistry.register(NSEBrokerScraper())      # NSE (Stock Brokers)
-    ScraperRegistry.register(BSEBrokerScraper())      # BSE (Stock Brokers)
-    ScraperRegistry.register(GSTPractitionerScraper()) # GST Practitioners
-    ScraperRegistry.register(RBIRegulatedScraper())   # RBI (Banks/NBFC)
-    ScraperRegistry.register(BarCouncilScraper())     # Bar Council (Lawyers)
-    
-    # Business Directories & Deep Scrapers
-    ScraperRegistry.register(JustDialScraper())
-    ScraperRegistry.register(YellowPagesScraper())
-    ScraperRegistry.register(IndiaMartScraper())
-    ScraperRegistry.register(TradeIndiaScraper())
-    ScraperRegistry.register(SulekhaScraper())
-    ScraperRegistry.register(ClickIndiaScraper())
-    ScraperRegistry.register(GrotalScraper())
-    ScraperRegistry.register(ExportersIndiaScraper())
-    ScraperRegistry.register(AskLailaScraper())
-    ScraperRegistry.register(VykariScraper())
-    ScraperRegistry.register(SitemapScraper())
-    ScraperRegistry.register(GoogleMapsScraper())
-    ScraperRegistry.register(LinkedInGoogleScraper())
-    ScraperRegistry.register(GoogleDorkScraper())     # Source: FOOTPRINT
-    
-    logger.info(f"[SUCCESS] Scraper Registry initialized with {len(ScraperRegistry.list_scrapers())} sources")
-except Exception as e:
-    logger.error(f"[ERROR] Critical Error during Scraper Registration: {e}")
+
+# Modular registration complete via 'import scrapers' above.
+logger.info(f"Scraper Engine Ready: {len(ScraperRegistry.list_scrapers())} sources registered.")

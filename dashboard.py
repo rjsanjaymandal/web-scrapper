@@ -629,10 +629,18 @@ HTML = """
                 <p style="font-size:12px; color:var(--text-secondary);">Manage and explore your collected leads</p>
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; display:flex; align-items:center; gap:8px;">
+                    <span style="color:var(--text-secondary);">STATUS:</span> 
+                    <span id="live-status" style="font-weight:800; color:var(--text-secondary);">IDLE</span>
+                </div>
                 <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px;">
                     <span style="color:var(--text-secondary);">Updated:</span> <span id="last-update">--:--:--</span>
                 </div>
             </div>
+        </div>
+
+        <div id="prog-wrap" class="progress-container" style="margin-top: -16px; margin-bottom: 24px;">
+            <div id="prog-bar" class="progress-bar" style="width: 0%;"></div>
         </div>
 
         <div class="stats-hud">
@@ -919,7 +927,7 @@ HTML = """
                     startBtn.innerHTML = '<span class="pulse">COLLECTING...</span>';
                 }
             } else {
-                statusEl.innerText = 'IDLE';
+                statusEl.innerText = 'ONLINE'; // Online but not currently scraping
                 statusEl.style.color = 'var(--text-secondary)';
                 progWrap.style.display = 'none';
                 
