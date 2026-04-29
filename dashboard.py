@@ -502,53 +502,58 @@ HTML = """
         .sidebar {
             background: rgba(0,0,0,0.3);
             border-right: 1px solid var(--border-muted);
-            padding: 32px;
+            padding: 24px;
             display: flex;
             flex-direction: column;
-            gap: 40px;
+            gap: 32px;
         }
-        .brand-box p { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: var(--accent-emerald); font-weight: 800; margin-bottom: 4px; }
-        .brand-box h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+        .brand-box { margin-bottom: 16px; }
+        .brand-box p { font-size: 16px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; }
+        .brand-box span { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent-emerald); display: block; margin-top: 4px; }
 
-        .nav-group { display: flex; flex-direction: column; gap: 8px; }
-        .nav-label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; }
+        .nav-group { display: flex; flex-direction: column; gap: 4px; }
+        .nav-label { font-size: 9px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; }
         .nav-item { 
-            padding: 12px 16px; border-radius: 12px; color: var(--text-secondary); 
-            text-decoration: none; font-size: 14px; font-weight: 600; transition: 0.2s;
-            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; border-radius: 8px; color: var(--text-secondary); 
+            text-decoration: none; font-size: 13px; font-weight: 500; transition: 0.2s;
+            display: flex; align-items: center; gap: 10px;
         }
         .nav-item:hover { background: rgba(255,255,255,0.03); color: #fff; }
         .nav-item.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
 
         /* Main Content */
-        .main-view { padding: 40px; overflow-y: auto; max-width: 1600px; }
-        .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px; }
+        .main-view { padding: 24px; overflow-y: auto; max-width: 1600px; }
+        .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
-        .stats-hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+        .stats-hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
         .stat-card { 
-            background: var(--card-glass); padding: 24px; border-radius: 20px; border: 1px solid var(--border-muted);
-            backdrop-filter: blur(20px); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: var(--card-glass); padding: 20px; border-radius: 16px; border: 1px solid var(--border-muted);
+            transition: 0.2s;
         }
-        .stat-card:hover { transform: translateY(-4px); border-color: var(--border-glow); box-shadow: 0 20px 40px -20px rgba(0,0,0,0.5); }
-        .stat-card .label { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; display: block; }
-        .stat-card .value { font-size: 32px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .stat-card:hover { border-color: var(--border-glow); }
+        .stat-card .label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; display: block; }
+        .stat-card .value { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
         .stat-card.emerald .value { color: var(--accent-emerald); }
         .stat-card.blue .value { color: var(--accent-blue); }
 
         .content-grid { display: grid; grid-template-columns: 1fr 400px; gap: 32px; }
-        .glass-card { background: var(--card-glass); border-radius: 24px; border: 1px solid var(--border-muted); padding: 32px; }
+        .glass-card { background: var(--card-glass); border-radius: 20px; border: 1px solid var(--border-muted); padding: 24px; }
+        
+        /* Charts */
+        .chart-card { background: var(--card-glass); border-radius: 20px; border: 1px solid var(--border-muted); padding: 20px; }
+        .chart-card p { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; letter-spacing: 1px; }
         
         /* Terminal & Feed */
-        .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .terminal { 
-            background: #000; border-radius: 16px; padding: 20px; height: 340px; overflow-y: auto;
-            font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6;
-            border: 1px solid rgba(255,255,255,0.03);
+            background: #0a0a0f; border-radius: 12px; padding: 16px; height: 300px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6;
+            border: 1px solid var(--border-muted);
         }
-        .log-entry { margin-bottom: 6px; border-left: 2px solid var(--border-muted); padding-left: 12px; display: flex; gap: 12px; }
-        .log-time { color: #334155; min-width: 65px; }
-        .log-src { color: var(--accent-blue); font-weight: 800; min-width: 80px; }
+        .log-entry { margin-bottom: 4px; border-left: 2px solid var(--border-muted); padding-left: 10px; display: flex; gap: 10px; }
+        .log-time { color: #475569; min-width: 60px; }
+        .log-src { color: var(--accent-blue); font-weight: 800; min-width: 70px; }
         .log-msg { color: #cbd5e1; }
         .log-msg.ERROR { color: var(--accent-red); }
         .log-msg.SUCCESS { color: var(--accent-emerald); }
@@ -556,11 +561,12 @@ HTML = """
         /* Controls */
         .controls-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: flex-end; margin-bottom: 32px; }
         .input-group label { display: block; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
-        .input-group input { 
-            width: 100%; background: #000; border: 1px solid var(--border-muted); padding: 12px 16px; 
+        .input-group input, .input-group select { 
+            width: 100%; background: #0a0a0f; border: 1px solid var(--border-muted); padding: 12px 16px; 
             border-radius: 12px; color: #fff; font-size: 14px; outline: none; transition: 0.2s;
         }
-        .input-group input:focus { border-color: var(--accent-emerald); }
+        .input-group input:focus, .input-group select:focus { border-color: var(--accent-emerald); }
+        .input-group select { appearance: none; cursor: pointer; }
 
         .btn { 
             padding: 12px 24px; border-radius: 12px; font-weight: 800; cursor: pointer; border: none; font-size: 12px;
@@ -570,15 +576,16 @@ HTML = """
         .btn-primary:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
         .btn-outline { background: transparent; border: 1px solid var(--border-muted); color: var(--text-primary); }
         .btn-outline:hover { border-color: #fff; }
+        .btn-sm { padding: 6px 12px; font-size: 10px; }
 
         /* HUD Table */
-        .table-wrap { background: #000; border-radius: 20px; overflow: hidden; border: 1px solid var(--border-muted); }
+        .table-wrap { background: #0a0a0f; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-muted); }
         table { width: 100%; border-collapse: collapse; }
-        th { background: rgba(255,255,255,0.02); padding: 16px 24px; text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; }
-        td { padding: 16px 24px; border-bottom: 1px solid var(--border-muted); font-size: 13px; }
+        th { background: rgba(255,255,255,0.02); padding: 12px 16px; text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; }
+        td { padding: 12px 16px; border-bottom: 1px solid var(--border-muted); font-size: 12px; }
         tr:hover td { background: rgba(255,255,255,0.01); }
-        .badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; }
-        .badge-src { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; }
+        .badge-src { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
         
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -592,7 +599,8 @@ HTML = """
 
     <aside class="sidebar">
         <div class="brand-box">
-            <p class="brand-name">Maysan Labs</p>
+            <p>Maysan Labs</p>
+            <span>Data Platform</span>
         </div>
         
         <nav class="nav-group">
@@ -652,18 +660,18 @@ HTML = """
         </div>
 
         <!-- Charts Section -->
-        <div class="charts-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px;">
-            <div class="glass-card" style="padding: 20px !important;">
-                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Leads by Source</p>
-                <canvas id="sourceChart"></canvas>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+            <div class="chart-card">
+                <p>Leads by Source</p>
+                <canvas id="sourceChart" style="max-height: 140px;"></canvas>
             </div>
-            <div class="glass-card" style="padding: 20px !important;">
-                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Top Categories</p>
-                <canvas id="categoryChart"></canvas>
+            <div class="chart-card">
+                <p>Top Categories</p>
+                <canvas id="categoryChart" style="max-height: 140px;"></canvas>
             </div>
-            <div class="glass-card" style="padding: 20px !important;">
-                <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 12px;">Growth Trend</p>
-                <canvas id="trendChart"></canvas>
+            <div class="chart-card">
+                <p>Growth Trend</p>
+                <canvas id="trendChart" style="max-height: 140px;"></canvas>
             </div>
         </div>
 
@@ -680,7 +688,7 @@ HTML = """
                     </div>
                     <div class="input-group">
                         <label>Source Engine</label>
-                        <select id="t-source" style="width: 100%; background: #000; border: 1px solid var(--border-muted); padding: 12px 16px; border-radius: 12px; color: #fff; font-size: 14px; outline: none;">
+                        <select id="t-source">
                             <option value="">Auto-Select (Best)</option>
                             <option value="SITEMAP">Sitemap (High Speed)</option>
                             <option value="YELLOWPAGES">YellowPages (Stable)</option>
@@ -695,9 +703,9 @@ HTML = """
 
                 <div style="margin-bottom: 32px; display: flex; gap: 12px; flex-wrap: wrap;">
                     <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">QUICK TEMPLATES:</span>
-                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers (Delhi)</button>
-                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs (Mumbai)</button>
-                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech (Bangalore)</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers (Delhi)</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs (Mumbai)</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech (Bangalore)</button>
                 </div>
 
                 <div class="table-wrap">
@@ -733,7 +741,7 @@ HTML = """
                 </div>
             </div>
 
-            <div class="glass-card" style="padding:24px;">
+            <div class="glass-card">
                 <div class="terminal-header">
                     <p style="font-size:10px; font-weight:800; color:var(--text-secondary);">REAL-TIME LOGS</p>
                     <div class="pulse" style="width:8px; height:8px; background:var(--accent-emerald); border-radius:50%;"></div>
@@ -847,35 +855,51 @@ HTML = """
         let sourceChart, categoryChart, trendChart;
         
         async function initCharts() {
-            const chartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-            };
+            const chartColors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-            // Doughnut chart - Leads by Source
-            sourceChart = new Chart(document.getElementById('sourceChart'), {
+            // Doughnut - Leads by Source
+            const sourceCtx = document.getElementById('sourceChart').getContext('2d');
+            sourceChart = new Chart(sourceCtx, {
                 type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'] }] },
-                options: { plugins: { legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 10 }, boxWidth: 12 } } } }
+                data: { labels: [], datasets: [{ data: [], backgroundColor: chartColors, borderWidth: 0 }] },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right', labels: { color: '#64748b', font: { size: 9 }, padding: 8 } } },
+                    cutout: '60%'
+                }
             });
 
-            // Bar chart - Top Categories
-            categoryChart = new Chart(document.getElementById('categoryChart'), {
+            // Bar - Top Categories
+            const catCtx = document.getElementById('categoryChart').getContext('2d');
+            categoryChart = new Chart(catCtx, {
                 type: 'bar',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981', borderRadius: 4 }] },
-                options: chartOptions
+                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981', borderRadius: 3 }] },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { display: false } },
+                        y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
             });
 
-            // Line chart - Growth Trend
-            trendChart = new Chart(document.getElementById('trendChart'), {
+            // Line - Growth Trend
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(trendCtx, {
                 type: 'line',
-                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }] },
-                options: chartOptions
+                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#3b82f6' }] },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { display: false } },
+                        y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
             });
 
             await refreshCharts();
@@ -886,18 +910,17 @@ HTML = """
             try {
                 const res = await fetch('/api/stats/charts');
                 const stats = await res.json();
+                
+                if (!stats.sources || !stats.categories || !stats.trend) return;
 
-                // Update Source Chart
                 sourceChart.data.labels = stats.sources.map(s => s.source);
                 sourceChart.data.datasets[0].data = stats.sources.map(s => s.count);
                 sourceChart.update();
 
-                // Update Category Chart
-                categoryChart.data.labels = stats.categories.slice(0, 8).map(c => c.category);
-                categoryChart.data.datasets[0].data = stats.categories.slice(0, 8).map(c => c.count);
+                categoryChart.data.labels = stats.categories.slice(0, 6).map(c => c.category);
+                categoryChart.data.datasets[0].data = stats.categories.slice(0, 6).map(c => c.count);
                 categoryChart.update();
 
-                // Update Trend Chart
                 trendChart.data.labels = stats.trend.map(t => t.date);
                 trendChart.data.datasets[0].data = stats.trend.map(t => t.count);
                 trendChart.update();
