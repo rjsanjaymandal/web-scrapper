@@ -1201,21 +1201,21 @@ class ContactScraper:
             if not scraper:
                 url_lower = self.page.url.lower()
                 if "justdial" in url_lower:
-                    scraper = JustDialScraper()
+                    scraper = ScraperRegistry.get("JUSTDIAL")
                 elif "indiamart" in url_lower:
-                    scraper = IndiaMartScraper()
+                    scraper = ScraperRegistry.get("INDIAMART")
                 elif "amfi" in url_lower:
-                    scraper = AMFIScraper()
+                    scraper = ScraperRegistry.get("AMFI")
                 elif "irdai" in url_lower or "policyholder" in url_lower:
-                    scraper = IRDAIScraper()
+                    scraper = ScraperRegistry.get("IRDAI")
                 elif "icai" in url_lower:
-                    scraper = ICAIScraper()
+                    scraper = ScraperRegistry.get("ICAI")
                 elif "sulekha" in url_lower:
-                    scraper = SulekhaScraper()
+                    scraper = ScraperRegistry.get("SULEKHA")
                 elif "clickindia" in url_lower:
-                    scraper = ClickIndiaScraper()
+                    scraper = ScraperRegistry.get("CLICKINDIA")
                 else:
-                    scraper = JustDialScraper()
+                    scraper = ScraperRegistry.get("YELLOWPAGES")
 
             listings = await scraper.extract_listings(self.page, city, category)
             
