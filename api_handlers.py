@@ -9,6 +9,7 @@ import json
 from typing import List, Dict, Optional
 from polite_http_scraper import PoliteHTTPScraper
 
+from scrapers.base import BaseScraper
 logger = logging.getLogger(__name__)
 
 class OfficialAPIHandlers:
@@ -38,8 +39,7 @@ class OfficialAPIHandlers:
         table = soup.select_one('table#distributorTable, .dist-list')
         if not table:
             # Fallback to regex extraction
-            from scrapers.base import BaseScraper
-            return BaseScraper().extract_raw_fallback(html, city, "Mutual Fund")
+            return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund")
             
         rows = table.select('tr')[1:] 
         for row in rows:
@@ -95,9 +95,7 @@ class OfficialAPIHandlers:
             return []
             
         html = await response.text()
-        from scrapers.base import BaseScraper
-        # IPs have strict licensing, so we use high-fidelity regex if table fails
-        return BaseScraper().extract_raw_fallback(html, city, "Insolvency Professional")
+        return BaseScraper.extract_raw_fallback(html, city, "Insolvency Professional")
 
     @staticmethod
     async def handle_bar_council(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
@@ -109,8 +107,7 @@ class OfficialAPIHandlers:
             return []
             
         html = await response.text()
-        from scrapers.base import BaseScraper
-        return BaseScraper().extract_raw_fallback(html, city, "Lawyer")
+        return BaseScraper.extract_raw_fallback(html, city, "Lawyer")
 
     @staticmethod
     async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
@@ -122,8 +119,7 @@ class OfficialAPIHandlers:
             return []
         
         html = await response.text()
-        from scrapers.base import BaseScraper
-        return BaseScraper().extract_raw_fallback(html, city, "Chartered Accountant")
+        return BaseScraper.extract_raw_fallback(html, city, "Chartered Accountant")
 
     @staticmethod
     async def handle_irdai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
@@ -135,18 +131,16 @@ class OfficialAPIHandlers:
         if not response: return []
         
         html = await response.text()
-        from scrapers.base import BaseScraper
-        return BaseScraper().extract_raw_fallback(html, city, "Insurance Agent")
+        return BaseScraper.extract_raw_fallback(html, city, "Insurance Agent")
 
     @staticmethod
     async def handle_sitemap(engine: PoliteHTTPScraper, city: str, source: str) -> List[Dict]:
         """Generic sitemap/directory extractor for high-volume directories."""
         from scrapers.base import ScraperRegistry
-        scraper_cls = ScraperRegistry.get_scraper(source)
-        if not scraper_cls:
+        scraper = ScraperRegistry.get(source)
+        if not scraper:
             return []
         
-        scraper = scraper_cls()
         if source == "SITEMAP":
             return await scraper.extract_listings(None, city, "business", None)
             

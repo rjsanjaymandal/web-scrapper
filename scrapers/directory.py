@@ -93,7 +93,13 @@ class YellowPagesIndiaScraper(BaseScraper):
         listings = []
         try:
             from bs4 import BeautifulSoup
-            content = html_content or await (page.content() if hasattr(page, 'content') else "")
+            if html_content:
+                content = html_content
+            elif page and hasattr(page, 'content'):
+                content = await page.content()
+            else:
+                content = ""
+            
             if not content: return []
             
             soup = BeautifulSoup(content, 'lxml')

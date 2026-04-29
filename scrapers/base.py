@@ -51,7 +51,8 @@ class BaseScraper(ABC):
         """Return the name of the data source (e.g., 'JustDial')."""
         pass
 
-    def extract_raw_fallback(self, html_content: str, city: str, category: str) -> List[Dict]:
+    @staticmethod
+    def extract_raw_fallback(html_content: str, city: str, category: str) -> List[Dict]:
         """
         Enterprise feature: If DOM selectors fail, use raw regex over HTML to catch orphaned leads.
         """
@@ -171,3 +172,45 @@ class ScraperRegistry:
             sources = ["YELLOWPAGES", "JUSTDIAL", "INDIAMART", "TRADEINDIA", "EXPORTERSINDIA", "ASKLAILA", "VYKARI", "SULEKHA", "GROTAL", "SITEMAP", "FOOTPRINT"]
 
         return sources if sources else ["YELLOWPAGES", "EXPORTERSINDIA", "SITEMAP", "FOOTPRINT"]
+
+    @classmethod
+    def get_source_for_category(cls, category: str) -> str:
+        """Map a category to the most reliable source (single fallback)."""
+        cat_lower = category.lower()
+
+        # Professional/Person Searches
+        if (
+            "person" in cat_lower
+            or "profile" in cat_lower
+            or "professional" in cat_lower
+        ):
+            return "LINKEDIN"
+
+        # Specialized Financial Sources
+        if "mutual" in cat_lower:
+            return "AMFI"
+        elif "insurance" in cat_lower:
+            return "IRDAI"
+        elif "advisor" in cat_lower or "adviser" in cat_lower or "sebi" in cat_lower:
+            return "SEBI"
+        elif "tax" in cat_lower or "chartered" in cat_lower or "ca" in cat_lower:
+            return "ICAI"
+        elif "company" in cat_lower or "secretary" in cat_lower:
+            return "ICSI"
+        elif "stock" in cat_lower or "broker" in cat_lower or "authorized" in cat_lower:
+            return "NSE"
+        elif "gst" in cat_lower:
+            return "GST"
+        elif "rbi" in cat_lower or "bank" in cat_lower or "nbfc" in cat_lower:
+            return "RBI"
+
+        # Business/Local Directories - prioritize high-volume sources
+        elif "map" in cat_lower or "location" in cat_lower:
+            return "YELLOWPAGES"
+        elif "business" in cat_lower or "shop" in cat_lower or "factory" in cat_lower:
+            return "YELLOWPAGES"
+        elif "local" in cat_lower:
+            return "YELLOWPAGES"
+
+        # Default to high-volume business directory
+        return "YELLOWPAGES"

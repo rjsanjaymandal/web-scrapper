@@ -66,7 +66,13 @@ class SEBIScraper(BaseScraper):
         listings = []
         try:
             from bs4 import BeautifulSoup
-            content = html_content or await (page.content() if hasattr(page, 'content') else "")
+            if html_content:
+                content = html_content
+            elif page and hasattr(page, 'content'):
+                content = await page.content()
+            else:
+                content = ""
+            
             if not content: return []
             
             soup = BeautifulSoup(content, 'lxml')
@@ -119,7 +125,13 @@ class NSEScraper(BaseScraper):
         listings = []
         try:
             from bs4 import BeautifulSoup
-            content = html_content or await (page.content() if hasattr(page, 'content') else "")
+            if html_content:
+                content = html_content
+            elif page and hasattr(page, 'content'):
+                content = await page.content()
+            else:
+                content = ""
+            
             if not content: return []
             
             soup = BeautifulSoup(content, 'lxml')
@@ -173,14 +185,27 @@ class RBIRegulatedScraper(BaseScraper):
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         return self.extract_raw_fallback(html_content, city, category)
 
+class BarCouncilScraper(BaseScraper):
+    """Scraper for Bar Councils - Lawyers and Advocates"""
+    source_name = "BAR_COUNCIL"
+    BASE_URL = "https://www.indianlawyer.info/directory"
+
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        return self.BASE_URL
+
+    async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        # Implementation handled via OfficialAPIHandlers.handle_bar_council
+        return self.extract_raw_fallback(html_content, city, category)
+
 # Register all official scrapers
-ScraperRegistry.register("AMFI", AMFIScraper)
-ScraperRegistry.register("IRDAI", IRDAIScraper)
-ScraperRegistry.register("ICAI", ICAIScraper)
-ScraperRegistry.register("ICSI", ICSIScraper)
-ScraperRegistry.register("SEBI", SEBIScraper)
-ScraperRegistry.register("IBBI", IBBIScraper)
-ScraperRegistry.register("NSE", NSEScraper)
-ScraperRegistry.register("BSE", BSEScraper)
-ScraperRegistry.register("GST", GSTPractitionerScraper)
-ScraperRegistry.register("RBI", RBIRegulatedScraper)
+ScraperRegistry.register(AMFIScraper)
+ScraperRegistry.register(IRDAIScraper)
+ScraperRegistry.register(ICAIScraper)
+ScraperRegistry.register(ICSIScraper)
+ScraperRegistry.register(SEBIScraper)
+ScraperRegistry.register(IBBIScraper)
+ScraperRegistry.register(NSEScraper)
+ScraperRegistry.register(BSEScraper)
+ScraperRegistry.register(GSTPractitionerScraper)
+ScraperRegistry.register(RBIRegulatedScraper)
+ScraperRegistry.register(BarCouncilScraper)

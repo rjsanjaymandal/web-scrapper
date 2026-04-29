@@ -299,18 +299,18 @@ def init_tables():
         # New: System status table for scraper state
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS system_status (
-                id {id_type},
-                key VARCHAR(100),
+                id INTEGER PRIMARY KEY,
+                key VARCHAR(100) UNIQUE,
                 value TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id)
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
         # New: Scraper logs table for activity feed
+        log_id_type = "INTEGER PRIMARY KEY AUTOINCREMENT" if USE_SQLITE else "SERIAL PRIMARY KEY"
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS scraper_logs (
-                id {id_type},
+                id {log_id_type},
                 level VARCHAR(20),
                 message TEXT,
                 source VARCHAR(100),
@@ -412,28 +412,6 @@ def init_tables():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)")
 
-        # System Status Table for non-Redis environments
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS system_status (
-                id INTEGER PRIMARY KEY,
-                key VARCHAR(50) UNIQUE,
-                value TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Scraper Activity Logs for Dashboard visibility
-        log_id_type = "INTEGER PRIMARY KEY AUTOINCREMENT" if USE_SQLITE else "SERIAL PRIMARY KEY"
-        cur.execute(f"""
-            CREATE TABLE IF NOT EXISTS scraper_logs (
-                id {log_id_type},
-                level VARCHAR(20),
-                message TEXT,
-                source VARCHAR(100),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
         cur.execute("CREATE INDEX IF NOT EXISTS idx_scraper_logs_created ON scraper_logs(created_at DESC)")
         cur.close()
         conn.close()
@@ -685,7 +663,7 @@ HTML = """
         <div class="content-grid">
             <div class="glass-card">
                 <div class="controls-grid">
-<div class="input-group">
+                    <div class="input-group">
                         <label>Search For</label>
                         <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list">
                     </div>
@@ -705,7 +683,7 @@ HTML = """
                             <option value="GMB">Google Maps</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" onclick="startCollection()">Start Collection</button>
+                    <button class="btn btn-primary" id="start-btn" onclick="startCollection()">Start Collection</button>
                 </div>
 
                 <div style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
@@ -746,11 +724,27 @@ HTML = """
                         </tbody>
                     </table>
                 </div>
+                
                 <div class="pagination">
-                    <span class="pagination-info" id="pg-info">Showing page {{page}} of {{total_pages}}</span>
+                    <div class="pagination-info">
+                        Showing {{ contacts|length }} of {{ s.filtered_total }} leads
+                        <span style="margin-left: 10px; color: rgba(255,255,255,0.2);">|</span>
+                        <span style="margin-left: 10px;">Page {{ page }} of {{ total_pages }}</span>
+                    </div>
                     <div class="pagination-btns">
-                        <button class="pagination-btn" id="pg-prev" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>← Prev</button>
-                        <button class="pagination-btn" id="pg-next" onclick="changePage(1)" {% if page >= total_pages %}disabled{% endif %}>Next →</button>
+                        <button class="pagination-btn" onclick="goToPage(1)" {% if page <= 1 %}disabled{% endif %}>First</button>
+                        <button class="pagination-btn" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>Prev</button>
+                        
+                        {% set start_p = [1, page - 2]|max %}
+                        {% set end_p = [total_pages, start_p + 4]|min %}
+                        {% set start_p = [1, end_p - 4]|max %}
+                        
+                        {% for p in range(start_p, end_p + 1) %}
+                        <button class="pagination-btn {% if p == page %}active{% endif %}" onclick="goToPage({{ p }})">{{ p }}</button>
+                        {% endfor %}
+
+                        <button class="pagination-btn" onclick="changePage(1)" {% if page >= total_pages %}disabled{% endif %}>Next</button>
+                        <button class="pagination-btn" onclick="goToPage({{ total_pages }})" {% if page >= total_pages %}disabled{% endif %}>Last</button>
                     </div>
                 </div>
             </div>
@@ -782,7 +776,6 @@ HTML = """
 
         function changePage(delta) {
             const newPage = currentPage + delta;
-            console.log('Changing page:', currentPage, '->', newPage, 'total:', totalPages);
             if (newPage < 1 || newPage > totalPages) return;
             const url = new URL(window.location);
             url.searchParams.set('page', newPage);
@@ -800,15 +793,26 @@ HTML = """
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
+            const btn = document.getElementById('start-btn');
+            
             if(!city || !cat) return showNotif('Please enter location and search term', 2000);
             
-            const res = await fetch('/api/trigger/scrape', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({city, category: cat, source})
-            });
-            const data = await res.json();
-            showNotif(data.message);
+            btn.disabled = true;
+            btn.innerHTML = '<span class="pulse">COLLECTING...</span>';
+            
+            try {
+                const res = await fetch('/api/trigger/scrape', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({city, category: cat, source})
+                });
+                const data = await res.json();
+                showNotif(data.message);
+            } catch (e) {
+                showNotif('Failed to trigger collection');
+                btn.disabled = false;
+                btn.innerText = 'Start Collection';
+            }
         }
 
         function setTemplate(city, cat, src) {
@@ -855,6 +859,8 @@ HTML = """
             const progWrap = document.getElementById('prog-wrap');
             const progBar = document.getElementById('prog-bar');
 
+            const startBtn = document.getElementById('start-btn');
+
             if (status && status.running) {
                 statusEl.innerText = status.message || 'RUNNING';
                 statusEl.style.color = 'var(--accent-emerald)';
@@ -864,10 +870,20 @@ HTML = """
                 } else {
                     progBar.style.width = '100%';
                 }
+                
+                if (startBtn) {
+                    startBtn.disabled = true;
+                    startBtn.innerHTML = '<span class="pulse">COLLECTING...</span>';
+                }
             } else {
                 statusEl.innerText = 'IDLE';
                 statusEl.style.color = 'var(--text-secondary)';
                 progWrap.style.display = 'none';
+                
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.innerText = 'Start Collection';
+                }
             }
 
             // Stream Logs
@@ -995,7 +1011,8 @@ def index():
         total = cur.fetchone()["cnt"]
 
         # Get filtered count
-        cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}", params)
+        count_sql = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
+        cur.execute(count_sql, params)
         filtered_total = cur.fetchone()["cnt"]
 
         total_pages = (filtered_total + limit - 1) // limit if filtered_total > 0 else 1
@@ -1008,10 +1025,11 @@ def index():
         offset = (page - 1) * limit
 
         placeholder = "?" if USE_SQLITE else "%s"
-        cur.execute(
-            f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {placeholder} OFFSET {placeholder}",
-            params + [limit, offset],
-        )
+        query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {placeholder} OFFSET {placeholder}"
+        if USE_SQLITE:
+            query_sql = query_sql.replace("%s", "?")
+            
+        cur.execute(query_sql, params + [limit, offset])
         contacts = cur.fetchall()
 
         placeholder = "?" if USE_SQLITE else "%s"
@@ -1032,7 +1050,7 @@ def index():
             cur
         )
 
-        # Optimized Stats: Combine all counts into a single pass (Postgres vs SQLite)
+        # Optimized Stats
         if USE_SQLITE:
             cur.execute("""
                 SELECT 
@@ -1058,14 +1076,7 @@ def index():
                 FROM contacts
             """)
         stats_row = cur.fetchone()
-        with_phone = stats_row["with_phone"]
-        with_email = stats_row["with_email"]
-        city_count = stats_row["city_count"]
-        quality_high = stats_row["q_high"]
-        quality_medium = stats_row["q_medium"]
-        quality_low = stats_row["q_low"]
-        avg_quality = round(stats_row["avg_score"] or 0, 1)
-
+        
         cur.execute("SELECT source, COUNT(*) as c FROM contacts GROUP BY source")
         by_source = {r["source"]: r["c"] for r in cur.fetchall()}
         cur.execute("SELECT category, COUNT(*) as c FROM contacts GROUP BY category")
@@ -1074,14 +1085,7 @@ def index():
         conn.close()
     except Exception as e:
         logger.error(f"Database error: {e}")
-        contacts, total, filtered_total, with_phone, with_email, city_count = (
-            [],
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
+        contacts, total, filtered_total, stats_row = [], 0, 0, {}
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
         cities, categories, sources = [], [], []
         selected_city = selected_category = selected_source = ""
@@ -1089,22 +1093,20 @@ def index():
         search_query = ""
         sort_by = "date"
         limit = page_size
-        quality_high = quality_medium = quality_low = 0
-        avg_quality = 0
 
     return render_template_string(
         HTML,
         contacts=contacts,
         s={
             "total": total,
-            "phone": with_phone,
-            "email": with_email,
-            "cities": city_count,
+            "phone": stats_row.get("with_phone", 0) if stats_row else 0,
+            "email": stats_row.get("with_email", 0) if stats_row else 0,
+            "cities": stats_row.get("city_count", 0) if stats_row else 0,
             "filtered_total": filtered_total,
-            "quality_high": quality_high,
-            "quality_medium": quality_medium,
-            "quality_low": quality_low,
-            "avg_quality": avg_quality,
+            "quality_high": stats_row.get("q_high", 0) if stats_row else 0,
+            "quality_medium": stats_row.get("q_medium", 0) if stats_row else 0,
+            "quality_low": stats_row.get("q_low", 0) if stats_row else 0,
+            "avg_quality": round(stats_row.get("avg_score", 0) or 0, 1) if stats_row else 0,
         },
         by_source=by_source,
         by_cat=by_cat,
@@ -1164,16 +1166,11 @@ def get_status():
 def api_deep_clean():
     """Trigger the deep logic-based cleanup"""
     try:
-        # Import the cleanup logic (using the scratch script path as reference or direct implementation)
-        # For production use, we'll implement it directly here to ensure stability.
         from tasks import set_status
         set_status({"running": True, "message": "🧹 Deep cleaning database..."})
         
-        # We'll use the logic from the scratch script but as an integrated function
         def run_clean():
             try:
-                # We reuse the logic already defined in the scratch script but implemented locally
-                # for the sake of the dashboard's context
                 conn = get_db()
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM contacts")
@@ -1181,22 +1178,23 @@ def api_deep_clean():
                 
                 deleted = 0
                 updated = 0
+                from processing import ProcessingHandler
                 for row in rows:
                     contact = dict(row)
                     contact_id = contact['id']
                     
-                    # Run through ProcessingHandler
-                    from processing import ProcessingHandler
                     cleaned = ProcessingHandler.process_contact(contact)
                     
                     if not cleaned.get('phone_clean') and not (cleaned.get('email') and cleaned.get('email_valid')):
-                        cur.execute("DELETE FROM contacts WHERE id = %s", (contact_id,))
+                        placeholder = "?" if USE_SQLITE else "%s"
+                        cur.execute(f"DELETE FROM contacts WHERE id = {placeholder}", (contact_id,))
                         deleted += 1
                         continue
                         
                     if cleaned.get('phone') != row['phone'] or cleaned.get('email') != row['email']:
+                        placeholder = "?" if USE_SQLITE else "%s"
                         cur.execute(
-                            "UPDATE contacts SET phone = %s, phone_clean = %s, email = %s, email_valid = %s WHERE id = %s",
+                            f"UPDATE contacts SET phone = {placeholder}, phone_clean = {placeholder}, email = {placeholder}, email_valid = {placeholder} WHERE id = {placeholder}",
                             (cleaned.get('phone'), cleaned.get('phone_clean'), cleaned.get('email'), cleaned.get('email_valid'), contact_id)
                         )
                         updated += 1
@@ -1222,7 +1220,8 @@ def get_contact(contact_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM contacts WHERE id = %s", (contact_id,))
+        placeholder = "?" if USE_SQLITE else "%s"
+        cur.execute(f"SELECT * FROM contacts WHERE id = {placeholder}", (contact_id,))
         contact = cur.fetchone()
         cur.close()
         conn.close()
@@ -1271,7 +1270,6 @@ def trigger_scrape():
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
     from tasks import fast_scrape_task, scrape_category_task, set_status
     
-    # Parse parameters from either GET args or POST JSON
     data = {}
     if request.method == "POST":
         try:
@@ -1288,7 +1286,6 @@ def trigger_scrape():
         use_business = request.args.get("business", "false").lower() == "true"
 
     if city and category:
-        # Single target scrape
         log_msg = f"Dashboard triggered manual scrape: {category} in {city} (Source: {source or 'Auto'})"
         set_status(
             f"Queued: {category} in {city}...",
@@ -1299,7 +1296,6 @@ def trigger_scrape():
         msg = f"🚀 Scrape queued for {category} in {city}!"
         logger.info(log_msg)
     else:
-        # Batch scrape for everything in config
         set_status(
             "Queued batch fast-scrape for all configured targets...",
             True,
@@ -1341,44 +1337,40 @@ def api_contacts():
         limit = min(request.args.get("limit", 100, type=int), 1000)
         offset = (page - 1) * limit
 
-        # Filter params
         search_query = request.args.get("q", "")
         filter_city = request.args.get("city", "")
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
+        like_op = "LIKE" if USE_SQLITE else "ILIKE"
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append("(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)")
+            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
             search_pattern = f"%{search_query}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         if filter_city:
-            where_clauses.append("city ILIKE %s")
+            where_clauses.append(f"city {like_op} %s")
             params.append(filter_city)
         if filter_category:
-            where_clauses.append("category ILIKE %s")
+            where_clauses.append(f"category {like_op} %s")
             params.append(filter_category)
         if filter_source:
-            where_clauses.append("source ILIKE %s")
+            where_clauses.append(f"source {like_op} %s")
             params.append(filter_source)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        
-        # SQLite vs Postgres compatibility
         if USE_SQLITE:
-            where_sql = where_sql.replace("ILIKE", "LIKE")
-            query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT ? OFFSET ?"
-            query = query.replace("%s", "?")
-            count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}".replace("%s", "?")
-        else:
-            query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT %s OFFSET %s"
-            count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
+            where_sql = where_sql.replace("%s", "?")
+        
+        placeholder = "?" if USE_SQLITE else "%s"
+        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {placeholder} OFFSET {placeholder}"
+        count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
 
         cur.execute(query, params + [limit, offset])
         contacts = cur.fetchall()
         cur.execute(count_query, params)
-        total = cur.fetchone()["cnt"] if USE_SQLITE else cur.fetchone()["cnt"]
+        total = cur.fetchone()["cnt"]
         cur.close()
         conn.close()
         return jsonify(
@@ -1402,31 +1394,29 @@ def export(fmt):
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
+        like_op = "LIKE" if USE_SQLITE else "ILIKE"
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append("(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)")
+            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
             search_pattern = f"%{search_query}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         if filter_city:
-            where_clauses.append("city ILIKE %s")
+            where_clauses.append(f"city {like_op} %s")
             params.append(filter_city)
         if filter_category:
-            where_clauses.append("category ILIKE %s")
+            where_clauses.append(f"category {like_op} %s")
             params.append(filter_category)
         if filter_source:
-            where_clauses.append("source ILIKE %s")
+            where_clauses.append(f"source {like_op} %s")
             params.append(filter_source)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        if USE_SQLITE:
+            where_sql = where_sql.replace("%s", "?")
 
         conn = get_db()
         cur = conn.cursor()
-        
-        if USE_SQLITE:
-            where_sql = where_sql.replace("ILIKE", "LIKE")
-            where_sql = where_sql.replace("%s", "?")
-            
         cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
         rows = cur.fetchall()
         cur.close()
@@ -1436,7 +1426,6 @@ def export(fmt):
 
     if fmt == "csv":
         import csv
-
         out = io.StringIO()
         if rows:
             w = csv.DictWriter(out, fieldnames=rows[0].keys())
@@ -1504,37 +1493,24 @@ def cleanup_empty_contacts():
     try:
         conn = get_db()
         cur = conn.cursor()
-
-        # Delete contacts with no phone AND no email
         cur.execute("""
             DELETE FROM contacts 
             WHERE (phone IS NULL OR TRIM(phone) = '') 
             AND (email IS NULL OR TRIM(email) = '')
         """)
         deleted_count = cur.rowcount
-
         conn.commit()
-
-        # Get remaining count
         cur.execute("SELECT COUNT(*) as cnt FROM contacts")
         remaining = cur.fetchone()["cnt"]
-
         cur.close()
         conn.close()
-
-        logger.info(
-            f"Cleaned up {deleted_count} empty contacts. Remaining: {remaining}"
-        )
-        return jsonify(
-            {
-                "success": True,
-                "deleted": deleted_count,
-                "remaining": remaining,
-                "message": f"Deleted {deleted_count} contacts with no phone or email",
-            }
-        )
+        return jsonify({
+            "success": True,
+            "deleted": deleted_count,
+            "remaining": remaining,
+            "message": f"Deleted {deleted_count} contacts with no phone or email",
+        })
     except Exception as e:
-        logger.error(f"Cleanup failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -1543,253 +1519,99 @@ def cleanup_low_quality():
     """Recalculate and update quality scores for all contacts"""
     try:
         from processing import ProcessingHandler
-
         conn = get_db()
         cur = conn.cursor()
-
-        # Get all contacts (batch processing)
         cur.execute("SELECT * FROM contacts LIMIT 1000")
         contacts = cur.fetchall()
-
         if not contacts:
-            return jsonify(
-                {"success": True, "updated": 0, "message": "No contacts to update"}
-            )
-
+            return jsonify({"success": True, "updated": 0, "message": "No contacts to update"})
         updated = 0
         for contact in contacts:
             try:
-                # Process through quality handler
                 processed = ProcessingHandler.process_contact(dict(contact))
-
-                # Update quality fields
                 placeholder = "?" if USE_SQLITE else "%s"
-                cur.execute(
-                    f"""
+                cur.execute(f"""
                     UPDATE contacts 
                     SET phone_clean = {placeholder}, 
                         email_valid = {placeholder}, 
                         quality_score = {placeholder}, 
                         quality_tier = {placeholder}
                     WHERE id = {placeholder}
-                """,
-                    (
-                        processed.get("phone_clean"),
-                        processed.get("email_valid", False),
-                        processed.get("quality_score", 0),
-                        processed.get("quality_tier", "low"),
-                        contact["id"],
-                    ),
-                )
+                """, (processed.get("phone_clean"), processed.get("email_valid", False), processed.get("quality_score", 0), processed.get("quality_tier", "low"), contact["id"]))
                 updated += 1
-            except Exception as e:
-                logger.warning(f"Failed to update contact {contact.get('id')}: {e}")
+            except Exception:
                 continue
-
         conn.commit()
         cur.close()
         conn.close()
-
-        logger.info(f"Updated quality scores for {updated} contacts")
-        return jsonify(
-            {
-                "success": True,
-                "updated": updated,
-                "message": f"Updated quality scores for {updated} contacts",
-            }
-        )
+        return jsonify({"success": True, "updated": updated})
     except Exception as e:
-        logger.error(f"Quality update failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/stream/stats")
 def stream_stats():
     """Server-Sent Events endpoint for live stats updates"""
-    import time
-
     def generate():
-        last_total = 0
-        last_phone = 0
-        last_email = 0
         while True:
             try:
                 conn = get_db()
                 cur = conn.cursor()
-
                 cur.execute("SELECT COUNT(*) as cnt FROM contacts")
                 total = cur.fetchone()["cnt"]
-
                 placeholder = "?" if USE_SQLITE else "%s"
-                cur.execute(
-                    f"SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> {placeholder}",
-                    ("",),
-                )
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> {placeholder}", ("",))
                 with_phone = cur.fetchone()["cnt"]
-
-                cur.execute(
-                    f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}",
-                    ("",),
-                )
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}", ("",))
                 with_email = cur.fetchone()["cnt"]
-
-                # Get scraper status from Redis or Database
                 status_data = {}
                 if redis_client:
                     try:
                         raw_status = redis_client.get("scraper_status")
-                        if raw_status:
-                            status_data = json.loads(raw_status)
-                    except Exception:
-                        pass
-                
-                # DB Fallback if Redis failed or returned nothing
+                        if raw_status: status_data = json.loads(raw_status)
+                    except: pass
                 if not status_data:
                     try:
-                        cur = conn.cursor()
                         cur.execute("SELECT value FROM system_status WHERE key = 'scraper_status'")
                         row = cur.fetchone()
-                        if row:
-                            status_data = json.loads(row["value"])
-                        cur.close()
-                    except Exception:
-                        pass
-
-                # Get latest activity logs
-                latest_logs = []
-                try:
-                    cur = conn.cursor()
-                    cur.execute("SELECT level, message, source, created_at FROM scraper_logs ORDER BY created_at DESC LIMIT 10")
-                    rows = cur.fetchall()
-                    for r in rows:
-                        latest_logs.append({
-                            "level": r["level"],
-                            "message": r["message"],
-                            "source": r["source"],
-                            "time": r["created_at"].strftime("%H:%M:%S") if hasattr(r["created_at"], "strftime") else str(r["created_at"])
-                        })
-                    cur.close()
-                except Exception:
-                    pass
-
-                data = {
-                    "total": total,
-                    "with_phone": with_phone,
-                    "with_email": with_email,
-                    "timestamp": int(time.time()),
-                    "scraper_status": status_data,
-                    "activity_logs": latest_logs
-                }
-
-                # Send data
-                yield f"data: {json.dumps(data)}\n\n"
-                last_total = total
-                last_phone = with_phone
-                last_email = with_email
-                
-                # Small delay to prevent CPU hammering
-                time.sleep(2)
+                        if row: status_data = json.loads(row["value"])
+                    except: pass
+                cur.execute("SELECT * FROM scraper_logs ORDER BY created_at DESC LIMIT 15")
+                logs = [dict(r) for r in cur.fetchall()]
+                for l in logs:
+                    if isinstance(l['created_at'], datetime):
+                        l['time'] = l['created_at'].strftime("%H:%M:%S")
+                    else:
+                        l['time'] = str(l['created_at'])[-8:]
+                yield f"data: {json.dumps({'total': total, 'with_phone': with_phone, 'with_email': with_email, 'scraper_status': status_data, 'activity_logs': logs})}\n\n"
+                cur.close()
+                conn.close()
             except Exception as e:
-                logger.error(f"SSE Stat Stream Error: {e}")
-                time.sleep(5)
-            finally:
-                if 'conn' in locals() and conn:
-                    try:
-                        conn.close()
-                    except:
-                        pass
-
+                logger.error(f"Stream error: {e}")
+            time.sleep(2)
     return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/api/stats")
-def get_stats():
-    """Get current stats for polling fallback"""
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts")
-        total = cur.fetchone()["cnt"]
-        
-        placeholder = "?" if USE_SQLITE else "%s"
-        cur.execute(
-            f"SELECT COUNT(*) as cnt FROM contacts WHERE phone_clean IS NOT NULL AND phone_clean <> {placeholder}",
-            ("",),
-        )
-        with_phone = cur.fetchone()["cnt"]
-        
-        cur.execute(
-            f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}",
-            ("",),
-        )
-        with_email = cur.fetchone()["cnt"]
-
-        cur.close()
-        conn.close()
-
-        return jsonify(
-            {"total": total, "with_phone": with_phone, "with_email": with_email}
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route("/api/stats/charts")
-def get_chart_stats():
-    """Get stats for charts - sources, categories, and trend"""
+def api_chart_stats():
     try:
         conn = get_db()
         cur = conn.cursor()
-        
-        # Leads by source (top 6)
-        cur.execute("""
-            SELECT source, COUNT(*) as cnt 
-            FROM contacts 
-            GROUP BY source 
-            ORDER BY cnt DESC 
-            LIMIT 6
-        """)
-        sources = [{"source": r["source"], "count": r["cnt"]} for r in cur.fetchall()]
-        
-        # Top categories
-        cur.execute("""
-            SELECT category, COUNT(*) as cnt 
-            FROM contacts 
-            GROUP BY category 
-            ORDER BY cnt DESC 
-            LIMIT 8
-        """)
-        categories = [{"category": r["category"], "count": r["cnt"]} for r in cur.fetchall()]
-        
-        # Daily trend (last 7 days)
+        cur.execute("SELECT source, COUNT(*) as count FROM contacts GROUP BY source")
+        sources = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT category, COUNT(*) as count FROM contacts GROUP BY category ORDER BY count DESC LIMIT 10")
+        categories = [dict(r) for r in cur.fetchall()]
         if USE_SQLITE:
-            cur.execute("""
-                SELECT DATE(scraped_at) as date, COUNT(*) as cnt 
-                FROM contacts 
-                WHERE scraped_at >= DATE('now', '-7 days')
-                GROUP BY DATE(scraped_at)
-                ORDER BY date
-            """)
+            cur.execute("SELECT strftime('%Y-%m-%d', scraped_at) as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
         else:
-            cur.execute("""
-                SELECT DATE(scraped_at) as date, COUNT(*) as cnt 
-                FROM contacts 
-                WHERE scraped_at >= CURRENT_DATE - INTERVAL '7 days'
-                GROUP BY DATE(scraped_at)
-                ORDER BY date
-            """)
-        trend = [{"date": str(r["date"]), "count": r["cnt"]} for r in cur.fetchall()]
-        
+            cur.execute("SELECT scraped_at::date as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
+        trend = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
-        
-        return jsonify({"sources": sources, "categories": categories, "trend": trend})
+        return jsonify({"sources": sources, "categories": categories, "trend": trend[::-1]})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(PORT), debug=True)

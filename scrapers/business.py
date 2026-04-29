@@ -15,7 +15,13 @@ class JustDialScraper(BaseScraper):
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         listings = []
         try:
-            content = html_content or await (page.content() if hasattr(page, 'content') else "")
+            if html_content:
+                content = html_content
+            elif page and hasattr(page, 'content'):
+                content = await page.content()
+            else:
+                content = ""
+            
             if not content: return []
             soup = BeautifulSoup(content, 'lxml')
             cards = soup.select('.cntanr, .store-details, .result-card')
@@ -50,7 +56,12 @@ class IndiaMartScraper(BaseScraper):
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         # High-speed extraction often works best via raw regex on IndiaMart due to heavy obfuscation
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class SulekhaScraper(BaseScraper):
@@ -60,7 +71,12 @@ class SulekhaScraper(BaseScraper):
         return f"https://www.sulekha.com/local/{cat}/{city.lower()}"
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class ClickIndiaScraper(BaseScraper):
@@ -70,7 +86,12 @@ class ClickIndiaScraper(BaseScraper):
         return f"https://www.clickindia.com/{cat}/{city.lower()}/?page={page}"
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class GrotalScraper(BaseScraper):
@@ -80,7 +101,12 @@ class GrotalScraper(BaseScraper):
         return f"https://www.grotal.com/{city.title()}/{cat}"
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class YellowPagesScraper(BaseScraper):
@@ -89,7 +115,12 @@ class YellowPagesScraper(BaseScraper):
         return f"https://www.yellowpages.in/{city}/{category.replace(' ', '-')}"
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class TradeIndiaScraper(BaseScraper):
@@ -98,7 +129,12 @@ class TradeIndiaScraper(BaseScraper):
         return f"https://www.tradeindia.com/search.html?keyword={category.replace(' ', '+')}&city={city}"
     
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        content = html_content or await (page.content() if hasattr(page, 'content') else "")
+        if html_content:
+            content = html_content
+        elif page and hasattr(page, 'content'):
+            content = await page.content()
+        else:
+            content = ""
         return self.extract_raw_fallback(content, city, category)
 
 class ExportersIndiaScraper(BaseScraper):

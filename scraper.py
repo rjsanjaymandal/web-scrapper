@@ -17,7 +17,7 @@ from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup
 from raw_storage import storage
-from scrapers_registry import BaseScraper, ScraperRegistry
+from scrapers.base import BaseScraper, ScraperRegistry
 from stealth_utils import StealthManager
 from pathlib import Path
 
@@ -1285,12 +1285,12 @@ class ContactScraper:
                     INSERT INTO contacts (
                         name, phone, email, address, category, city, area, state, 
                         source, source_url, phone_clean, email_valid, enriched, 
-                        arn, license_no, membership_no, quality_score, quality_tier
+                        arn, license_no, membership_no, quality_score, quality_tier, scraped_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(phone_clean) WHERE phone_clean IS NOT NULL
                     DO UPDATE SET
-                        scraped_at = excluded.scraped_at,
+                        scraped_at = CURRENT_TIMESTAMP,
                         source = CASE WHEN excluded.quality_score > contacts.quality_score THEN excluded.source ELSE contacts.source END
                 """,
                     (
@@ -1356,7 +1356,7 @@ class ContactScraper:
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                     ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
                     DO UPDATE SET
-                        scraped_at = EXCLUDED.scraped_at,
+                        scraped_at = NOW(),
                         source = CASE WHEN EXCLUDED.quality_score > contacts.quality_score THEN EXCLUDED.source ELSE contacts.source END
                 """,
                     records,
@@ -1576,6 +1576,7 @@ try:
     ScraperRegistry.register(BSEBrokerScraper())      # BSE (Stock Brokers)
     ScraperRegistry.register(GSTPractitionerScraper()) # GST Practitioners
     ScraperRegistry.register(RBIRegulatedScraper())   # RBI (Banks/NBFC)
+    ScraperRegistry.register(BarCouncilScraper())     # Bar Council (Lawyers)
     
     # Business Directories & Deep Scrapers
     ScraperRegistry.register(JustDialScraper())
