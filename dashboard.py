@@ -592,8 +592,7 @@ HTML = """
 
     <aside class="sidebar">
         <div class="brand-box">
-            <p>Maysan Labs</p>
-            <h1>AURORA HUD v4</h1>
+            <p class="brand-name">Maysan Labs</p>
         </div>
         
         <nav class="nav-group">

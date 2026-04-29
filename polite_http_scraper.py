@@ -17,11 +17,11 @@ class PoliteHTTPScraper:
     No Playwright, no Proxies. Strict randomized delays to prevent DDoS/rate limits.
     """
     
-    def __init__(self, max_concurrent: int = 5):
+    def __init__(self, max_concurrent: int = 2):
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.session: Optional[aiohttp.ClientSession] = None
         self.ua = StealthManager.get_persistent_ua()
-        self.base_headers = StealthManager.get_modern_headers(self.ua)
+        self.base_headers = {}  # Set per-request based on is_json_api
 
     async def __aenter__(self):
         await self._init_session()
@@ -31,53 +31,67 @@ class PoliteHTTPScraper:
         if self.session:
             await self.session.close()
 
-    async def _init_session(self):
+    async def _init_session(self, headers: Dict[str, str] = None):
         """Initializes a new aiohttp session with persistent identity."""
         if self.session:
             await self.session.close()
         
-        # Use a connector that handles SSL more aggressively for 2026 instability
-        connector = aiohttp.TCPConnector(ssl=False) # Skip SSL verify if needed for gov sites, or use default
+        connector = aiohttp.TCPConnector(ssl=False)
         self.session = aiohttp.ClientSession(
-            headers=self.base_headers, 
+            headers=headers or self.base_headers, 
             connector=connector,
             trust_env=True
         )
+
+    async def _get_headers(self, is_json_api: bool = False) -> Dict[str, str]:
+        """Get headers based on request type."""
+        if is_json_api:
+            return {
+                "User-Agent": self.ua,
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+            }
+        return StealthManager.get_modern_headers(self.ua)
 
     async def _polite_delay(self):
         """Strict randomized delay between 1.5s and 3.5s to avoid rate limits."""
         delay = random.uniform(1.5, 3.5)
         await asyncio.sleep(delay)
 
-    async def fetch(self, url: str, method: str = "GET", **kwargs) -> Optional[aiohttp.ClientResponse]:
+    async def fetch(self, url: str, method: str = "GET", is_json_api: bool = False, **kwargs) -> Optional[aiohttp.ClientResponse]:
         """Fetch URL with strict politeness and aggressive error recovery for SSL/EOF."""
+        headers = await self._get_headers(is_json_api)
+        
         async with self.semaphore:
+            # Polite delay BEFORE request (not after)
+            await self._polite_delay()
+            
             for attempt in range(1, 5):
                 try:
                     if not self.session or self.session.closed:
-                        await self._init_session()
+                        await self._init_session(headers)
 
                     logger.info(f"Fetching: {url} (Attempt {attempt})")
-                    response = await self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=30), **kwargs)
+                    response = await self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=30), headers=headers, **kwargs)
                     
                     if response.status == 200:
-                        await self._polite_delay()
                         return response
                         
-                    elif response.status == 429 or 500 <= response.status <= 504:
-                        backoff = random.uniform(20.0, 45.0) * attempt
-                        logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff:.2f}s...")
-                        await asyncio.sleep(backoff)
+                    elif response.status in [429, 500, 502, 503, 504]:
+                        # Exponential backoff: 30s, 60s, 90s
+                        backoff_time = (attempt) * 30
+                        logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff_time}s...")
+                        await asyncio.sleep(backoff_time)
                         continue
                     else:
                         logger.error(f"Failed to fetch {url}: Status {response.status}")
-                        await self._polite_delay()
                         return response
                         
                 except (ssl.SSLEOFError, ConnectionResetError, aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as e:
-                    logger.warning(f"🚨 Network instability (SSL/EOF/Reset) on {url}: {e}")
-                    # CRITICAL: Reset session on network-level errors to clear poisoned connections
-                    await self._init_session()
+                    logger.warning(f"SSL/EOF/Reset error on {url}: {e}")
+                    await self._init_session(headers)
                     backoff = random.uniform(5.0, 15.0) * attempt
                     await asyncio.sleep(backoff)
                 except (asyncio.TimeoutError, aiohttp.ClientError) as e:
@@ -108,6 +122,7 @@ class PoliteHTTPScraper:
             response = await self.fetch(
                 target_endpoint, 
                 method=method, 
+                is_json_api=True,
                 params=current_params if current_params else None,
                 json=current_payload if current_payload else None
             )

@@ -21,7 +21,7 @@ async def drain_all_registries():
     
     config = load_config()
     # Ensure high speed for this specific task
-    config.max_concurrent = int(os.environ.get("DRAIN_CONCURRENT", 10))
+    config.max_concurrent = int(os.environ.get("DRAIN_CONCURRENT", 2))
     
     scraper = ContactScraper(config)
     await scraper.init_db()
