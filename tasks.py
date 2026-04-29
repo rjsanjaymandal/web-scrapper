@@ -74,7 +74,7 @@ def set_status(msg, is_running=True, stats=None):
             
     db_set_status(data)
     
-    log_triggers = ["Scraping", "Page", "Started", "Finished", "Error", "High-Speed", "API", "Sitemap"]
+    log_triggers = ["Queued", "Scraping", "Page", "Started", "Finished", "Error", "High-Speed", "API", "Sitemap"]
     source = "SCRAPER"
     if stats and isinstance(stats, dict):
         source = stats.get("source", "SCRAPER")
@@ -193,10 +193,19 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         set_status(msg, False)
         return {"status": "skipped", "reason": "deactivated"}
 
-    from polite_http_scraper import PoliteHTTPScraper
-    from scraper import ContactScraper, load_config
-    
-    set_status(f"🚀 High-Speed Scraping {category} in {city}...")
+    set_status(
+        f"Started: High-Speed Scraping {category} in {city}...",
+        True,
+        {"city": city, "category": category, "source": source or "Official"},
+    )
+
+    try:
+        from polite_http_scraper import PoliteHTTPScraper
+        from scraper import ContactScraper, load_config
+    except Exception as e:
+        set_status(f"Error: scraper startup failed: {e}", False)
+        logger.error(f"Task startup failed: {e}")
+        raise
     
     async def _run_scrape():
         config = load_config()
@@ -207,10 +216,10 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
             # Use the new high-speed extraction methods
             # This bypasses Playwright/Puppeteer entirely for supported sources
             count = await scraper.scrape_category_fast(city, category, source)
-            set_status(f"✅ Success: Extracted {count} leads from {source or 'Official Registries'}", False)
+            set_status(f"Success: Extracted {count} leads from {source or 'Official Registries'}", False)
             return {"status": "completed", "count": count}
         except Exception as e:
-            set_status(f"❌ Error: {str(e)}", False)
+            set_status(f"Error: {str(e)}", False)
             logger.error(f"Task failed: {e}")
             return {"status": "failed", "error": str(e)}
         finally:
@@ -220,14 +229,25 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
 
 
 @celery_app.task(name="tasks.fast_scrape_task")
-def fast_scrape_task(source: str = None):
+def fast_scrape_task(source: str = None, max_concurrent: int = None):
     """Drains all open APIs and sitemaps for the 2 Lakh target."""
-    from polite_http_scraper import PoliteHTTPScraper
-    from scraper import load_config, ContactScraper
+    set_status(
+        "Started: Draining official APIs...",
+        True,
+        {"source": source or "ALL", "concurrency": max_concurrent},
+    )
+
+    try:
+        from polite_http_scraper import PoliteHTTPScraper
+        from scraper import load_config, ContactScraper
+    except Exception as e:
+        set_status(f"Error: fast scrape startup failed: {e}", False)
+        logger.error(f"Fast scrape startup failed: {e}")
+        raise
     
     async def _run_fast():
         config = load_config()
-        set_status("⚡ Draining Official APIs (High Speed)...")
+        set_status("Draining Official APIs (High Speed)...")
         
         scraper = ContactScraper(config)
         await scraper.init_db()
@@ -242,8 +262,12 @@ def fast_scrape_task(source: str = None):
                     if count > 0:
                         set_status(f"Progress: Found {total} leads total...")
             
-            set_status(f"✅ Success: Drained {total} records from official APIs.", False)
+            set_status(f"Success: Drained {total} records from official APIs.", False)
             return {"status": "completed", "total": total}
+        except Exception as e:
+            set_status(f"Error: {e}", False)
+            logger.error(f"Fast scrape failed: {e}")
+            return {"status": "failed", "error": str(e)}
         finally:
             await scraper.close()
             

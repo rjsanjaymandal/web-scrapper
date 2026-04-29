@@ -265,23 +265,27 @@ def main():
             time.sleep(1)
             
             log("[LAUNCH] Starting Enterprise Automator...")
-            automator_cmd = ["python3", "automate_100_cities.py"]
+            automator_script = os.path.join(os.path.dirname(__file__), "automate_100_cities.py")
+            automator_cmd = [sys.executable, automator_script]
+            exit_on_automator_failure = os.environ.get("AUTOMATOR_FAILURE_EXITS", "false").lower() == "true"
             try:
                 result = subprocess.run(automator_cmd)
                 if result.returncode != 0:
                     log(f"[ERROR] Automator exited with code {result.returncode}.")
-                    dashboard_proc.terminate()
-                    sys.exit(result.returncode)
+                    if exit_on_automator_failure:
+                        dashboard_proc.terminate()
+                        sys.exit(result.returncode)
             except KeyboardInterrupt:
                 log("Automator received interrupt, shutting down...")
                 dashboard_proc.terminate()
                 sys.exit(0)
             except Exception as e:
                 log(f"[ERROR] Automator crashed: {e}")
-                dashboard_proc.terminate()
-                sys.exit(1)
+                if exit_on_automator_failure:
+                    dashboard_proc.terminate()
+                    sys.exit(1)
 
-            # Keep dashboard alive after a successful automator run.
+            # Keep dashboard alive after the automator run, even if scraping failed.
             log("Automator cycle complete. Dashboard still running...")
             try:
                 exit_code = dashboard_proc.wait()

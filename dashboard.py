@@ -627,6 +627,7 @@ HTML = """
                     document.getElementById('scrape-btn-primary').disabled = false;
                     document.getElementById('scrape-btn-primary').innerText = '🚀 Launch Task';
                 }
+            }
 
             // Update Activity Log
             if (data.activity_logs && data.activity_logs.length > 0) {
@@ -668,7 +669,8 @@ HTML = """
             if(btnPrimary) { btnPrimary.disabled = true; btnPrimary.innerText = '🚧 Launching...'; }
             if(btnSecondary) { btnSecondary.disabled = true; btnSecondary.innerText = '🚧 Working...'; }
 
-            showNotification(`Starting scrape for ${cat} in ${city}...`);
+            const targetLabel = city && cat ? `${cat} in ${city}` : 'all configured targets';
+            showNotification(`Starting scrape for ${targetLabel}...`);
             fetch('/api/trigger/scrape', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1208,14 +1210,36 @@ def index():
 
 @app.route("/api/status")
 def get_status():
-    if not redis_client:
-        return jsonify({"message": "Idle", "running": False})
+    def db_status():
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            placeholder = "?" if USE_SQLITE else "%s"
+            cur.execute(
+                f"SELECT value FROM system_status WHERE key = {placeholder}",
+                ("scraper_status",),
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if row:
+                return json.loads(row["value"])
+        except Exception:
+            pass
+        return None
+
     try:
-        status = redis_client.get("scraper_status")
-        if status:
-            return Response(status, mimetype="application/json")
+        if redis_client:
+            status = redis_client.get("scraper_status")
+            if status:
+                return Response(status, mimetype="application/json")
     except Exception:
         pass
+
+    fallback = db_status()
+    if fallback:
+        return jsonify(fallback)
+
     return jsonify({"message": "Idle", "running": False})
 
 
@@ -1327,7 +1351,8 @@ def get_log(name):
 @app.route("/api/trigger/scrape", methods=["POST", "GET"])
 def trigger_scrape():
     """Trigger scraping tasks. Supports single (POST JSON) or batch (default)."""
-    from tasks import scrape_all_task, scrape_category_task
+    os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
+    from tasks import fast_scrape_task, scrape_category_task, set_status
 
     # Parse parameters from either GET args or POST JSON
     data = {}
@@ -1346,24 +1371,42 @@ def trigger_scrape():
 
     if city and category:
         # Single target scrape
-        scrape_category_task.delay(city=city, category=category, use_business=use_business)
+        set_status(
+            f"Queued scrape for {category} in {city}...",
+            True,
+            {"city": city, "category": category, "source": "QUEUE"},
+        )
+        task_result = scrape_category_task.delay(city=city, category=category, use_business=use_business)
         msg = f"🚀 Scrape queued for {category} in {city}!"
     else:
         # Batch scrape for everything in config
-        from tasks import fast_scrape_task
-        fast_scrape_task.delay()
+        set_status(
+            "Queued batch fast-scrape for all configured targets...",
+            True,
+            {"source": "QUEUE"},
+        )
+        task_result = fast_scrape_task.delay()
         msg = f"🚀 Batch fast-scrape queued for all Official sources!"
     
-    return jsonify({"message": msg})
+    return jsonify({"message": msg, "task_id": getattr(task_result, "id", None)})
 
 @app.route("/api/trigger/fast-scrape", methods=["POST"])
 def trigger_fast_scrape():
     """Trigger fast parallel scraping with higher concurrency"""
-    from tasks import fast_scrape_task
+    os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
+    from tasks import fast_scrape_task, set_status
     try:
         max_concurrent = request.args.get("concurrency", 5, type=int)
-        fast_scrape_task.delay(max_concurrent=max_concurrent)
-        return jsonify({"message": f"⚡ Fast scrape queued with concurrency={max_concurrent}!"})
+        set_status(
+            f"Queued fast scrape with concurrency={max_concurrent}...",
+            True,
+            {"source": "QUEUE", "concurrency": max_concurrent},
+        )
+        task_result = fast_scrape_task.delay(max_concurrent=max_concurrent)
+        return jsonify({
+            "message": f"⚡ Fast scrape queued with concurrency={max_concurrent}!",
+            "task_id": getattr(task_result, "id", None),
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
