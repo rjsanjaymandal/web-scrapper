@@ -193,7 +193,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         set_status(msg, False)
         return {"status": "skipped", "reason": "deactivated"}
 
-    from fast_scraper import FastHTTPScraper
+    from polite_http_scraper import PoliteHTTPScraper
     from scraper import ContactScraper, load_config
     
     set_status(f"🚀 High-Speed Scraping {category} in {city}...")
@@ -222,7 +222,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
 @celery_app.task(name="tasks.fast_scrape_task")
 def fast_scrape_task(source: str = None):
     """Drains all open APIs and sitemaps for the 2 Lakh target."""
-    from fast_scraper import FastHTTPScraper
+    from polite_http_scraper import PoliteHTTPScraper
     from scraper import load_config, ContactScraper
     
     async def _run_fast():

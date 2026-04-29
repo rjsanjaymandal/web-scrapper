@@ -669,7 +669,7 @@ HTML = """
             fetch('/api/trigger/scrape', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({city: city, category: cat, use_business: true})
+                body: JSON.stringify({city: city, category: cat, use_business: false})
             }).then(r=>r.json()).then(d=>{
                 showNotification(d.message || d.error, !!d.error);
                 if(d.error) {

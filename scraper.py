@@ -2308,32 +2308,8 @@ class ContactScraper:
         )
 
     async def _close_browser(self, stop_playwright: bool = False):
-        if self.page:
-            self.page = None
-
-        if self.context:
-            try:
-                await self.context.close()
-            except Exception as exc:
-                logger.debug(f"Browser context close warning: {exc}")
-            finally:
-                self.context = None
-
-        if self.browser:
-            try:
-                await self.browser.close()
-            except Exception as exc:
-                logger.debug(f"Browser close warning: {exc}")
-            finally:
-                self.browser = None
-
-        if stop_playwright and self.playwright:
-            try:
-                await self.playwright.stop()
-            except Exception as exc:
-                logger.debug(f"Playwright stop warning: {exc}")
-            finally:
-                self.playwright = None
+        """DEPRECATED: Browser logic removed for Railway stability. Pure HTTP only."""
+        pass
 
     async def ensure_browser(self):
         if self.page and self.browser and self.context:
@@ -2487,101 +2463,8 @@ class ContactScraper:
     async def init_browser(
         self, disable_proxy: bool = False, force_restart: bool = False
     ):
-        if force_restart:
-            await self._close_browser()
-
-        if self.page and self.browser and self.context:
-            return
-
-        if not self.playwright:
-            self.playwright = await async_playwright().start()
-
-        await asyncio.sleep(random.uniform(0.2, 1.2))
-
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-gpu",
-            "--no-zygote",
-        ]
-
-        use_proxy = (
-            bool(self.config.proxies)
-            and not self.config.test_mode
-            and not disable_proxy
-        )
-        if disable_proxy:
-            self.browser_proxy_disabled = True
-
-        proxy_str = self.proxy_manager.get_proxy_string() if use_proxy else None
-        proxy_dict = {"server": proxy_str} if proxy_str else None
-
-        for attempt in range(1, 4):
-            try:
-                if self.config.test_mode:
-                    logger.info("Running in TEST MODE (no proxy)")
-                elif use_proxy:
-                    logger.info(
-                        f"Using proxy: {proxy_str[:50] if proxy_str else 'None'}..."
-                    )
-                else:
-                    logger.info("Launching browser without proxy")
-
-                self.browser = await self.playwright.chromium.launch(
-                    headless=self.config.headless, args=launch_args
-                )
-
-                # Get Persistent MacOS User-Agent for the entire session
-                if not self.session_ua:
-                    self.session_ua = StealthManager.get_persistent_ua()
-                
-                user_agent = self.session_ua
-                extra_headers = StealthManager.get_modern_headers(user_agent)
-
-                context_kwargs = {
-                    "user_agent": user_agent,
-                    "extra_http_headers": extra_headers,
-                    "viewport": {"width": 1920, "height": 1080},
-                    "ignore_https_errors": True,
-                    "locale": "en-US",
-                    "timezone_id": "America/Los_Angeles",
-                    "color_scheme": "dark",
-                }
-                if proxy_dict:
-                    context_kwargs["proxy"] = proxy_dict
-
-                self.context = await self.browser.new_context(**context_kwargs)
-
-                # Apply advanced stealth patches
-                await StealthManager.apply_stealth(self.context)
-
-                self.page = await self.context.new_page()
-
-                logger.info(
-                    f"Browser session persist: UA={user_agent[:40]}... (MacOS Persistent)"
-                )
-                return
-
-            except Exception as exc:
-                await self._close_browser()
-
-                if use_proxy and self._is_proxy_error(exc):
-                    logger.warning(
-                        "Proxy failed during browser setup, retrying without proxy"
-                    )
-                    use_proxy = False
-                    proxy_str = None
-                    proxy_dict = None
-                    self.browser_proxy_disabled = True
-                    continue
-
-                if attempt == 3:
-                    raise
-
-                logger.warning(f"Browser init retry {attempt}/3 failed: {exc}")
-                await asyncio.sleep(min(6, attempt * 2))
+        """DEPRECATED: Browser logic removed for Railway stability. Using PoliteHTTPScraper."""
+        pass
 
     async def extract_email_from_detail(self, detail_url: str) -> Optional[str]:
         if not detail_url or not self.config.enable_email_extraction:
@@ -2843,14 +2726,14 @@ class ContactScraper:
         Targets official registries and open APIs.
         Optimized for Railway 512MB RAM tiers.
         """
-        from fast_scraper import FastHTTPScraper
+        from polite_http_scraper import PoliteHTTPScraper
         from api_handlers import OfficialAPIHandlers
         
         # Determine the target source
         sources = self._select_scrapers(category, source_name, use_business=False)
         total_extracted = 0
         
-        async with FastHTTPScraper(max_concurrent=5) as fast_engine:
+        async with PoliteHTTPScraper(max_concurrent=5) as fast_engine:
             for scraper_obj in sources:
                 source = scraper_obj.source_name
                 logger.info(f"⚡ Fast Extraction: {source} | {category} | {city}")

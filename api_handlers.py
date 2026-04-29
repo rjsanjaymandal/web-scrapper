@@ -6,7 +6,7 @@ Targets: SEBI, IBBI, Bar Council, Regional CAs.
 import logging
 import re
 from typing import List, Dict, Optional
-from fast_scraper import FastHTTPScraper
+from polite_http_scraper import PoliteHTTPScraper
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class OfficialAPIHandlers:
     """Specialized handlers for each regulatory body"""
     
     @staticmethod
-    async def handle_sebi_ria(engine: FastHTTPScraper, city: str) -> List[Dict]:
+    async def handle_sebi_ria(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Registered Investment Advisors from SEBI"""
         # SEBI Search Endpoint
         url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do"
@@ -40,7 +40,7 @@ class OfficialAPIHandlers:
         return leads
 
     @staticmethod
-    async def handle_ibbi_insolvency(engine: FastHTTPScraper, city: str) -> List[Dict]:
+    async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Insolvency Professionals from IBBI"""
         url = "https://ibbi.gov.in/en/insolvency-professional/export-data-json"
         # IBBI usually accepts city/state filter in JSON payload or params
@@ -62,7 +62,7 @@ class OfficialAPIHandlers:
         return leads
 
     @staticmethod
-    async def handle_bar_council(engine: FastHTTPScraper, city: str) -> List[Dict]:
+    async def handle_bar_council(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Lawyer directories via sitemap or listing pages"""
         # Example: Bar Council of Maharashtra & Goa
         # Many state bar councils use public listings.
@@ -73,7 +73,7 @@ class OfficialAPIHandlers:
         return [] # Placeholder
 
     @classmethod
-    async def dispatch(cls, source: str, engine: FastHTTPScraper, city: str) -> List[Dict]:
+    async def dispatch(cls, source: str, engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Routes to the correct handler based on source name"""
         handlers = {
             "SEBI": cls.handle_sebi_ria,
