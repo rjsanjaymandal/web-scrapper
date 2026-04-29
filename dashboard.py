@@ -69,11 +69,12 @@ except Exception:
 
 # DB Globals
 USE_SQLITE = False
-DB_INIT_READY = False
+DB_INIT_READY = os.environ.get("DASHBOARD_DB_BOOTSTRAPPED") == "1"
 DB_INIT_IN_PROGRESS = False
 DB_INIT_LAST_ATTEMPT = 0.0
 DB_INIT_LAST_ERROR = None
 DB_INIT_RETRY_SECONDS = int(os.environ.get("DATABASE_INIT_RETRY_SECONDS", "15"))
+DB_STATEMENT_TIMEOUT_MS = int(os.environ.get("DATABASE_STATEMENT_TIMEOUT_MS", "8000"))
 FILTER_CACHE = {}  # Stores { 'cities': (data, timestamp), ... }
 FILTER_CACHE_TTL = 300  # 5 minutes
 
@@ -107,7 +108,7 @@ def get_db_url():
     return f"postgresql://{user}:{pw}@{host}:{port}/{name}"
 
 
-def _connect_db():
+def _connect_db(statement_timeout_ms=None):
     """Open a database connection with a short timeout so web boot stays responsive."""
     global USE_SQLITE
     
@@ -132,12 +133,15 @@ def _connect_db():
     if url and url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     connect_timeout = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "5"))
-    conn = psycopg2.connect(
-        url,
-        cursor_factory=psycopg2.extras.RealDictCursor,
-        connect_timeout=connect_timeout,
-        application_name="dashboard",
-    )
+    connect_kwargs = {
+        "cursor_factory": psycopg2.extras.RealDictCursor,
+        "connect_timeout": connect_timeout,
+        "application_name": "dashboard",
+    }
+    if statement_timeout_ms:
+        connect_kwargs["options"] = f"-c statement_timeout={statement_timeout_ms}"
+
+    conn = psycopg2.connect(url, **connect_kwargs)
     conn.autocommit = True
     return conn
 
@@ -174,7 +178,7 @@ def get_db():
         except Exception as e:
             logger.error(f"Failed to initialize database on request: {e}")
             raise
-    return _connect_db()
+    return _connect_db(statement_timeout_ms=DB_STATEMENT_TIMEOUT_MS)
 
 
 def init_tables():

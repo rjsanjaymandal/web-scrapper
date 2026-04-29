@@ -109,6 +109,7 @@ def init_tables():
         if not success:
             log("[ERROR] Database initialization failed via dashboard.init_tables()")
             return False
+        os.environ["DASHBOARD_DB_BOOTSTRAPPED"] = "1"
         log("[OK] Database tables ready!")
         return True
     except Exception as e:
@@ -252,7 +253,7 @@ def main():
             dashboard_proc = subprocess.Popen(gunicorn_cmd)
             log(f"[SUCCESS] Dashboard running (PID: {dashboard_proc.pid})")
 
-            if not wait_for_http(port, process=dashboard_proc):
+            if not wait_for_http(port, path="/", process=dashboard_proc):
                 dashboard_proc.terminate()
                 try:
                     dashboard_proc.wait(timeout=10)
