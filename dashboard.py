@@ -589,6 +589,15 @@ HTML = """
         .badge { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; }
         .badge-src { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
         
+        /* Pagination */
+        .pagination { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+        .pagination-info { font-size: 11px; color: var(--text-secondary); }
+        .pagination-btns { display: flex; gap: 6px; }
+        .pagination-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: 0.2s; }
+        .pagination-btn:hover { border-color: var(--accent-emerald); color: var(--accent-emerald); }
+        .pagination-btn.active { background: var(--accent-emerald); color: #000; border-color: var(--accent-emerald); }
+        .pagination-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
@@ -741,6 +750,13 @@ HTML = """
                         </tbody>
                     </table>
                 </div>
+                <div class="pagination">
+                    <span class="pagination-info" id="pg-info">Showing page {{page}} of {{total_pages}}</span>
+                    <div class="pagination-btns">
+                        <button class="pagination-btn" id="pg-prev" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>← Prev</button>
+                        <button class="pagination-btn" id="pg-next" onclick="changePage(1)" {% if page >= total_pages %}disabled{% endif %}>Next →</button>
+                    </div>
+                </div>
             </div>
 
             <div class="glass-card">
@@ -763,6 +779,24 @@ HTML = """
             const n = document.getElementById('notif');
             n.innerText = msg; n.style.display = 'block';
             setTimeout(() => { n.style.display = 'none'; }, dur);
+        }
+
+        let currentPage = {{page}};
+        let totalPages = {{total_pages}};
+
+        function changePage(delta) {
+            const newPage = currentPage + delta;
+            if (newPage < 1 || newPage > totalPages) return;
+            const url = new URL(window.location);
+            url.searchParams.set('page', newPage);
+            window.location.href = url.toString();
+        }
+        
+        function goToPage(p) {
+            if (p < 1 || p > totalPages) return;
+            const url = new URL(window.location);
+            url.searchParams.set('page', p);
+            window.location.href = url.toString();
         }
 
         async function triggerScrape() {
