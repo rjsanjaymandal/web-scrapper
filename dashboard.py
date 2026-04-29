@@ -515,9 +515,8 @@ HTML = """
 
         /* Layout Wrapper */
         .layout-wrapper { display: flex; height: 100vh; overflow: hidden; }
-        .sidebar { width: 260px; background: #050508; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar { width: 280px; background: #050508; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; }
         .main-view { flex: 1; padding: 24px; overflow-y: auto; background: #050508; }
-        .logs-sidebar { width: 320px; background: #050508; border-left: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
@@ -598,12 +597,7 @@ HTML = """
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
-        .progress-container { background: rgba(255,255,255,0.05); height: 4px; border-radius: 2px; margin-top: 12px; overflow: hidden; display: none; }
         .progress-bar { height: 100%; background: var(--accent-emerald); transition: width 0.3s; }
-
-        @media (max-width: 1200px) {
-            .logs-sidebar { display: none; }
-        }
     </style>
 </head>
 <body>
@@ -644,11 +638,26 @@ HTML = """
                 </a>
             </nav>
 
+            <div style="margin-top:24px; border-top: 1px solid var(--border-muted); padding-top: 24px; display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+                <div class="terminal-header">
+                    <div>
+                        <p style="font-size:10px; font-weight:800; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">Activity Feed</p>
+                    </div>
+                    <div class="pulse" style="width:6px; height:6px; background:var(--accent-emerald); border-radius:50%;"></div>
+                </div>
+                <div class="terminal" id="activity-logs" style="max-height: 300px; margin-bottom: 12px;">
+                    <!-- Logs will stream here -->
+                </div>
+            </div>
+
             <div class="system-footer">
                 <p>System Status</p>
-                <div class="status-online">
-                    <div class="status-dot"></div>
-                    Running
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="status-online">
+                        <div class="status-dot"></div>
+                        <span id="status-badge">ONLINE</span>
+                    </div>
+                    <span id="last-update-sidebar" style="font-size:10px; color:rgba(255,255,255,0.2);">--:--:--</span>
                 </div>
             </div>
         </aside>
@@ -802,30 +811,8 @@ HTML = """
                 </div>
             </div>
 
-            </div>
         </div>
     </main>
-
-    <aside class="logs-sidebar">
-        <div class="terminal-header">
-            <div>
-                <p style="font-size:10px; font-weight:800; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">Live Activity</p>
-                <p style="font-size:9px; color:rgba(255,255,255,0.2);">Real-time stream</p>
-            </div>
-            <div class="pulse" style="width:8px; height:8px; background:var(--accent-emerald); border-radius:50%;"></div>
-        </div>
-        <div class="terminal" id="activity-logs">
-            <!-- Logs will stream here -->
-        </div>
-        
-        <div style="margin-top:24px; padding:16px; background:rgba(255,255,255,0.02); border-radius:12px; border:1px solid var(--border-muted);">
-            <p style="font-size:10px; color:var(--text-secondary); margin-bottom:8px;">LAST TELEMETRY</p>
-            <div style="display:flex; justify-content:space-between; font-size:11px;">
-                <span id="last-update-sidebar">--:--:--</span>
-                <span id="status-badge" style="color:var(--accent-emerald); font-weight:800;">ONLINE</span>
-            </div>
-        </div>
-    </aside>
 </div>
 
     <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
