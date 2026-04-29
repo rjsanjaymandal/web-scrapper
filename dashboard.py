@@ -505,8 +505,11 @@ HTML = """
         .nav-item:hover { background: rgba(255,255,255,0.03); color: #fff; }
         .nav-item.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
 
-        /* Main Content */
-        .main-view { padding: 24px; overflow-y: auto; max-width: 1600px; }
+        /* Layout Wrapper */
+        .layout-wrapper { display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 260px; background: #050508; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; }
+        .main-view { flex: 1; padding: 24px; overflow-y: auto; background: #050508; }
+        .logs-sidebar { width: 320px; background: #050508; border-left: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
@@ -521,7 +524,7 @@ HTML = """
         .stat-card.emerald .value { color: var(--accent-emerald); }
         .stat-card.blue .value { color: var(--accent-blue); }
 
-        .content-grid { display: grid; grid-template-columns: 1fr 400px; gap: 32px; }
+        .content-grid { display: flex; flex-direction: column; gap: 32px; }
         .glass-card { background: var(--card-glass); border-radius: 20px; border: 1px solid var(--border-muted); padding: 24px; }
         
         /* Charts */
@@ -533,9 +536,11 @@ HTML = """
         /* Terminal & Feed */
         .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .terminal { 
-            background: #0a0a0f; border-radius: 12px; padding: 16px; height: 300px; overflow-y: auto;
-            font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6;
+            background: #0a0a0f; border-radius: 12px; padding: 16px; flex: 1; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.6;
             border: 1px solid var(--border-muted);
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-emerald) transparent;
         }
         .log-entry { margin-bottom: 4px; border-left: 2px solid var(--border-muted); padding-left: 10px; display: flex; gap: 10px; }
         .log-time { color: #475569; min-width: 60px; }
@@ -592,7 +597,7 @@ HTML = """
 <body>
     <div id="notif" style="position:fixed; top:20px; right:20px; padding:16px 24px; border-radius:12px; background:var(--accent-emerald); color:#000; font-weight:800; z-index:1000; display:none; animation:slideIn 0.3s ease-out;"></div>
 
-    <aside class="sidebar">
+    <div class="layout-wrapper">
         <div class="brand-box">
             <p>Maysan Labs</p>
             <span>Data Platform</span>
@@ -671,30 +676,34 @@ HTML = """
                 <div class="controls-grid">
                     <div class="input-group">
                         <label>Search For</label>
-                        <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list">
+                        <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list" value="{{selected_category or search_query}}">
                     </div>
                     <div class="input-group">
                         <label>Location</label>
-                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list">
+                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list" value="{{selected_city}}">
                     </div>
                     <div class="input-group">
                         <label>Data Source</label>
                         <select id="t-source">
                             <option value="">Auto-Select</option>
-                            <option value="SITEMAP">Sitemap</option>
-                            <option value="YELLOWPAGES">YellowPages</option>
-                            <option value="JUSTDIAL">JustDial</option>
-                            <option value="AMFI">AMFI</option>
-                            <option value="ICAI">ICAI</option>
-                            <option value="GMB">Google Maps</option>
+                            <option value="BAR_COUNCIL" {% if selected_source == 'BAR_COUNCIL' %}selected{% endif %}>Bar Council (Lawyers)</option>
+                            <option value="ICAI" {% if selected_source == 'ICAI' %}selected{% endif %}>ICAI (CAs)</option>
+                            <option value="SEBI" {% if selected_source == 'SEBI' %}selected{% endif %}>SEBI (Advisors)</option>
+                            <option value="SITEMAP" {% if selected_source == 'SITEMAP' %}selected{% endif %}>Sitemap</option>
+                            <option value="YELLOWPAGES" {% if selected_source == 'YELLOWPAGES' %}selected{% endif %}>YellowPages</option>
+                            <option value="JUSTDIAL" {% if selected_source == 'JUSTDIAL' %}selected{% endif %}>JustDial</option>
+                            <option value="GMB" {% if selected_source == 'GMB' %}selected{% endif %}>Google Maps</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" id="start-btn" onclick="startCollection()">Start Collection</button>
+                    <div class="input-group" style="display:flex; align-items:flex-end; gap:10px;">
+                        <button class="btn btn-outline" style="flex:1;" onclick="applyFilters()">Apply Filters</button>
+                        <button class="btn btn-primary" id="start-btn" style="flex:1;" onclick="startCollection()">Start Collection</button>
+                    </div>
                 </div>
 
                 <div style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
                     <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">Quick Filters:</span>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers in Delhi</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'BAR_COUNCIL')">Lawyers in Delhi</button>
                     <button class="btn btn-outline btn-sm" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs in Mumbai</button>
                     <button class="btn btn-outline btn-sm" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech in Bangalore</button>
                 </div>
@@ -755,17 +764,31 @@ HTML = """
                 </div>
             </div>
 
-            <div class="glass-card">
-                <div class="terminal-header">
-                    <p style="font-size:10px; font-weight:800; color:var(--text-secondary);">REAL-TIME LOGS</p>
-                    <div class="pulse" style="width:8px; height:8px; background:var(--accent-emerald); border-radius:50%;"></div>
-                </div>
-                <div class="terminal" id="activity-logs">
-                    <!-- Logs will stream here -->
-                </div>
             </div>
         </div>
     </main>
+
+    <aside class="logs-sidebar">
+        <div class="terminal-header">
+            <div>
+                <p style="font-size:10px; font-weight:800; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">Live Activity</p>
+                <p style="font-size:9px; color:rgba(255,255,255,0.2);">Real-time stream</p>
+            </div>
+            <div class="pulse" style="width:8px; height:8px; background:var(--accent-emerald); border-radius:50%;"></div>
+        </div>
+        <div class="terminal" id="activity-logs">
+            <!-- Logs will stream here -->
+        </div>
+        
+        <div style="margin-top:24px; padding:16px; background:rgba(255,255,255,0.02); border-radius:12px; border:1px solid var(--border-muted);">
+            <p style="font-size:10px; color:var(--text-secondary); margin-bottom:8px;">LAST TELEMETRY</p>
+            <div style="display:flex; justify-content:space-between; font-size:11px;">
+                <span id="last-update-sidebar">--:--:--</span>
+                <span id="status-badge" style="color:var(--accent-emerald); font-weight:800;">ONLINE</span>
+            </div>
+        </div>
+    </aside>
+</div>
 
     <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
     <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>
@@ -792,6 +815,19 @@ HTML = """
             if (p < 1 || p > totalPages) return;
             const url = new URL(window.location);
             url.searchParams.set('page', p);
+            window.location.href = url.toString();
+        }
+
+        function applyFilters() {
+            const city = document.getElementById('t-city').value;
+            const cat = document.getElementById('t-cat').value;
+            const source = document.getElementById('t-source').value;
+            
+            const url = new URL(window.location);
+            if (city) url.searchParams.set('city', city); else url.searchParams.delete('city');
+            if (cat) url.searchParams.set('category', cat); else url.searchParams.delete('category');
+            if (source) url.searchParams.set('source', source); else url.searchParams.delete('source');
+            url.searchParams.set('page', 1); // Reset to first page on new filter
             window.location.href = url.toString();
         }
 
@@ -825,6 +861,7 @@ HTML = """
             document.getElementById('t-city').value = city;
             document.getElementById('t-cat').value = cat;
             document.getElementById('t-source').value = src;
+            applyFilters();
         }
 
         async function triggerFast() {
@@ -902,6 +939,21 @@ HTML = """
                         <span class="log-msg ${log.level}">${log.message}</span>
                     </div>
                 `).join('');
+            }
+            
+            // Sidebar Telemetry
+            const sidebarTime = document.getElementById('last-update-sidebar');
+            if (sidebarTime) sidebarTime.innerText = new Date().toLocaleTimeString();
+            
+            const badge = document.getElementById('status-badge');
+            if (badge) {
+                if (status && status.running) {
+                    badge.innerText = 'SCRAPING';
+                    badge.style.color = 'var(--accent-emerald)';
+                } else {
+                    badge.innerText = 'ONLINE';
+                    badge.style.color = 'var(--text-secondary)';
+                }
             }
         };
 

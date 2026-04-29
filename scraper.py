@@ -60,7 +60,7 @@ try:
     from scrapers.official import (
         AMFIScraper, IRDAIScraper, ICAIScraper, ICSIScraper, 
         SEBIScraper, IBBIScraper, NSEScraper, BSEScraper, 
-        GSTPractitionerScraper, RBIRegulatedScraper
+        GSTPractitionerScraper, RBIRegulatedScraper, BarCouncilScraper
     )
     from scrapers.business import (
         JustDialScraper, IndiaMartScraper, SulekhaScraper, 
@@ -458,32 +458,15 @@ class ContactScraper:
         self.session_ua = None
         self.session_leads_count = 0  
 
-        self.scrapers: List[BaseScraper] = [
-            AMFIScraper(),
-            IRDAIScraper(),
-            ICAIScraper(),
-            ICSIScraper(),
-            SEBIScraper(),
-            NSEBrokerScraper(),
-            BSEBrokerScraper(),
-            GSTPractitionerScraper(),
-            RBIRegulatedScraper(),
-        ]
-
-        self.business_scrapers: List[BaseScraper] = [
-            JustDialScraper(),
-            IndiaMartScraper(),
-            SulekhaScraper(),
-            ClickIndiaScraper(),
-            GrotalScraper(),
-            GoogleMapsScraper(),
-            LinkedInGoogleScraper(),
-            YellowPagesIndiaScraper(),
-            SitemapScraper(),
-            TradeIndiaScraper(),
-            ExportersIndiaScraper(),
-            GoogleDorkScraper(),
-        ]
+        # Initialize from Global Registry for modularity
+        self.scrapers = []
+        self.business_scrapers = []
+        
+        for s in ScraperRegistry.list_scrapers():
+            if s.source_name in ["JUSTDIAL", "INDIAMART", "SULEKHA", "YELLOWPAGES", "TRADEINDIA", "EXPORTERSINDIA", "GMB", "LINKEDIN", "FOOTPRINT", "SITEMAP"]:
+                self.business_scrapers.append(s)
+            else:
+                self.scrapers.append(s)
 
         self.stats = {
             "total_scrape": 0,
