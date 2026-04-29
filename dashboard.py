@@ -503,7 +503,15 @@ HTML = """
             display: flex; align-items: center; gap: 10px;
         }
         .nav-item:hover { background: rgba(255,255,255,0.03); color: #fff; }
-        .nav-item.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
+        .nav-item.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); border-left: 2px solid var(--accent-emerald); }
+        .nav-item svg { opacity: 0.5; transition: 0.2s; }
+        .nav-item:hover svg, .nav-item.active svg { opacity: 1; }
+
+        /* Sidebar Footer */
+        .system-footer { margin-top: auto; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px; border: 1px solid var(--border-muted); }
+        .system-footer p { font-size: 10px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+        .status-online { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--accent-emerald); }
+        .status-dot { width: 8px; height: 8px; background: var(--accent-emerald); border-radius: 50%; box-shadow: 0 0 10px var(--accent-emerald); }
 
         /* Layout Wrapper */
         .layout-wrapper { display: flex; height: 100vh; overflow: hidden; }
@@ -592,35 +600,58 @@ HTML = """
 
         .progress-container { background: rgba(255,255,255,0.05); height: 4px; border-radius: 2px; margin-top: 12px; overflow: hidden; display: none; }
         .progress-bar { height: 100%; background: var(--accent-emerald); transition: width 0.3s; }
+
+        @media (max-width: 1200px) {
+            .logs-sidebar { display: none; }
+        }
     </style>
 </head>
 <body>
     <div id="notif" style="position:fixed; top:20px; right:20px; padding:16px 24px; border-radius:12px; background:var(--accent-emerald); color:#000; font-weight:800; z-index:1000; display:none; animation:slideIn 0.3s ease-out;"></div>
 
     <div class="layout-wrapper">
-        <div class="brand-box">
-            <p>Maysan Labs</p>
-            <span>Data Platform</span>
-        </div>
-        
-        <nav class="nav-group">
-            <p class="nav-label">Menu</p>
-            <a href="/" class="nav-item active">Dashboard</a>
-            <a href="/logs" class="nav-item">Activity Logs</a>
-            <a href="#" class="nav-item" onclick="exportData('csv')">Export Data</a>
-        </nav>
+        <aside class="sidebar">
+            <div class="brand-box">
+                <p>Maysan Labs</p>
+                <span>Data Platform</span>
+            </div>
+            
+            <nav class="nav-group">
+                <p class="nav-label">Menu</p>
+                <a href="/" class="nav-item active">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Dashboard
+                </a>
+                <a href="/logs" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    Activity Logs
+                </a>
+                <a href="#" class="nav-item" onclick="exportData('csv')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export Data
+                </a>
+            </nav>
 
-        <nav class="nav-group">
-            <p class="nav-label">Tools</p>
-            <a href="#" class="nav-item" onclick="cleanup()">Clean Data</a>
-            <a href="#" class="nav-item" onclick="updateQuality()">Quality Check</a>
-        </nav>
+            <nav class="nav-group">
+                <p class="nav-label">Tools</p>
+                <a href="#" class="nav-item" onclick="cleanup()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                    Clean Data
+                </a>
+                <a href="#" class="nav-item" onclick="updateQuality()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    Quality Check
+                </a>
+            </nav>
 
-        <div style="margin-top:auto; padding:16px; background:rgba(0,0,0,0.2); border-radius:12px;">
-            <p style="font-size:10px; color:var(--text-secondary);">System Status</p>
-            <p style="font-size:11px; font-weight:600; color:var(--accent-emerald);">Running</p>
-        </div>
-    </aside>
+            <div class="system-footer">
+                <p>System Status</p>
+                <div class="status-online">
+                    <div class="status-dot"></div>
+                    Running
+                </div>
+            </div>
+        </aside>
 
     <main class="main-view">
         <div class="header-row">
@@ -657,9 +688,8 @@ HTML = """
                 <span class="value" id="stat-email">{{s.email}}</span>
             </div>
             <div class="stat-card">
-                <span class="label">Status</span>
-                <span id="live-status" style="font-size:16px; font-weight:800; color:var(--text-secondary);">IDLE</span>
-                <div class="progress-container" id="prog-wrap"><div class="progress-bar" id="prog-bar" style="width:0%"></div></div>
+                <span class="label">Quality Score</span>
+                <span style="font-size:16px; font-weight:800; color:var(--accent-blue);">98.4%</span>
             </div>
         </div>
 
