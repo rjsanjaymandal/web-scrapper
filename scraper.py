@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timedelta
 # from playwright.async_api import async_playwright, Page, Browser, Playwright
 Page = dict # Mock type for disabled Playwright
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup
 from raw_storage import storage
@@ -857,7 +857,7 @@ class ContactScraper:
         }
 
     async def scrape_amfi_api(
-        self, scraper: AMFIScraper, city: str, category: str, on_progress=None
+        self, scraper: Any, city: str, category: str, on_progress=None
     ) -> List[Dict]:
         all_listings = []
         total_leads_acc = 0
