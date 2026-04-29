@@ -177,8 +177,8 @@ def _load_runtime_config():
     return config
 
 # DEACTIVATED: High-Security / Browser-Heavy Targets
-# JustDial, YellowPages, Google Footprints are strictly disabled to save memory and bypass WAFs.
-DEACTIVATED_SOURCES = ["JustDial", "YellowPages", "Google", "IndiaMart", "Sulekha", "ClickIndia"]
+# Google Footprints and high-WAF business targets are strictly limited.
+DEACTIVATED_SOURCES = ["Google", "IndiaMart", "TradeIndia"]
 
 @celery_app.task(name="tasks.scrape_category_task")
 def scrape_category_task(city: str, category: str, source: str = None, use_business: bool = False):

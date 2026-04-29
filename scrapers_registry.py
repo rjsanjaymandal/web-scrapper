@@ -208,6 +208,6 @@ class ScraperRegistry:
 
         # Business/Professional - multiple directories
         else:
-            sources = ["YELLOWPAGES", "JUSTDIAL", "INDIAMART", "TRADEINDIA", "FOOTPRINT"]
+            sources = ["YELLOWPAGES", "JUSTDIAL", "INDIAMART", "TRADEINDIA", "EXPORTERSINDIA", "ASKLAILA", "VYKARI", "SULEKHA", "GROTAL", "SITEMAP", "FOOTPRINT"]
 
-        return sources if sources else ["YELLOWPAGES", "FOOTPRINT"]
+        return sources if sources else ["YELLOWPAGES", "EXPORTERSINDIA", "SITEMAP", "FOOTPRINT"]

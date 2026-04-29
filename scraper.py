@@ -60,6 +60,10 @@ try:
         NSEScraper,
         GoogleMapsScraper,
         LinkedInGoogleScraper,
+        ExportersIndiaScraper,
+        AskLailaScraper,
+        VykariScraper,
+        SitemapScraper,
     )
 
     # Registration handled at end of file to ensure all classes are defined
@@ -100,27 +104,27 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "gst-practitioners": ["GST"],
     "insolvency-professionals": ["IBBI"],
     "insolvency-professional": ["IBBI"],
-    "lawyers": ["BAR_COUNCIL", "YELLOWPAGES"],
-    "lawyer": ["BAR_COUNCIL", "YELLOWPAGES"],
-    "advocates": ["BAR_COUNCIL", "YELLOWPAGES"],
-    "advocate": ["BAR_COUNCIL", "YELLOWPAGES"],
-    "gst-consultant": ["GST"],
-    "gst": ["GST"],
+    "lawyers": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
+    "lawyer": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
+    "advocates": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
+    "advocate": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
+    "gst-consultant": ["GST", "ASKLAILA"],
+    "gst": ["GST", "ASKLAILA"],
     "rbi-regulated": ["RBI"],
     "banks": ["RBI"],
     "nbfc": ["RBI"],
-    "financial-advisor": ["AMFI", "SEBI", "YELLOWPAGES"],
-    "wealth-manager": ["AMFI", "SEBI", "YELLOWPAGES"],
-    "investment-consultant": ["SEBI", "YELLOWPAGES"],
+    "financial-advisor": ["AMFI", "SEBI", "YELLOWPAGES", "SITEMAP"],
+    "wealth-manager": ["AMFI", "SEBI", "YELLOWPAGES", "SITEMAP"],
+    "investment-consultant": ["SEBI", "YELLOWPAGES", "SITEMAP"],
     # Business Directories
-    "business-consultants": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART"],
-    "chartered-engineers": ["YELLOWPAGES", "TRADEINDIA"],
-    "cost-accountants": ["YELLOWPAGES"],
-    "business": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "JUSTDIAL"],
-    "local": ["YELLOWPAGES", "GROTAL", "SULEKHA"],
+    "business-consultants": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "EXPORTERSINDIA"],
+    "chartered-engineers": ["YELLOWPAGES", "TRADEINDIA", "EXPORTERSINDIA"],
+    "cost-accountants": ["YELLOWPAGES", "ASKLAILA"],
+    "business": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "JUSTDIAL", "EXPORTERSINDIA", "ASKLAILA", "SITEMAP"],
+    "local": ["YELLOWPAGES", "GROTAL", "SULEKHA", "CLICKINDIA", "VYKARI"],
     "person": ["LINKEDIN"],
-    "lead": ["LINKEDIN", "GMB"],
-    "professional": ["LINKEDIN", "SEBI", "NSE"],
+    "lead": ["LINKEDIN", "GMB", "SITEMAP"],
+    "professional": ["LINKEDIN", "SEBI", "NSE", "ICSI", "ICAI", "SITEMAP"],
     "map": ["GMB"],
 }
 
@@ -1318,76 +1322,6 @@ class ICSIScraper(BaseScraper):
         elem = await card.query_selector(selector)
         return await elem.inner_text() if elem else None
 
-    async def get_detail_url(self, card) -> Optional[str]:
-        try:
-            link = await card.query_selector(
-                'a[href*="memberProfile"], a[href*="firmProfile"]'
-            )
-            if link:
-                return await link.get_attribute("href")
-        except:
-            pass
-        return None
-
-    async def extract_listings(
-        self,
-        page: Page,
-        city: str = None,
-        category: str = None,
-        html_content: str = None,
-    ) -> List[Dict]:
-        listings = []
-        try:
-            await page.wait_for_selector(
-                ".searchBox.scr, .div .searchBox", timeout=15000
-            )
-            cards = await page.query_selector_all(".searchBox.scr")
-
-            for card in cards:
-                try:
-                    name = await self._get_text(card, "p b")
-                    location = await self._get_text(card, ".state")
-                    detail_url = await self.get_detail_url(card)
-
-                    if name:
-                        cleaned_name = re.sub(
-                            r"^\s*CA\.\s*", "", name.strip(), flags=re.IGNORECASE
-                        )
-                        state = None
-                        city_value = city
-                        if location:
-                            normalized_location = re.sub(r"\s+", " ", location).strip()
-                            parts = [
-                                part.strip()
-                                for part in normalized_location.split(",")
-                                if part.strip()
-                            ]
-                            if len(parts) >= 2:
-                                city_value = parts[0].title()
-                                state = parts[1].upper()
-
-                        listings.append(
-                            {
-                                "name": cleaned_name,
-                                "membership_no": None,
-                                "city": city_value,
-                                "state": state,
-                                "email": None,
-                                "phone": None,
-                                "address": None,
-                                "area": None,
-                                "detail_url": detail_url,
-                            }
-                        )
-                except Exception:
-                    continue
-        except Exception as e:
-            logger.warning(f"ICAI extraction error: {e}")
-        return listings
-
-    async def _get_text(self, card, selector: str) -> Optional[str]:
-        elem = await card.query_selector(selector)
-        return await elem.inner_text() if elem else None
 
 
 class SEBIScraper(BaseScraper):
@@ -2718,7 +2652,7 @@ class ContactScraper:
                 batch = [
                     self._format_amfi_listing(record, city)
                     for record in records
-                    if record.get("ARNHolderName")
+                    if record and record.get("ARNHolderName")
                 ]
                 batch = await self._process_listings(batch)
 
@@ -3361,6 +3295,10 @@ try:
     ScraperRegistry.register(SulekhaScraper())
     ScraperRegistry.register(ClickIndiaScraper())
     ScraperRegistry.register(GrotalScraper())
+    ScraperRegistry.register(ExportersIndiaScraper())
+    ScraperRegistry.register(AskLailaScraper())
+    ScraperRegistry.register(VykariScraper())
+    ScraperRegistry.register(SitemapScraper())
     ScraperRegistry.register(GoogleMapsScraper())
     ScraperRegistry.register(LinkedInGoogleScraper())
     ScraperRegistry.register(GoogleDorkScraper())     # Source: FOOTPRINT

@@ -106,6 +106,26 @@ class OfficialAPIHandlers:
         # Logic to be implemented: ViewState extraction and Form submission
         return []
 
+    @staticmethod
+    async def handle_sitemap(engine: PoliteHTTPScraper, city: str, source: str) -> List[Dict]:
+        """Generic sitemap/directory extractor for high-volume directories."""
+        from scrapers_registry import ScraperRegistry
+        scraper = ScraperRegistry.get(source)
+        if not scraper:
+            return []
+        
+        # If it's the dedicated SitemapScraper, it handles its own multi-link fetching
+        if source == "SITEMAP":
+            return await scraper.extract_listings(None, city, "business", None)
+            
+        # For others (ExportersIndia, etc.), we fetch the search page once and use fallback
+        url = scraper.build_search_url(city, "business")
+        resp = await engine.fetch(url)
+        if resp and resp.status == 200:
+            html = await resp.text()
+            return await scraper.extract_listings(None, city, "business", html)
+        return []
+
     @classmethod
     async def dispatch(cls, source: str, engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Routes to the correct handler based on source name"""
@@ -114,7 +134,11 @@ class OfficialAPIHandlers:
             "IBBI": cls.handle_ibbi_insolvency,
             "BAR_COUNCIL": cls.handle_bar_council,
             "ICAI": cls.handle_icai,
-            "IRDAI": cls.handle_irdai
+            "IRDAI": cls.handle_irdai,
+            "SITEMAP": lambda e, c: cls.handle_sitemap(e, c, "SITEMAP"),
+            "EXPORTERSINDIA": lambda e, c: cls.handle_sitemap(e, c, "EXPORTERSINDIA"),
+            "ASKLAILA": lambda e, c: cls.handle_sitemap(e, c, "ASKLAILA"),
+            "VYKARI": lambda e, c: cls.handle_sitemap(e, c, "VYKARI")
         }
         
         handler = handlers.get(source)
