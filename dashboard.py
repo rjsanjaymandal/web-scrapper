@@ -615,37 +615,33 @@ HTML = """
         </div>
         
         <nav class="nav-group">
-            <p class="nav-label">Core Systems</p>
-            <a href="/" class="nav-item active">📊 Command Center</a>
-            <a href="/logs" class="nav-item">📜 Engine Logs</a>
-            <a href="#" class="nav-item" onclick="exportData('csv')">📥 Data Export</a>
+            <p class="nav-label">Menu</p>
+            <a href="/" class="nav-item active">Dashboard</a>
+            <a href="/logs" class="nav-item">Activity Logs</a>
+            <a href="#" class="nav-item" onclick="exportData('csv')">Export Data</a>
         </nav>
 
         <nav class="nav-group">
-            <p class="nav-label">Maintenance</p>
-            <a href="#" class="nav-item" onclick="cleanup()">🧹 Deep Clean</a>
-            <a href="#" class="nav-item" onclick="updateQuality()">🧪 Quality Audit</a>
+            <p class="nav-label">Tools</p>
+            <a href="#" class="nav-item" onclick="cleanup()">Clean Data</a>
+            <a href="#" class="nav-item" onclick="updateQuality()">Quality Check</a>
         </nav>
 
-        <div style="margin-top:auto; padding:20px; background:rgba(0,0,0,0.2); border-radius:16px;">
-            <p style="font-size:10px; color:var(--text-secondary); margin-bottom:8px;">WATCHDOG STATUS</p>
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                <div id="watchdog-light" style="width:6px; height:6px; background:var(--accent-emerald); border-radius:50%;"></div>
-                <span style="font-size:12px; font-weight:700;">ACTIVE</span>
-            </div>
-            <p id="watchdog-last" style="font-size:9px; color:var(--text-secondary);">Last Check: Just now</p>
+        <div style="margin-top:auto; padding:16px; background:rgba(0,0,0,0.2); border-radius:12px;">
+            <p style="font-size:10px; color:var(--text-secondary);">System Status</p>
+            <p style="font-size:11px; font-weight:600; color:var(--accent-emerald);">Running</p>
         </div>
     </aside>
 
     <main class="main-view">
         <div class="header-row">
             <div class="page-title">
-                <p style="font-size:12px; color:var(--accent-emerald); font-weight:800; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Operation: Lead Extraction</p>
-                <h2 style="font-size:28px; font-weight:800;">Command Dashboard</h2>
+                <h2 style="font-size:24px; font-weight:800;">Data Dashboard</h2>
+                <p style="font-size:12px; color:var(--text-secondary);">Manage and explore your collected leads</p>
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
                 <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px;">
-                    <span style="color:var(--text-secondary);">Last Update:</span> <span id="last-update">--:--:--</span>
+                    <span style="color:var(--text-secondary);">Updated:</span> <span id="last-update">--:--:--</span>
                 </div>
             </div>
         </div>
@@ -664,7 +660,7 @@ HTML = """
                 <span class="value" id="stat-email">{{s.email}}</span>
             </div>
             <div class="stat-card">
-                <span class="label">Mission Status</span>
+                <span class="label">Status</span>
                 <span id="live-status" style="font-size:16px; font-weight:800; color:var(--text-secondary);">IDLE</span>
                 <div class="progress-container" id="prog-wrap"><div class="progress-bar" id="prog-bar" style="width:0%"></div></div>
             </div>
@@ -689,34 +685,34 @@ HTML = """
         <div class="content-grid">
             <div class="glass-card">
                 <div class="controls-grid">
-                    <div class="input-group">
-                        <label>Target City</label>
-                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list">
-                    </div>
-                    <div class="input-group">
-                        <label>Category</label>
+<div class="input-group">
+                        <label>Search For</label>
                         <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list">
                     </div>
                     <div class="input-group">
-                        <label>Source Engine</label>
+                        <label>Location</label>
+                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list">
+                    </div>
+                    <div class="input-group">
+                        <label>Data Source</label>
                         <select id="t-source">
-                            <option value="">Auto-Select (Best)</option>
-                            <option value="SITEMAP">Sitemap (High Speed)</option>
-                            <option value="YELLOWPAGES">YellowPages (Stable)</option>
-                            <option value="JUSTDIAL">JustDial (Deep)</option>
-                            <option value="AMFI">AMFI (Financial)</option>
-                            <option value="ICAI">ICAI (CAs)</option>
-                            <option value="GMB">Google Maps (Local)</option>
+                            <option value="">Auto-Select</option>
+                            <option value="SITEMAP">Sitemap</option>
+                            <option value="YELLOWPAGES">YellowPages</option>
+                            <option value="JUSTDIAL">JustDial</option>
+                            <option value="AMFI">AMFI</option>
+                            <option value="ICAI">ICAI</option>
+                            <option value="GMB">Google Maps</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" onclick="triggerScrape()">🚀 Launch</button>
+                    <button class="btn btn-primary" onclick="startCollection()">Start Collection</button>
                 </div>
 
-                <div style="margin-bottom: 32px; display: flex; gap: 12px; flex-wrap: wrap;">
-                    <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">QUICK TEMPLATES:</span>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers (Delhi)</button>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs (Mumbai)</button>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech (Bangalore)</button>
+                <div style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">Quick Filters:</span>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers in Delhi</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs in Mumbai</button>
+                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech in Bangalore</button>
                 </div>
 
                 <div class="table-wrap">
@@ -786,6 +782,7 @@ HTML = """
 
         function changePage(delta) {
             const newPage = currentPage + delta;
+            console.log('Changing page:', currentPage, '->', newPage, 'total:', totalPages);
             if (newPage < 1 || newPage > totalPages) return;
             const url = new URL(window.location);
             url.searchParams.set('page', newPage);
@@ -799,11 +796,11 @@ HTML = """
             window.location.href = url.toString();
         }
 
-        async function triggerScrape() {
+        async function startCollection() {
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
-            if(!city || !cat) return showNotif('⚠️ City and Category required', 2000);
+            if(!city || !cat) return showNotif('Please enter location and search term', 2000);
             
             const res = await fetch('/api/trigger/scrape', {
                 method: 'POST',
@@ -818,7 +815,6 @@ HTML = """
             document.getElementById('t-city').value = city;
             document.getElementById('t-cat').value = cat;
             document.getElementById('t-source').value = src;
-            showNotif(`Template applied: ${cat} in ${city}`);
         }
 
         async function triggerFast() {
@@ -828,17 +824,17 @@ HTML = """
         }
 
         async function cleanup() {
-            showNotif('🧹 Deep cleanup started...');
+            showNotif('Cleaning started...');
             const res = await fetch('/api/cleanup/deep', {method: 'POST'});
             const data = await res.json();
-            showNotif(`✅ Cleaned: ${data.deleted} deleted, ${data.updated} updated`);
+            showNotif(`Done: ${data.deleted} deleted, ${data.updated} updated`);
         }
 
         async function updateQuality() {
-            showNotif('🧪 Quality audit started...');
+            showNotif('Quality audit started...');
             const res = await fetch('/api/cleanup/quality', {method: 'POST'});
             const data = await res.json();
-            showNotif(`✅ Audited ${data.updated} records`);
+            showNotif(`Audited ${data.updated} records`);
         }
 
         function exportData(fmt) {
