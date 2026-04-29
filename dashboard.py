@@ -221,6 +221,28 @@ def init_tables():
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # New: System status table for scraper state
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS system_status (
+                id {id_type},
+                key VARCHAR(100),
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id)
+            )
+        """)
+        
+        # New: Scraper logs table for activity feed
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS scraper_logs (
+                id {id_type},
+                level VARCHAR(20),
+                message TEXT,
+                source VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # Individual column checks for existing tables
         required_columns = {
@@ -371,371 +393,394 @@ elif not DB_INIT_READY:
 
 HTML = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial Services Contact Scraper</title>
+    <title>Maysan Labs | Contact Registry HUD</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-obsidian: #0a0b10;
+            --card-glass: rgba(22, 24, 33, 0.7);
+            --accent-emerald: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --border-glow: rgba(59, 130, 246, 0.2);
+            --danger: #ef4444;
+        }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e4e8; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px 28px; border-radius: 14px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 22px; font-weight: 700; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat { background: #1c1f2e; padding: 20px; border-radius: 12px; border: 1px solid #2d3148; }
-        .stat h3 { color: #8b8fa3; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .stat .val { font-size: 32px; font-weight: 700; color: #fff; }
-        .card { background: #1c1f2e; padding: 24px; border-radius: 12px; border: 1px solid #2d3148; margin-bottom: 24px; }
-        .card h3 { color: #8b8fa3; font-size: 14px; margin-bottom: 12px; }
-        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
-        .btn { padding: 10px 20px; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s; }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        .btn-export { background: #238636; }
-        .btn-scrape { background: #f0883e; }
-        .btn-scrape:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        table { width: 100%; border-collapse: collapse; background: #1c1f2e; border-radius: 12px; overflow: hidden; border: 1px solid #2d3148; }
-        th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid #2d3148; font-size: 14px; }
-        th { background: #161824; font-weight: 600; color: #8b8fa3; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-        td { color: #c9d1d9; }
-        .tag { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        .tag-source { background: rgba(56,139,253,0.15); color: #58a6ff; }
-        .tag-cat { background: rgba(63,185,80,0.15); color: #3fb950; }
-        .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-        .badge-valid { background: rgba(63,185,80,0.15); color: #3fb950; }
-        .badge-invalid { background: rgba(248,81,73,0.15); color: #f85149; }
-        .badge-empty { background: rgba(139,143,163,0.15); color: #8b8fa3; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: #1c1f2e; padding: 16px; border-radius: 10px; border: 1px solid #2d3148; text-align: center; }
-        .stat-card .value { font-size: 24px; font-weight: 700; color: #c9d1d9; }
-        .stat-card .label { font-size: 12px; color: #8b8fa3; text-transform: uppercase; margin-top: 4px; }
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; }
-        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
-        .modal { background: #1c1f2e; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #2d3148; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-header h2 { color: #c9d1d9; margin: 0; }
-        .modal-close { background: none; border: none; color: #8b8fa3; font-size: 24px; cursor: pointer; }
-        .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid #2d3148; }
-        .detail-row:last-child { border-bottom: none; }
-        .detail-label { width: 120px; color: #8b8fa3; font-size: 13px; }
-        .detail-value { color: #c9d1d9; font-size: 14px; }
-        .sort-select, .limit-select { padding: 8px 12px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
-        tr.clickable { cursor: pointer; }
-        tr.clickable:hover { background: rgba(102,126,234,0.1); }
-        .status-card { border: 2px solid #667eea; }
-        .status-idle { color: #3fb950; }
-        .status-running { color: #f0883e; }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: var(--bg-obsidian); 
+            color: var(--text-primary); 
+            min-height: 100vh;
+            padding: 32px;
+            background-image: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+        }
+
+        .hud-container { max-width: 1400px; margin: 0 auto; }
+
+        /* Header HUD */
+        .header { 
+            display: flex; justify-content: space-between; align-items: flex-end;
+            margin-bottom: 40px; padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .brand h1 { font-size: 28px; font-weight: 800; letter-spacing: -1px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .brand p { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; }
+
+        /* Stats Grid */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 40px; }
+        .stat-card { 
+            background: var(--card-glass); padding: 24px; border-radius: 16px; 
+            border: 1px solid rgba(255,255,255,0.05); backdrop-filter: blur(12px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stat-card:hover { border-color: var(--border-glow); transform: translateY(-4px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); }
+        .stat-card .label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; display: block; }
+        .stat-card .value { font-size: 36px; font-weight: 800; display: block; }
+        .stat-card.running { border-color: var(--accent-emerald); background: rgba(16, 185, 129, 0.05); }
+
+        /* Action HUD */
+        .action-bar { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-bottom: 40px; }
+        .glass-card { background: var(--card-glass); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); padding: 24px; backdrop-filter: blur(12px); }
+        
+        .launch-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: flex-end; }
+        .input-group label { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; }
+        .input-group input { 
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); 
+            padding: 12px 16px; border-radius: 8px; color: #fff; font-size: 14px; outline: none; transition: 0.2s;
+        }
+        .input-group input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+
+        .btn { 
+            padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; font-size: 13px;
+            transition: 0.2s; display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase;
+        }
+        .btn-primary { background: var(--accent-blue); color: #fff; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-emerald { background: var(--accent-emerald); color: #fff; }
+        .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); }
+        .btn-outline:hover { border-color: #fff; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Activity Terminal */
+        .terminal { 
+            font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.5); 
+            border-radius: 12px; padding: 20px; height: 260px; overflow-y: auto; 
+            font-size: 12px; line-height: 1.6; border: 1px solid rgba(255,255,255,0.05);
+        }
+        .terminal::-webkit-scrollbar { width: 4px; }
+        .terminal::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .log-entry { margin-bottom: 4px; border-left: 2px solid transparent; padding-left: 10px; }
+        .log-time { color: #4b5563; margin-right: 10px; }
+        .log-src { color: var(--accent-blue); font-weight: 700; margin-right: 10px; }
+        .log-msg.error { color: var(--danger); }
+        .log-msg.success { color: var(--accent-emerald); }
+
+        /* Table Section */
+        .data-hud { margin-top: 40px; }
+        .filters-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
+        .filters-row select { 
+            background: var(--card-glass); border: 1px solid rgba(255,255,255,0.1); 
+            color: var(--text-primary); padding: 8px 12px; border-radius: 8px; outline: none; font-size: 13px;
+        }
+
+        .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); background: var(--card-glass); }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 16px; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; background: rgba(255,255,255,0.02); }
+        td { padding: 16px; font-size: 13px; border-top: 1px solid rgba(255,255,255,0.05); }
+        tr:hover td { background: rgba(255,255,255,0.02); cursor: pointer; }
+
+        .badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .badge-source { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
+        .badge-cat { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
+
+        /* Modal */
+        .modal-overlay { 
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal { background: var(--bg-obsidian); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; width: 100%; max-width: 600px; padding: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
+        .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .detail-label { width: 120px; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }
+
+        .notification { 
+            position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; 
+            border-radius: 12px; background: var(--accent-blue); color: #fff; 
+            font-weight: 700; font-size: 13px; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: none; animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .pulse { animation: pulse 1.5s ease-in-out infinite; }
-        .empty { text-align: center; padding: 60px; color: #8b8fa3; }
-        .empty h2 { font-size: 18px; margin-bottom: 8px; color: #c9d1d9; }
-        .pagination { display: flex; justify-content: center; gap: 8px; margin: 30px 0; align-items: center; }
-        .page-link { padding: 8px 16px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 8px; color: #8b8fa3; text-decoration: none; font-size: 14px; transition: all 0.2s; }
-        .page-link:hover { background: #2d3148; color: #fff; }
-        .page-link.active { background: #667eea; color: #fff; border-color: #667eea; }
-        .page-link.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
-        .page-info { color: #8b8fa3; font-size: 14px; }
-        .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
-        .filters label { font-size: 12px; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.5px; }
-        .filters select { padding: 8px 12px; background: #1c1f2e; border: 1px solid #2d3148; border-radius: 6px; color: #c9d1d9; font-size: 14px; min-width: 140px; cursor: pointer; }
-        .filters select:hover { border-color: #667eea; }
-        .filters .btn-filter { padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
-        .filters .btn-filter:hover { background: #764ba2; }
-        .filters .btn-clear { padding: 8px 16px; background: transparent; color: #8b8fa3; border: 1px solid #2d3148; border-radius: 6px; font-size: 13px; cursor: pointer; }
-        .filters .btn-clear:hover { border-color: #ff7b72; color: #ff7b72; }
-        .filter-stats { margin-left: auto; font-size: 13px; color: #8b8fa3; }
-        .notification { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #238636; color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 2000; animation: slideIn 0.3s ease-out; display: none; font-size: 14px; font-weight: 600; }
-        .notification.error { background: #da3633; }
-        .mode-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-left: 12px; }
-        .mode-local { background: #d29922; color: #000; }
-        .mode-cloud { background: #238636; color: #fff; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .pulse { animation: pulse 2s infinite; }
+
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 32px; align-items: center; }
+        .page-link { padding: 8px 16px; border-radius: 8px; background: var(--card-glass); border: 1px solid rgba(255,255,255,0.05); color: var(--text-secondary); text-decoration: none; font-size: 13px; }
+        .page-link.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+        .page-link.disabled { opacity: 0.3; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div style="display:flex; align-items:center;">
-            <h1>Financial Services Contact Scraper</h1>
-            {% if use_sqlite %}
-            <span class="mode-badge mode-local">Local Mode (SQLite)</span>
-            {% else %}
-            <span class="mode-badge mode-cloud">Cloud Mode (Postgres)</span>
-            {% endif %}
-        </div>
-        <span style="font-size:13px; opacity:0.8;">{{s.total}} contacts collected</span>
-    </div>
+    <div class="hud-container">
+        <header class="header">
+            <div class="brand">
+                <p>Enterprise Scraper HUD v4.0</p>
+                <h1>Contact Registry</h1>
+            </div>
+            <div class="header-actions">
+                <span class="badge {% if use_sqlite %}badge-source{% else %}badge-cat{% endif %}">
+                    {% if use_sqlite %}Local Core (SQLite){% else %}Cloud Cluster (Postgres){% endif %}
+                </span>
+            </div>
+        </header>
 
-    <div class="stats">
-        <div class="stat"><h3>Total Contacts</h3><div class="val">{{s.total}}</div></div>
-        <div class="stat"><h3>Phone Numbers</h3><div class="val">{{s.phone}}</div></div>
-        <div class="stat"><h3>Emails Found</h3><div class="val">{{s.email}}</div></div>
-        <div class="stat status-card">
-            <h3>Live Scraper Status</h3>
-            <div id="live-status" class="val status-idle" style="font-size:16px;">Idle</div>
-            <div id="scrape-progress" style="display:none; margin-top:10px;">
-                <div style="background:#2d3148; height:4px; border-radius:2px; overflow:hidden;">
-                    <div id="progress-bar" style="background:#58a6ff; width:0%; height:100%; transition:width 0.3s;"></div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="label">Total Records</span>
+                <span class="value" id="stat-total">{{s.total}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Verified Phones</span>
+                <span class="value" id="stat-phone" style="color: var(--accent-emerald);">{{s.phone}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Valid Emails</span>
+                <span class="value" id="stat-email" style="color: var(--accent-blue);">{{s.email}}</span>
+            </div>
+            <div class="stat-card" id="status-card">
+                <span class="label">Engine Status</span>
+                <span class="value" id="live-status" style="font-size: 18px; color: var(--text-secondary);">Idle</span>
+                <div id="progress-wrap" style="display:none; margin-top:10px; background: rgba(255,255,255,0.05); height: 4px; border-radius: 2px; overflow: hidden;">
+                    <div id="progress-bar" style="background: var(--accent-emerald); width: 0%; height: 100%; transition: width 0.4s;"></div>
                 </div>
             </div>
-            <div id="skipped-status" style="font-size:11px; margin-top:5px; color:#8b8fa3;"></div>
         </div>
-    </div>
 
-    <!-- NEW: Trigger Section -->
-    <div class="card" style="margin-bottom:24px; border-left: 4px solid #f0883e; background: rgba(240, 136, 62, 0.05);">
-        <h3 style="color:#c9d1d9; font-size:16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
-            <span style="font-size:20px;">🚀</span> Launch New Scraper Task
-        </h3>
-        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
-            <div style="flex:1; min-width:200px;">
-                <label style="font-size:11px; color:#8b8fa3; text-transform:uppercase; letter-spacing:0.5px;">City Name</label><br>
-                <input type="text" id="trigger-city" list="cities-list" placeholder="Type city (e.g. Mumbai, Bangalore...)" style="width:100%; padding:10px 14px; background:#0d1117; border:1px solid #2d3148; border-radius:8px; color:#fff; margin-top:4px; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#f0883e'" onblur="this.style.borderColor='#2d3148'">
-                <datalist id="cities-list">
-                    {% for c in cities_default %}<option value="{{c}}">{% endfor %}
-                </datalist>
+        <div class="action-bar">
+            <div class="glass-card">
+                <div class="launch-grid">
+                    <div class="input-group">
+                        <label>Target City</label>
+                        <input type="text" id="trigger-city" list="cities-list" placeholder="e.g. Mumbai">
+                        <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
+                    </div>
+                    <div class="input-group">
+                        <label>Business Category</label>
+                        <input type="text" id="trigger-category" list="cats-list" placeholder="e.g. Lawyers">
+                        <datalist id="cats-list">{% for cat in categories_default %}<option value="{{cat}}">{% endfor %}</datalist>
+                    </div>
+                    <button class="btn btn-primary" id="launch-btn" onclick="triggerTask()">
+                        <span>🚀</span> Launch Task
+                    </button>
+                </div>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-emerald" onclick="triggerFast()">⚡ Fast Drain</button>
+                    <button class="btn btn-outline" onclick="exportData('csv')">📥 Export CSV</button>
+                    <button class="btn btn-outline" onclick="cleanup()">🧹 Maintenance</button>
+                </div>
             </div>
-            <div style="flex:1; min-width:200px;">
-                <label style="font-size:11px; color:#8b8fa3; text-transform:uppercase; letter-spacing:0.5px;">Business Category</label><br>
-                <input type="text" id="trigger-category" list="cats-list" placeholder="Type category (e.g. CA, Banks...)" style="width:100%; padding:10px 14px; background:#0d1117; border:1px solid #2d3148; border-radius:8px; color:#fff; margin-top:4px; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#f0883e'" onblur="this.style.borderColor='#2d3148'">
-                <datalist id="cats-list">
-                    {% for cat in categories_default %}<option value="{{cat}}">{% endfor %}
-                </datalist>
+
+            <div class="glass-card">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 12px;">
+                    <span style="font-size:10px; text-transform:uppercase; color:var(--text-secondary); letter-spacing:1px;">Activity Feed</span>
+                    <span id="log-count" style="font-size:10px; color:var(--accent-emerald);">0 events</span>
+                </div>
+                <div class="terminal" id="activity-log">
+                    <div style="color: #4b5563;">[SYS] HUD Initialized. Awaiting telemetry...</div>
+                </div>
             </div>
-            <button class="btn btn-scrape" id="scrape-btn-primary" onclick="startScraperPool()" style="padding:10px 24px; height:42px; display:flex; align-items:center; gap:8px;">
-                Launch Task
-            </button>
         </div>
-        <p style="font-size:11px; color:#8b8fa3; margin-top:12px; opacity:0.7;">This will start a deep automated search across multiple sources (YellowPages, JustDial, Google, and official registers) for the specified target.</p>
+
+        <div class="data-hud">
+            <div class="filters-row">
+                <input type="text" id="f-q" placeholder="Quick Search..." value="{{search_query}}" class="input-group" style="padding:8px 16px; background:var(--card-glass); border:1px solid rgba(255,255,255,0.05); border-radius:8px; color:#fff; width: 240px;">
+                <select id="f-city" onchange="refresh()">
+                    <option value="">All Cities</option>
+                    {% for c in cities %}<option value="{{c}}" {% if selected_city==c %}selected{% endif %}>{{c}}</option>{% endfor %}
+                </select>
+                <select id="f-cat" onchange="refresh()">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}<option value="{{cat}}" {% if selected_category==cat %}selected{% endif %}>{{cat}}</option>{% endfor %}
+                </select>
+                <select id="f-sort" onchange="refresh()">
+                    <option value="date" {% if sort_by=='date' %}selected{% endif %}>Newest First</option>
+                    <option value="name" {% if sort_by=='name' %}selected{% endif %}>Alphabetical</option>
+                </select>
+                <button class="btn btn-outline" style="padding: 8px 16px;" onclick="refresh()">Apply</button>
+                <button class="btn btn-outline" style="padding: 8px 16px; border-color: rgba(239, 68, 68, 0.2); color: var(--danger);" onclick="window.location.href='/'">Reset</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Contact Name</th>
+                            <th>Identity / Status</th>
+                            <th>Location</th>
+                            <th>Source Cluster</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in contacts %}
+                        <tr onclick="showDetails({{c.id}})">
+                            <td style="font-weight: 700;">{{c.name or 'Unknown Entity'}}</td>
+                            <td>
+                                <div style="font-size:11px; opacity:0.8;">{{c.phone or '-'}}</div>
+                                <div style="font-size:11px; color: var(--accent-blue);">{{c.email or '-'}}</div>
+                            </td>
+                            <td>{{c.city or '-'}}</td>
+                            <td><span class="badge badge-source">{{c.source or 'GENERIC'}}</span></td>
+                            <td><span class="badge badge-cat">{{c.category or 'LEAD'}}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if not contacts %}
+                <div style="padding: 60px; text-align: center; color: var(--text-secondary);">
+                    <p>No records found matching current telemetry filters.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                <a href="?page=1" class="page-link {% if page==1 %}disabled{% endif %}">«</a>
+                <a href="?page={{page-1}}" class="page-link {% if page==1 %}disabled{% endif %}">‹</a>
+                <span style="color:var(--text-secondary); font-size:12px;">{{page}} / {{total_pages}}</span>
+                <a href="?page={{page+1}}" class="page-link {% if page==total_pages %}disabled{% endif %}">›</a>
+                <a href="?page={{total_pages}}" class="page-link {% if page==total_pages %}disabled{% endif %}">»</a>
+            </div>
+            {% endif %}
+        </div>
     </div>
 
-    <!-- NEW: Activity Log Section -->
-    <div class="card" style="margin-bottom:20px; border-left: 4px solid #58a6ff;">
-        <h3 style="display:flex; justify-content:space-between; align-items:center;">
-            <span>📋 Scraper Activity Log</span>
-            <span id="log-count" style="font-size:12px; font-weight:normal; background:#2d3148; padding:2px 8px; border-radius:10px;">0 events</span>
-        </h3>
-        <div id="activity-log" style="height:200px; overflow-y:auto; background:#0d1117; border-radius:8px; padding:15px; font-family:monospace; font-size:13px; line-height:1.6;">
-            <div style="color:#8b8fa3;">Waiting for scraper activity...</div>
+    <div class="modal-overlay" id="modal" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="m-title">Record Details</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="m-body"></div>
         </div>
     </div>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="value">{{s.filtered_total}}</div>
-            <div class="label">Filtered Results</div>
-        </div>
-        <div class="stat-card">
-            <div class="value">{{s.quality_high}}</div>
-            <div class="label" style="color:#3fb950;">High Quality</div>
-        </div>
-        <div class="stat-card">
-            <div class="value">{{s.quality_medium}}</div>
-            <div class="label" style="color:#d29922;">Medium Quality</div>
-        </div>
-        <div class="stat-card">
-            <div class="value">{{s.quality_low}}</div>
-            <div class="label" style="color:#f85149;">Low Quality</div>
-        </div>
-        <div class="stat-card">
-            <div class="value">{{s.avg_quality}}</div>
-            <div class="label">Avg Quality Score</div>
-        </div>
-    </div>
-
-    <div class="card">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;">
-            <div><h3>By Source</h3><canvas id="c1"></canvas></div>
-            <div><h3>By Category</h3><canvas id="c2"></canvas></div>
-        </div>
-    </div>
-
-    <div class="actions">
-        <button class="btn btn-export" onclick="exportWithFilters('csv')">📥 Export CSV</button>
-        <button class="btn btn-scrape" id="scrape-btn" onclick="startScraperPool()">🚀 Start Business Scraper</button>
-        <button class="btn" style="background:#238636;" onclick="startFastScrape()">⚡ Fast Scrape (Parallel)</button>
-        <button class="btn" style="background:#8250df;" onclick="window.location.href='/logs'">📂 Raw HTML Logs</button>
-        <button class="btn" style="background:#da3633;" onclick="cleanupEmpty()">🧹 Basic Clean</button>
-        <button class="btn" style="background:#9e1c1c;" onclick="deepCleanDB()">🧨 Deep Clean DB</button>
-    </div>
-
-    <div id="notification" class="notification"></div>
+    <div class="notification" id="notif"></div>
 
     <script>
-        function showNotification(msg, isError = false) {
-            const el = document.getElementById('notification');
+        function notify(msg, err=false) {
+            const el = document.getElementById('notif');
             el.innerText = msg;
+            el.style.background = err ? 'var(--danger)' : 'var(--accent-blue)';
             el.style.display = 'block';
-            if (isError) el.classList.add('error');
-            else el.classList.remove('error');
-            setTimeout(() => { el.style.display = 'none'; }, 4000);
+            setTimeout(() => el.style.display = 'none', 4000);
         }
-        // Update SSE logic to handle status and stats
-        const source = new EventSource('/api/stream/stats');
-        source.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            
-            // Update quick stats
-            const stats = document.querySelectorAll('.stat .val');
-            if (stats.length >= 3) {
-                stats[0].innerText = data.total;
-                stats[1].innerText = data.with_phone;
-                stats[2].innerText = data.with_email;
-            }
 
-            // Update status card
+        const evtSource = new EventSource('/api/stream/stats');
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            document.getElementById('stat-total').innerText = data.total;
+            document.getElementById('stat-phone').innerText = data.with_phone;
+            document.getElementById('stat-email').innerText = data.with_email;
+
+            const status = data.scraper_status || {};
             const statusEl = document.getElementById('live-status');
-            const progressContainer = document.getElementById('scrape-progress');
+            const statusCard = document.getElementById('status-card');
+            const progressWrap = document.getElementById('progress-wrap');
             const progressBar = document.getElementById('progress-bar');
-            const skippedEl = document.getElementById('skipped-status');
-            const statusData = data.scraper_status || {};
-            
-            if (statusData.running) {
-                let msg = statusData.message || 'Scraping...';
-                statusEl.innerHTML = msg;
-                statusEl.className = 'val status-running pulse';
-                
-                if (statusData.stats) {
-                    const s = statusData.stats;
-                    if (s.page && s.total_pages) {
-                        const pct = Math.round((s.page / s.total_pages) * 100);
-                        progressContainer.style.display = 'block';
-                        progressBar.style.width = pct + '%';
-                    }
-                    if (s.source) {
-                        skippedEl.innerText = `Source: ${s.source} | ${s.leads || 0} found`;
-                    }
-                }
-                
-                if(document.getElementById('scrape-btn')) {
-                    document.getElementById('scrape-btn').disabled = true;
-                    document.getElementById('scrape-btn').innerText = '🚧 Working...';
-                }
-                if(document.getElementById('scrape-btn-primary')) {
-                    document.getElementById('scrape-btn-primary').disabled = true;
-                    document.getElementById('scrape-btn-primary').innerText = '🚧 Working...';
+
+            if (status.running) {
+                statusEl.innerText = status.message || 'Scraping...';
+                statusEl.style.color = 'var(--accent-emerald)';
+                statusCard.classList.add('running', 'pulse');
+                if (status.stats && status.stats.page) {
+                    progressWrap.style.display = 'block';
+                    const pct = (status.stats.page / (status.stats.total_pages || 10)) * 100;
+                    progressBar.style.width = pct + '%';
                 }
             } else {
                 statusEl.innerText = 'Idle';
-                statusEl.className = 'val status-idle';
-                progressContainer.style.display = 'none';
-                skippedEl.innerText = '';
-                if(document.getElementById('scrape-btn')){
-                    document.getElementById('scrape-btn').disabled = false;
-                    document.getElementById('scrape-btn').innerText = '🚀 Start Business Scraper';
-                }
-                if(document.getElementById('scrape-btn-primary')){
-                    document.getElementById('scrape-btn-primary').disabled = false;
-                    document.getElementById('scrape-btn-primary').innerText = '🚀 Launch Task';
-                }
+                statusEl.style.color = 'var(--text-secondary)';
+                statusCard.classList.remove('running', 'pulse');
+                progressWrap.style.display = 'none';
             }
 
-            // Update Activity Log
-            if (data.activity_logs && data.activity_logs.length > 0) {
-                const logContainer = document.getElementById('activity-log');
-                const logCount = document.getElementById('log-count');
-                if(logCount) logCount.innerText = data.activity_logs.length + ' events';
-                
-                let html = '';
-                data.activity_logs.forEach(log => {
-                    const color = log.level === 'ERROR' ? '#f85149' : (log.level === 'SUCCESS' ? '#3fb950' : '#8b8fa3');
-                    html += `<div style="margin-bottom:4px;"><span style="color:#484f58;">[${log.time}]</span> <span style="color:#58a6ff; font-weight:bold;">${log.source || 'SYS'}</span> <span style="color:${color};">${log.message}</span></div>`;
-                });
-                if(logContainer) logContainer.innerHTML = html;
+            if (data.activity_logs) {
+                const logEl = document.getElementById('activity-log');
+                document.getElementById('log-count').innerText = data.activity_logs.length + ' events';
+                logEl.innerHTML = data.activity_logs.map(l => `
+                    <div class="log-entry">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-src">[${l.source || 'SYS'}]</span>
+                        <span class="log-msg ${l.level.toLowerCase()}">${l.message}</span>
+                    </div>
+                `).join('');
             }
         };
-        function startScraperPool() {
-            const manualCity = document.getElementById('trigger-city')?.value?.trim();
-            const manualCat = document.getElementById('trigger-category')?.value?.trim();
-            const filterCity = document.getElementById('filter-city')?.value?.trim();
-            const filterCat = document.getElementById('filter-category')?.value?.trim();
-            
-            // Prioritize manual input, fallback to selected filters
-            const city = manualCity || filterCity;
-            const cat = manualCat || filterCat;
-            
-            if (!city && !cat) {
-                // If both are empty, we'll let it trigger a batch/fast scrape
-                showNotification(`No specific targets selected. Launching batch extraction...`);
-            } else if (!city || !cat) {
-                const missing = [];
-                if (!city) missing.push("City");
-                if (!cat) missing.push("Category");
-                showNotification(`Missing target: Please ${manualCity === undefined ? 'select' : 'enter or select'} a ${missing.join(" and ")} first!`, true);
-                return;
-            }
 
-            const btnPrimary = document.getElementById('scrape-btn-primary');
-            const btnSecondary = document.getElementById('scrape-btn');
-            if(btnPrimary) { btnPrimary.disabled = true; btnPrimary.innerText = '🚧 Launching...'; }
-            if(btnSecondary) { btnSecondary.disabled = true; btnSecondary.innerText = '🚧 Working...'; }
-
-            const targetLabel = city && cat ? `${cat} in ${city}` : 'all configured targets';
-            showNotification(`Starting scrape for ${targetLabel}...`);
+        function triggerTask() {
+            const city = document.getElementById('trigger-city').value;
+            const cat = document.getElementById('trigger-category').value;
+            if(!city || !cat) return notify('Select City and Category', true);
+            
+            notify('Initializing engine...');
             fetch('/api/trigger/scrape', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({city: city, category: cat, use_business: false})
-            }).then(r=>r.json()).then(d=>{
-                showNotification(d.message || d.error, !!d.error);
-                if(d.error) {
-                    if(btnPrimary) { btnPrimary.disabled = false; btnPrimary.innerText = '🚀 Launch Task'; }
-                    if(btnSecondary) { btnSecondary.disabled = false; btnSecondary.innerText = '🚀 Start Business Scraper'; }
-                }
-            }).catch(err => {
-                showNotification("Failed to trigger: " + err, true);
-                if(btnPrimary) { btnPrimary.disabled = false; btnPrimary.innerText = '🚀 Launch Task'; }
-                if(btnSecondary) { btnSecondary.disabled = false; btnSecondary.innerText = '🚀 Start Business Scraper'; }
-            });
+                body: JSON.stringify({city, category: cat})
+            }).then(r=>r.json()).then(d => notify(d.message || d.error, !!d.error));
         }
 
-        function startFastScrape(){
-            const btn = document.getElementById('scrape-btn');
-            const fastBtn = document.querySelector('button[onclick="startFastScrape()"]');
-            fastBtn.disabled = true;
-            fastBtn.innerText = '⏳ Running...';
+        function triggerFast() {
+            notify('Initializing parallel cluster...');
+            fetch('/api/trigger/fast-scrape', {method:'POST'}).then(r=>r.json()).then(d => notify(d.message));
+        }
+
+        function refresh() {
+            const q = document.getElementById('f-q').value;
+            const city = document.getElementById('f-city').value;
+            const cat = document.getElementById('f-cat').value;
+            const sort = document.getElementById('f-sort').value;
             
-            fetch('/api/trigger/fast-scrape', {method: 'POST'}).then(r=>r.json()).then(d=>{
-                showNotification(d.message || d.error);
-                fastBtn.innerText = '⚡ Fast Scrape';
-                fastBtn.disabled = false;
-            }).catch(()=>{ 
-                fastBtn.innerText = '⚡ Fast Scrape';
-                fastBtn.disabled = false;
+            let p = new URLSearchParams();
+            if(q) p.set('q', q);
+            if(city) p.set('city', city);
+            if(cat) p.set('category', cat);
+            if(sort) p.set('sort', sort);
+            window.location.href = '?' + p.toString();
+        }
+
+        function showDetails(id) {
+            fetch('/api/contact/' + id).then(r=>r.json()).then(c => {
+                document.getElementById('m-title').innerText = c.name || 'Entity Details';
+                document.getElementById('m-body').innerHTML = `
+                    <div class="detail-row"><span class="detail-label">Identity</span><span style="font-weight:700;">${c.name}</span></div>
+                    <div class="detail-row"><span class="detail-label">Contact</span><span>${c.phone || '-'}<br>${c.email || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Location</span><span>${c.city || '-'}, ${c.area || '-'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Registry</span><span>${c.source} | ${c.category}</span></div>
+                    <div class="detail-row"><span class="detail-label">Quality</span><span>Tier: ${c.quality_tier} | Score: ${c.quality_score}</span></div>
+                    <div class="detail-row"><span class="detail-label">Scraped</span><span>${c.scraped_at}</span></div>
+                `;
+                document.getElementById('modal').classList.add('active');
             });
         }
 
-        function deepCleanDB() {
-            if (!confirm("⚠️ CAUTION: Deep Clean will permanently delete all records with invalid phone AND email data. Proceed?")) return;
-            
-            showNotification("🔍 Deep cleaning database... this may take a moment.");
-            fetch('/api/cleanup/deep', {method: 'POST'})
-                .then(r=>r.json())
-                .then(d=>{
-                    if (d.success) {
-                        showNotification(`✅ Success! Deleted ${d.deleted} junk records and updated ${d.updated} legacy rows.`);
-                        setTimeout(() => window.location.reload(), 2000);
-                    } else {
-                        showNotification("❌ Cleanup failed: " + d.error, true);
-                    }
-                });
-        }
-
-        function cleanupEmpty(){
-            if(confirm('Delete all contacts with no phone AND no email? This cannot be undone.')){
-                fetch('/api/cleanup/empty', {method: 'DELETE'}).then(r=>r.json()).then(d=>{
-                    showNotification(d.message || d.error);
-                    if(d.success) setTimeout(() => location.reload(), 2000);
-                });
-            }
-        }
-
-        function updateQuality(){
-            fetch('/api/cleanup/quality', {method: 'POST'}).then(r=>r.json()).then(d=>{
-                showNotification(d.message || d.error);
-                if(d.success) setTimeout(() => location.reload(), 2000);
-            });
-        }
+        function closeModal() { document.getElementById('modal').classList.remove('active'); }
+        function exportData(fmt) { window.location.href = '/export/' + fmt; }
+        function cleanup() { if(confirm('Delete empty records?')) fetch('/api/cleanup/empty', {method:'DELETE'}).then(()=>location.reload()); }
     </script>
+</body>
+</html>
+"""
 
     <div class="filters">
         <div>
@@ -1066,27 +1111,31 @@ def index():
         }
         order_by = sort_map.get(sort_by, "scraped_at DESC")
 
-        # Build WHERE clause for filters (case-insensitive)
+        like_op = "LIKE" if USE_SQLITE else "ILIKE"
+        
+        # Build WHERE clause for filters
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append("(name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)")
+            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
             search_pattern = f"%{search_query}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         if selected_city:
-            where_clauses.append("city ILIKE %s")
+            where_clauses.append(f"city {like_op} %s")
             params.append(selected_city)
         if selected_category:
-            where_clauses.append("category ILIKE %s")
+            where_clauses.append(f"category {like_op} %s")
             params.append(selected_category)
         if selected_source:
-            where_clauses.append("source ILIKE %s")
+            where_clauses.append(f"source {like_op} %s")
             params.append(selected_source)
         if selected_quality:
             where_clauses.append("(quality_tier = %s OR quality_tier IS NULL)")
             params.append(selected_quality)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        if USE_SQLITE:
+            where_sql = where_sql.replace("%s", "?")
 
         # Get total count (unfiltered)
         cur.execute("SELECT COUNT(*) as cnt FROM contacts")
@@ -1105,41 +1154,56 @@ def index():
             page = 1
         offset = (page - 1) * limit
 
+        placeholder = "?" if USE_SQLITE else "%s"
         cur.execute(
-            f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s",
+            f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {placeholder} OFFSET {placeholder}",
             params + [limit, offset],
         )
         contacts = cur.fetchall()
 
+        placeholder = "?" if USE_SQLITE else "%s"
         # Get unique values for filter dropdowns (CACHED)
         cities = get_cached_filter(
             "cities",
-            "SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> %s ORDER BY city",
+            f"SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> {placeholder} ORDER BY city",
             cur
         )
         categories = get_cached_filter(
             "categories",
-            "SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> %s ORDER BY category",
+            f"SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> {placeholder} ORDER BY category",
             cur
         )
         sources = get_cached_filter(
             "sources",
-            "SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> %s ORDER BY source",
+            f"SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> {placeholder} ORDER BY source",
             cur
         )
 
-        # Optimized Stats: Combine all 7+ counts into a single efficient database pass
-        cur.execute("""
-            SELECT 
-                COUNT(*) FILTER (WHERE phone_clean IS NOT NULL AND phone_clean <> '') as with_phone,
-                COUNT(*) FILTER (WHERE email IS NOT NULL AND email <> '') as with_email,
-                COUNT(DISTINCT city) as city_count,
-                COUNT(*) FILTER (WHERE quality_tier = 'high') as q_high,
-                COUNT(*) FILTER (WHERE quality_tier = 'medium') as q_medium,
-                COUNT(*) FILTER (WHERE quality_tier = 'low') as q_low,
-                AVG(quality_score) as avg_score
-            FROM contacts
-        """)
+        # Optimized Stats: Combine all counts into a single pass (Postgres vs SQLite)
+        if USE_SQLITE:
+            cur.execute("""
+                SELECT 
+                    SUM(CASE WHEN phone_clean IS NOT NULL AND phone_clean <> '' THEN 1 ELSE 0 END) as with_phone,
+                    SUM(CASE WHEN email IS NOT NULL AND email <> '' THEN 1 ELSE 0 END) as with_email,
+                    COUNT(DISTINCT city) as city_count,
+                    SUM(CASE WHEN LOWER(quality_tier) = 'high' THEN 1 ELSE 0 END) as q_high,
+                    SUM(CASE WHEN LOWER(quality_tier) = 'medium' THEN 1 ELSE 0 END) as q_medium,
+                    SUM(CASE WHEN LOWER(quality_tier) = 'low' THEN 1 ELSE 0 END) as q_low,
+                    AVG(quality_score) as avg_score
+                FROM contacts
+            """)
+        else:
+            cur.execute("""
+                SELECT 
+                    COUNT(*) FILTER (WHERE phone_clean IS NOT NULL AND phone_clean <> '') as with_phone,
+                    COUNT(*) FILTER (WHERE email IS NOT NULL AND email <> '') as with_email,
+                    COUNT(DISTINCT city) as city_count,
+                    COUNT(*) FILTER (WHERE LOWER(quality_tier) = 'high') as q_high,
+                    COUNT(*) FILTER (WHERE LOWER(quality_tier) = 'medium') as q_medium,
+                    COUNT(*) FILTER (WHERE LOWER(quality_tier) = 'low') as q_low,
+                    AVG(quality_score) as avg_score
+                FROM contacts
+            """)
         stats_row = cur.fetchone()
         with_phone = stats_row["with_phone"]
         with_email = stats_row["with_email"]
@@ -1502,6 +1566,11 @@ def export(fmt):
 
         conn = get_db()
         cur = conn.cursor()
+        
+        if USE_SQLITE:
+            where_sql = where_sql.replace("ILIKE", "LIKE")
+            where_sql = where_sql.replace("%s", "?")
+            
         cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
         rows = cur.fetchall()
         cur.close()
@@ -1638,14 +1707,15 @@ def cleanup_low_quality():
                 processed = ProcessingHandler.process_contact(dict(contact))
 
                 # Update quality fields
+                placeholder = "?" if USE_SQLITE else "%s"
                 cur.execute(
-                    """
+                    f"""
                     UPDATE contacts 
-                    SET phone_clean = %s, 
-                        email_valid = %s, 
-                        quality_score = %s, 
-                        quality_tier = %s
-                    WHERE id = %s
+                    SET phone_clean = {placeholder}, 
+                        email_valid = {placeholder}, 
+                        quality_score = {placeholder}, 
+                        quality_tier = {placeholder}
+                    WHERE id = {placeholder}
                 """,
                     (
                         processed.get("phone_clean"),
@@ -1694,14 +1764,15 @@ def stream_stats():
                 cur.execute("SELECT COUNT(*) as cnt FROM contacts")
                 total = cur.fetchone()["cnt"]
 
+                placeholder = "?" if USE_SQLITE else "%s"
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s",
+                    f"SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> {placeholder}",
                     ("",),
                 )
                 with_phone = cur.fetchone()["cnt"]
 
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s",
+                    f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}",
                     ("",),
                 )
                 with_email = cur.fetchone()["cnt"]
@@ -1781,18 +1852,19 @@ def get_stats():
     try:
         conn = get_db()
         cur = conn.cursor()
-
+        
         cur.execute("SELECT COUNT(*) as cnt FROM contacts")
         total = cur.fetchone()["cnt"]
-
+        
+        placeholder = "?" if USE_SQLITE else "%s"
         cur.execute(
-            "SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s",
+            f"SELECT COUNT(*) as cnt FROM contacts WHERE phone_clean IS NOT NULL AND phone_clean <> {placeholder}",
             ("",),
         )
         with_phone = cur.fetchone()["cnt"]
-
+        
         cur.execute(
-            "SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s",
+            f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}",
             ("",),
         )
         with_email = cur.fetchone()["cnt"]

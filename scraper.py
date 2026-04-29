@@ -2421,9 +2421,15 @@ class ContactScraper:
                 arn TEXT,
                 license_no TEXT,
                 membership_no TEXT,
+                quality_score INTEGER DEFAULT 0,
+                quality_tier TEXT DEFAULT 'low',
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone_clean_unique ON contacts(phone_clean) WHERE phone_clean IS NOT NULL")
         self.sqlite_conn.commit()
 
     async def init_browser(
@@ -3010,10 +3016,19 @@ class ContactScraper:
         if hasattr(self, "use_sqlite") and self.use_sqlite:
             cursor = self.sqlite_conn.cursor()
             for l in valid_listings:
+                # SQLite UPSERT (requires 3.24.0+)
                 cursor.execute(
                     """
-                    INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO contacts (
+                        name, phone, email, address, category, city, area, state, 
+                        source, source_url, phone_clean, email_valid, enriched, 
+                        arn, license_no, membership_no, quality_score, quality_tier
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(phone_clean) WHERE phone_clean IS NOT NULL
+                    DO UPDATE SET
+                        scraped_at = excluded.scraped_at,
+                        source = CASE WHEN excluded.quality_score > contacts.quality_score THEN excluded.source ELSE contacts.source END
                 """,
                     (
                         l.get("name"),
@@ -3032,6 +3047,8 @@ class ContactScraper:
                         l.get("arn"),
                         l.get("license_no"),
                         l.get("membership_no"),
+                        l.get("quality_score", 0),
+                        l.get("quality_tier", "low"),
                     ),
                 )
             self.sqlite_conn.commit()
@@ -3087,18 +3104,28 @@ class ContactScraper:
     async def export_to_csv(self, source: Optional[str] = None):
         os.makedirs(self.config.csv_output_dir, exist_ok=True)
 
-        async with self.pool.acquire() as conn:
+        if hasattr(self, "use_sqlite") and self.use_sqlite:
+            cursor = self.sqlite_conn.cursor()
             if source:
-                rows = await conn.fetch(
-                    """
-                    SELECT * FROM contacts WHERE source = $1 ORDER BY scraped_at DESC
-                """,
-                    source,
+                cursor.execute(
+                    "SELECT * FROM contacts WHERE source = ? ORDER BY scraped_at DESC",
+                    (source,),
                 )
             else:
-                rows = await conn.fetch(
-                    "SELECT * FROM contacts ORDER BY scraped_at DESC"
-                )
+                cursor.execute("SELECT * FROM contacts ORDER BY scraped_at DESC")
+            rows = [dict(r) for r in cursor.fetchall()]
+        else:
+            async with self.pool.acquire() as conn:
+                if source:
+                    rows = await conn.fetch(
+                        "SELECT * FROM contacts WHERE source = $1 ORDER BY scraped_at DESC",
+                        source,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        "SELECT * FROM contacts ORDER BY scraped_at DESC"
+                    )
+                rows = [dict(r) for r in rows]
 
             if not rows:
                 logger.warning("No data to export")
