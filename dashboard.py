@@ -8,7 +8,8 @@ import os
 import logging
 import json
 import time
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 from openpyxl import Workbook
 from pathlib import Path
 import sqlite3
@@ -70,6 +71,79 @@ except Exception:
 # DB Globals
 USE_SQLITE = False
 DB_INIT_READY = os.environ.get("DASHBOARD_DB_BOOTSTRAPPED") == "1"
+
+# --- Watchdog System ---
+class ScraperWatchdog(threading.Thread):
+    """
+    Idle-detection watchdog to monitor and reset stalled scraping processes.
+    """
+    def __init__(self, check_interval=60):
+        super().__init__(daemon=True)
+        self.check_interval = check_interval
+        self.logger = logging.getLogger("watchdog")
+
+    def run(self):
+        self.logger.info("Watchdog active: Monitoring for idle stalls...")
+        while True:
+            try:
+                self.check_status()
+            except Exception as e:
+                self.logger.error(f"Watchdog error: {e}")
+            time.sleep(self.check_interval)
+
+    def check_status(self):
+        conn = None
+        try:
+            conn = _connect_db()
+            cur = conn.cursor()
+            placeholder = "?" if USE_SQLITE else "%s"
+            
+            # 1. Get current status
+            cur.execute(f"SELECT value, updated_at FROM system_status WHERE key = {placeholder}", ("scraper_status",))
+            row = cur.fetchone()
+            if not row: return
+
+            status = json.loads(row["value"])
+            updated_at = row["updated_at"]
+            
+            # 2. If marked as running, check last log activity
+            if status.get("running"):
+                # If no update in 10 mins, it's likely stalled
+                if datetime.now() - updated_at > timedelta(minutes=10):
+                    self.logger.warning("Detected stalled scraper process. Resetting to IDLE.")
+                    
+                    idle_status = {"message": "Idle (Auto-Reset)", "running": False, "time": datetime.now().strftime("%H:%M:%S")}
+                    val_json = json.dumps(idle_status)
+                    
+                    if USE_SQLITE:
+                        cur.execute("INSERT OR REPLACE INTO system_status (id, key, value, updated_at) VALUES (1, 'scraper_status', ?, ?)", 
+                                   (val_json, datetime.now()))
+                        cur.execute("INSERT INTO scraper_logs (level, message, source, created_at) VALUES (?, ?, ?, ?)", 
+                                   ("WARNING", "Watchdog: Process stalled and was auto-reset.", "WATCHDOG", datetime.now()))
+                    else:
+                        cur.execute("""
+                            INSERT INTO system_status (id, key, value, updated_at) 
+                            VALUES (1, 'scraper_status', %s, NOW())
+                            ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                        """, (val_json,))
+                        cur.execute("INSERT INTO scraper_logs (level, message, source, created_at) VALUES (%s, %s, %s, NOW())", 
+                                   ("WARNING", "Watchdog: Process stalled and was auto-reset.", "WATCHDOG"))
+                    
+                    conn.commit()
+                    if redis_client:
+                        redis_client.set("scraper_status", val_json, ex=3600)
+            
+            cur.close()
+            conn.close()
+        except Exception as e:
+            if conn: conn.close()
+            self.logger.error(f"Status check failed: {e}")
+
+# Start Watchdog
+watchdog = ScraperWatchdog()
+watchdog.start()
+
+
 DB_INIT_IN_PROGRESS = False
 DB_INIT_LAST_ATTEMPT = 0.0
 DB_INIT_LAST_ERROR = None
@@ -397,20 +471,20 @@ HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maysan Labs | Contact Registry HUD</title>
+    <title>Aurora Obsidian | Registry HUD</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-obsidian: #0a0b10;
-            --card-glass: rgba(22, 24, 33, 0.7);
+            --bg-obsidian: #08090d;
+            --card-glass: rgba(13, 14, 21, 0.8);
             --accent-emerald: #10b981;
             --accent-blue: #3b82f6;
-            --accent-purple: #8b5cf6;
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
-            --border-glow: rgba(59, 130, 246, 0.2);
-            --danger: #ef4444;
+            --accent-red: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #64748b;
+            --border-muted: rgba(255,255,255,0.05);
+            --border-glow: rgba(16, 185, 129, 0.3);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -419,665 +493,344 @@ HTML = """
             background: var(--bg-obsidian); 
             color: var(--text-primary); 
             min-height: 100vh;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            background-image: radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: rgba(0,0,0,0.3);
+            border-right: 1px solid var(--border-muted);
             padding: 32px;
-            background-image: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
         }
+        .brand-box p { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: var(--accent-emerald); font-weight: 800; margin-bottom: 4px; }
+        .brand-box h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
 
-        .hud-container { max-width: 1400px; margin: 0 auto; }
-
-        /* Header HUD */
-        .header { 
-            display: flex; justify-content: space-between; align-items: flex-end;
-            margin-bottom: 40px; padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+        .nav-group { display: flex; flex-direction: column; gap: 8px; }
+        .nav-label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; }
+        .nav-item { 
+            padding: 12px 16px; border-radius: 12px; color: var(--text-secondary); 
+            text-decoration: none; font-size: 14px; font-weight: 600; transition: 0.2s;
+            display: flex; align-items: center; gap: 12px;
         }
-        .brand h1 { font-size: 28px; font-weight: 800; letter-spacing: -1px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .brand p { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; }
+        .nav-item:hover { background: rgba(255,255,255,0.03); color: #fff; }
+        .nav-item.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
 
-        /* Stats Grid */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 40px; }
-        .stat-card { 
-            background: var(--card-glass); padding: 24px; border-radius: 16px; 
-            border: 1px solid rgba(255,255,255,0.05); backdrop-filter: blur(12px);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .stat-card:hover { border-color: var(--border-glow); transform: translateY(-4px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); }
-        .stat-card .label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; display: block; }
-        .stat-card .value { font-size: 36px; font-weight: 800; display: block; }
-        .stat-card.running { border-color: var(--accent-emerald); background: rgba(16, 185, 129, 0.05); }
-
-        /* Action HUD */
-        .action-bar { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-bottom: 40px; }
-        .glass-card { background: var(--card-glass); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); padding: 24px; backdrop-filter: blur(12px); }
+        /* Main Content */
+        .main-view { padding: 40px; overflow-y: auto; max-width: 1600px; }
+        .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px; }
         
-        .launch-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: flex-end; }
-        .input-group label { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; }
-        .input-group input { 
-            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); 
-            padding: 12px 16px; border-radius: 8px; color: #fff; font-size: 14px; outline: none; transition: 0.2s;
+        /* HUD Components */
+        .stats-hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+        .stat-card { 
+            background: var(--card-glass); padding: 24px; border-radius: 20px; border: 1px solid var(--border-muted);
+            backdrop-filter: blur(20px); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .input-group input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+        .stat-card:hover { transform: translateY(-4px); border-color: var(--border-glow); box-shadow: 0 20px 40px -20px rgba(0,0,0,0.5); }
+        .stat-card .label { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; display: block; }
+        .stat-card .value { font-size: 32px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .stat-card.emerald .value { color: var(--accent-emerald); }
+        .stat-card.blue .value { color: var(--accent-blue); }
+
+        .content-grid { display: grid; grid-template-columns: 1fr 400px; gap: 32px; }
+        .glass-card { background: var(--card-glass); border-radius: 24px; border: 1px solid var(--border-muted); padding: 32px; }
+        
+        /* Terminal & Feed */
+        .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .terminal { 
+            background: #000; border-radius: 16px; padding: 20px; height: 340px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6;
+            border: 1px solid rgba(255,255,255,0.03);
+        }
+        .log-entry { margin-bottom: 6px; border-left: 2px solid var(--border-muted); padding-left: 12px; display: flex; gap: 12px; }
+        .log-time { color: #334155; min-width: 65px; }
+        .log-src { color: var(--accent-blue); font-weight: 800; min-width: 80px; }
+        .log-msg { color: #cbd5e1; }
+        .log-msg.ERROR { color: var(--accent-red); }
+        .log-msg.SUCCESS { color: var(--accent-emerald); }
+
+        /* Controls */
+        .controls-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: flex-end; margin-bottom: 32px; }
+        .input-group label { display: block; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+        .input-group input { 
+            width: 100%; background: #000; border: 1px solid var(--border-muted); padding: 12px 16px; 
+            border-radius: 12px; color: #fff; font-size: 14px; outline: none; transition: 0.2s;
+        }
+        .input-group input:focus { border-color: var(--accent-emerald); }
 
         .btn { 
-            padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; font-size: 13px;
-            transition: 0.2s; display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase;
+            padding: 12px 24px; border-radius: 12px; font-weight: 800; cursor: pointer; border: none; font-size: 12px;
+            text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; display: inline-flex; align-items: center; gap: 8px;
         }
-        .btn-primary { background: var(--accent-blue); color: #fff; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-emerald { background: var(--accent-emerald); color: #fff; }
-        .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); }
-        .btn-outline:hover { border-color: #fff; color: #fff; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--accent-emerald); color: #000; }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
+        .btn-outline { background: transparent; border: 1px solid var(--border-muted); color: var(--text-primary); }
+        .btn-outline:hover { border-color: #fff; }
 
-        /* Activity Terminal */
-        .terminal { 
-            font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.5); 
-            border-radius: 12px; padding: 20px; height: 260px; overflow-y: auto; 
-            font-size: 12px; line-height: 1.6; border: 1px solid rgba(255,255,255,0.05);
-        }
-        .terminal::-webkit-scrollbar { width: 4px; }
-        .terminal::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .log-entry { margin-bottom: 4px; border-left: 2px solid transparent; padding-left: 10px; }
-        .log-time { color: #4b5563; margin-right: 10px; }
-        .log-src { color: var(--accent-blue); font-weight: 700; margin-right: 10px; }
-        .log-msg.error { color: var(--danger); }
-        .log-msg.success { color: var(--accent-emerald); }
-
-        /* Table Section */
-        .data-hud { margin-top: 40px; }
-        .filters-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
-        .filters-row select { 
-            background: var(--card-glass); border: 1px solid rgba(255,255,255,0.1); 
-            color: var(--text-primary); padding: 8px 12px; border-radius: 8px; outline: none; font-size: 13px;
-        }
-
-        .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); background: var(--card-glass); }
+        /* HUD Table */
+        .table-wrap { background: #000; border-radius: 20px; overflow: hidden; border: 1px solid var(--border-muted); }
         table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 16px; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; background: rgba(255,255,255,0.02); }
-        td { padding: 16px; font-size: 13px; border-top: 1px solid rgba(255,255,255,0.05); }
-        tr:hover td { background: rgba(255,255,255,0.02); cursor: pointer; }
-
-        .badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-        .badge-source { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
-        .badge-cat { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); }
-
-        /* Modal */
-        .modal-overlay { 
-            position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
-            display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal { background: var(--bg-obsidian); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; width: 100%; max-width: 600px; padding: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
-        .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .detail-label { width: 120px; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }
-
-        .notification { 
-            position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; 
-            border-radius: 12px; background: var(--accent-blue); color: #fff; 
-            font-weight: 700; font-size: 13px; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            display: none; animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        th { background: rgba(255,255,255,0.02); padding: 16px 24px; text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; }
+        td { padding: 16px 24px; border-bottom: 1px solid var(--border-muted); font-size: 13px; }
+        tr:hover td { background: rgba(255,255,255,0.01); }
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+        .badge-src { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
+        
         .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
-        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 32px; align-items: center; }
-        .page-link { padding: 8px 16px; border-radius: 8px; background: var(--card-glass); border: 1px solid rgba(255,255,255,0.05); color: var(--text-secondary); text-decoration: none; font-size: 13px; }
-        .page-link.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
-        .page-link.disabled { opacity: 0.3; pointer-events: none; }
+        .progress-container { background: rgba(255,255,255,0.05); height: 4px; border-radius: 2px; margin-top: 12px; overflow: hidden; display: none; }
+        .progress-bar { height: 100%; background: var(--accent-emerald); transition: width 0.3s; }
     </style>
 </head>
 <body>
-    <div class="hud-container">
-        <header class="header">
-            <div class="brand">
-                <p>Enterprise Scraper HUD v4.0</p>
-                <h1>Contact Registry</h1>
-            </div>
-            <div class="header-actions">
-                <span class="badge {% if use_sqlite %}badge-source{% else %}badge-cat{% endif %}">
-                    {% if use_sqlite %}Local Core (SQLite){% else %}Cloud Cluster (Postgres){% endif %}
-                </span>
-            </div>
-        </header>
+    <div id="notif" style="position:fixed; top:20px; right:20px; padding:16px 24px; border-radius:12px; background:var(--accent-emerald); color:#000; font-weight:800; z-index:1000; display:none; animation:slideIn 0.3s ease-out;"></div>
 
-        <div class="stats-grid">
+    <aside class="sidebar">
+        <div class="brand-box">
+            <p>Maysan Labs</p>
+            <h1>AURORA HUD v4</h1>
+        </div>
+        
+        <nav class="nav-group">
+            <p class="nav-label">Core Systems</p>
+            <a href="/" class="nav-item active">📊 Command Center</a>
+            <a href="/logs" class="nav-item">📜 Engine Logs</a>
+            <a href="#" class="nav-item" onclick="exportData('csv')">📥 Data Export</a>
+        </nav>
+
+        <nav class="nav-group">
+            <p class="nav-label">Maintenance</p>
+            <a href="#" class="nav-item" onclick="cleanup()">🧹 Deep Clean</a>
+            <a href="#" class="nav-item" onclick="updateQuality()">🧪 Quality Audit</a>
+        </nav>
+
+        <div style="margin-top:auto; padding:20px; background:rgba(0,0,0,0.2); border-radius:16px;">
+            <p style="font-size:10px; color:var(--text-secondary); margin-bottom:8px;">WATCHDOG STATUS</p>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                <div id="watchdog-light" style="width:6px; height:6px; background:var(--accent-emerald); border-radius:50%;"></div>
+                <span style="font-size:12px; font-weight:700;">ACTIVE</span>
+            </div>
+            <p id="watchdog-last" style="font-size:9px; color:var(--text-secondary);">Last Check: Just now</p>
+        </div>
+    </aside>
+
+    <main class="main-view">
+        <div class="header-row">
+            <div class="page-title">
+                <p style="font-size:12px; color:var(--accent-emerald); font-weight:800; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Operation: Lead Extraction</p>
+                <h2 style="font-size:28px; font-weight:800;">Command Dashboard</h2>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px;">
+                    <span style="color:var(--text-secondary);">Last Update:</span> <span id="last-update">--:--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-hud">
             <div class="stat-card">
-                <span class="label">Total Records</span>
+                <span class="label">Total Leads</span>
                 <span class="value" id="stat-total">{{s.total}}</span>
             </div>
-            <div class="stat-card">
+            <div class="stat-card emerald">
                 <span class="label">Verified Phones</span>
-                <span class="value" id="stat-phone" style="color: var(--accent-emerald);">{{s.phone}}</span>
+                <span class="value" id="stat-phone">{{s.phone}}</span>
+            </div>
+            <div class="stat-card blue">
+                <span class="label">Valid Emails</span>
+                <span class="value" id="stat-email">{{s.email}}</span>
             </div>
             <div class="stat-card">
-                <span class="label">Valid Emails</span>
-                <span class="value" id="stat-email" style="color: var(--accent-blue);">{{s.email}}</span>
-            </div>
-            <div class="stat-card" id="status-card">
-                <span class="label">Engine Status</span>
-                <span class="value" id="live-status" style="font-size: 18px; color: var(--text-secondary);">Idle</span>
-                <div id="progress-wrap" style="display:none; margin-top:10px; background: rgba(255,255,255,0.05); height: 4px; border-radius: 2px; overflow: hidden;">
-                    <div id="progress-bar" style="background: var(--accent-emerald); width: 0%; height: 100%; transition: width 0.4s;"></div>
-                </div>
+                <span class="label">Mission Status</span>
+                <span id="live-status" style="font-size:16px; font-weight:800; color:var(--text-secondary);">IDLE</span>
+                <div class="progress-container" id="prog-wrap"><div class="progress-bar" id="prog-bar" style="width:0%"></div></div>
             </div>
         </div>
 
-        <div class="action-bar">
+        <div class="content-grid">
             <div class="glass-card">
-                <div class="launch-grid">
+                <div class="controls-grid">
                     <div class="input-group">
                         <label>Target City</label>
-                        <input type="text" id="trigger-city" list="cities-list" placeholder="e.g. Mumbai">
-                        <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
+                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list">
                     </div>
                     <div class="input-group">
-                        <label>Business Category</label>
-                        <input type="text" id="trigger-category" list="cats-list" placeholder="e.g. Lawyers">
-                        <datalist id="cats-list">{% for cat in categories_default %}<option value="{{cat}}">{% endfor %}</datalist>
+                        <label>Category</label>
+                        <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list">
                     </div>
-                    <button class="btn btn-primary" id="launch-btn" onclick="triggerTask()">
-                        <span>🚀</span> Launch Task
-                    </button>
+                    <div class="input-group">
+                        <label>Source Engine</label>
+                        <select id="t-source" style="width: 100%; background: #000; border: 1px solid var(--border-muted); padding: 12px 16px; border-radius: 12px; color: #fff; font-size: 14px; outline: none;">
+                            <option value="">Auto-Select (Best)</option>
+                            <option value="SITEMAP">Sitemap (High Speed)</option>
+                            <option value="YELLOWPAGES">YellowPages (Stable)</option>
+                            <option value="JUSTDIAL">JustDial (Deep)</option>
+                            <option value="AMFI">AMFI (Financial)</option>
+                            <option value="ICAI">ICAI (CAs)</option>
+                            <option value="GMB">Google Maps (Local)</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="triggerScrape()">🚀 Launch</button>
                 </div>
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
-                    <button class="btn btn-emerald" onclick="triggerFast()">⚡ Fast Drain</button>
-                    <button class="btn btn-outline" onclick="exportData('csv')">📥 Export CSV</button>
-                    <button class="btn btn-outline" onclick="cleanup()">🧹 Maintenance</button>
+
+                <div style="margin-bottom: 32px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">QUICK TEMPLATES:</span>
+                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Delhi', 'Lawyers', 'SITEMAP')">Lawyers (Delhi)</button>
+                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs (Mumbai)</button>
+                    <button class="btn btn-outline" style="padding: 6px 12px; font-size: 10px;" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech (Bangalore)</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Lead Name</th>
+                                <th>Phone</th>
+                                <th>Category</th>
+                                <th>Source</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in contacts %}
+                            <tr>
+                                <td style="font-weight:700;">{{c.name}}</td>
+                                <td>{{c.phone or '---'}}</td>
+                                <td>{{c.category}}</td>
+                                <td><span class="badge badge-src">{{c.source}}</span></td>
+                                <td>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <div style="flex:1; background:rgba(255,255,255,0.05); height:4px; width:40px; border-radius:2px;">
+                                            <div style="height:100%; background:{{ 'var(--accent-emerald)' if c.quality_score > 70 else 'var(--accent-blue)' if c.quality_score > 40 else 'var(--accent-red)' }}; width:{{c.quality_score}}%;"></div>
+                                        </div>
+                                        <span style="font-size:10px;">{{c.quality_score}}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="glass-card">
-                <div style="display:flex; justify-content:space-between; margin-bottom: 12px;">
-                    <span style="font-size:10px; text-transform:uppercase; color:var(--text-secondary); letter-spacing:1px;">Activity Feed</span>
-                    <span id="log-count" style="font-size:10px; color:var(--accent-emerald);">0 events</span>
+            <div class="glass-card" style="padding:24px;">
+                <div class="terminal-header">
+                    <p style="font-size:10px; font-weight:800; color:var(--text-secondary);">REAL-TIME LOGS</p>
+                    <div class="pulse" style="width:8px; height:8px; background:var(--accent-emerald); border-radius:50%;"></div>
                 </div>
-                <div class="terminal" id="activity-log">
-                    <div style="color: #4b5563;">[SYS] HUD Initialized. Awaiting telemetry...</div>
+                <div class="terminal" id="activity-logs">
+                    <!-- Logs will stream here -->
                 </div>
             </div>
         </div>
+    </main>
 
-        <div class="data-hud">
-            <div class="filters-row">
-                <input type="text" id="f-q" placeholder="Quick Search..." value="{{search_query}}" class="input-group" style="padding:8px 16px; background:var(--card-glass); border:1px solid rgba(255,255,255,0.05); border-radius:8px; color:#fff; width: 240px;">
-                <select id="f-city" onchange="refresh()">
-                    <option value="">All Cities</option>
-                    {% for c in cities %}<option value="{{c}}" {% if selected_city==c %}selected{% endif %}>{{c}}</option>{% endfor %}
-                </select>
-                <select id="f-cat" onchange="refresh()">
-                    <option value="">All Categories</option>
-                    {% for cat in categories %}<option value="{{cat}}" {% if selected_category==cat %}selected{% endif %}>{{cat}}</option>{% endfor %}
-                </select>
-                <select id="f-sort" onchange="refresh()">
-                    <option value="date" {% if sort_by=='date' %}selected{% endif %}>Newest First</option>
-                    <option value="name" {% if sort_by=='name' %}selected{% endif %}>Alphabetical</option>
-                </select>
-                <button class="btn btn-outline" style="padding: 8px 16px;" onclick="refresh()">Apply</button>
-                <button class="btn btn-outline" style="padding: 8px 16px; border-color: rgba(239, 68, 68, 0.2); color: var(--danger);" onclick="window.location.href='/'">Reset</button>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Contact Name</th>
-                            <th>Identity / Status</th>
-                            <th>Location</th>
-                            <th>Source Cluster</th>
-                            <th>Category</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for c in contacts %}
-                        <tr onclick="showDetails({{c.id}})">
-                            <td style="font-weight: 700;">{{c.name or 'Unknown Entity'}}</td>
-                            <td>
-                                <div style="font-size:11px; opacity:0.8;">{{c.phone or '-'}}</div>
-                                <div style="font-size:11px; color: var(--accent-blue);">{{c.email or '-'}}</div>
-                            </td>
-                            <td>{{c.city or '-'}}</td>
-                            <td><span class="badge badge-source">{{c.source or 'GENERIC'}}</span></td>
-                            <td><span class="badge badge-cat">{{c.category or 'LEAD'}}</span></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% if not contacts %}
-                <div style="padding: 60px; text-align: center; color: var(--text-secondary);">
-                    <p>No records found matching current telemetry filters.</p>
-                </div>
-                {% endif %}
-            </div>
-
-            {% if total_pages > 1 %}
-            <div class="pagination">
-                <a href="?page=1" class="page-link {% if page==1 %}disabled{% endif %}">«</a>
-                <a href="?page={{page-1}}" class="page-link {% if page==1 %}disabled{% endif %}">‹</a>
-                <span style="color:var(--text-secondary); font-size:12px;">{{page}} / {{total_pages}}</span>
-                <a href="?page={{page+1}}" class="page-link {% if page==total_pages %}disabled{% endif %}">›</a>
-                <a href="?page={{total_pages}}" class="page-link {% if page==total_pages %}disabled{% endif %}">»</a>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="modal" onclick="closeModal()">
-        <div class="modal" onclick="event.stopPropagation()">
-            <div class="modal-header">
-                <h2 id="m-title">Record Details</h2>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-            <div id="m-body"></div>
-        </div>
-    </div>
-
-    <div class="notification" id="notif"></div>
+    <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
+    <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>
 
     <script>
-        function notify(msg, err=false) {
-            const el = document.getElementById('notif');
-            el.innerText = msg;
-            el.style.background = err ? 'var(--danger)' : 'var(--accent-blue)';
-            el.style.display = 'block';
-            setTimeout(() => el.style.display = 'none', 4000);
+        function showNotif(msg, dur=3000) {
+            const n = document.getElementById('notif');
+            n.innerText = msg; n.style.display = 'block';
+            setTimeout(() => { n.style.display = 'none'; }, dur);
         }
 
-        const evtSource = new EventSource('/api/stream/stats');
-        evtSource.onmessage = (e) => {
-            const data = JSON.parse(e.data);
+        async function triggerScrape() {
+            const city = document.getElementById('t-city').value;
+            const cat = document.getElementById('t-cat').value;
+            const source = document.getElementById('t-source').value;
+            if(!city || !cat) return showNotif('⚠️ City and Category required', 2000);
+            
+            const res = await fetch('/api/trigger/scrape', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({city, category: cat, source})
+            });
+            const data = await res.json();
+            showNotif(data.message);
+        }
+
+        function setTemplate(city, cat, src) {
+            document.getElementById('t-city').value = city;
+            document.getElementById('t-cat').value = cat;
+            document.getElementById('t-source').value = src;
+            showNotif(`Template applied: ${cat} in ${city}`);
+        }
+
+        async function triggerFast() {
+            const res = await fetch('/api/trigger/fast-scrape', {method: 'POST'});
+            const data = await res.json();
+            showNotif(data.message);
+        }
+
+        async function cleanup() {
+            showNotif('🧹 Deep cleanup started...');
+            const res = await fetch('/api/cleanup/deep', {method: 'POST'});
+            const data = await res.json();
+            showNotif(`✅ Cleaned: ${data.deleted} deleted, ${data.updated} updated`);
+        }
+
+        async function updateQuality() {
+            showNotif('🧪 Quality audit started...');
+            const res = await fetch('/api/cleanup/quality', {method: 'POST'});
+            const data = await res.json();
+            showNotif(`✅ Audited ${data.updated} records`);
+        }
+
+        function exportData(fmt) {
+            window.location.href = `/export/${fmt}`;
+        }
+
+        // Live Telemetry Stream
+        const evtSource = new EventSource("/api/stream/stats");
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
             document.getElementById('stat-total').innerText = data.total;
             document.getElementById('stat-phone').innerText = data.with_phone;
             document.getElementById('stat-email').innerText = data.with_email;
-
-            const status = data.scraper_status || {};
+            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+            
+            const status = data.scraper_status;
             const statusEl = document.getElementById('live-status');
-            const statusCard = document.getElementById('status-card');
-            const progressWrap = document.getElementById('progress-wrap');
-            const progressBar = document.getElementById('progress-bar');
+            const progWrap = document.getElementById('prog-wrap');
+            const progBar = document.getElementById('prog-bar');
 
-            if (status.running) {
-                statusEl.innerText = status.message || 'Scraping...';
+            if (status && status.running) {
+                statusEl.innerText = status.message || 'RUNNING';
                 statusEl.style.color = 'var(--accent-emerald)';
-                statusCard.classList.add('running', 'pulse');
-                if (status.stats && status.stats.page) {
-                    progressWrap.style.display = 'block';
-                    const pct = (status.stats.page / (status.stats.total_pages || 10)) * 100;
-                    progressBar.style.width = pct + '%';
+                progWrap.style.display = 'block';
+                if(status.stats && status.stats.progress) {
+                    progBar.style.width = status.stats.progress + '%';
+                } else {
+                    progBar.style.width = '100%';
                 }
             } else {
-                statusEl.innerText = 'Idle';
+                statusEl.innerText = 'IDLE';
                 statusEl.style.color = 'var(--text-secondary)';
-                statusCard.classList.remove('running', 'pulse');
-                progressWrap.style.display = 'none';
+                progWrap.style.display = 'none';
             }
 
+            // Stream Logs
             if (data.activity_logs) {
-                const logEl = document.getElementById('activity-log');
-                document.getElementById('log-count').innerText = data.activity_logs.length + ' events';
-                logEl.innerHTML = data.activity_logs.map(l => `
+                const logContainer = document.getElementById('activity-logs');
+                logContainer.innerHTML = data.activity_logs.map(log => `
                     <div class="log-entry">
-                        <span class="log-time">${l.time}</span>
-                        <span class="log-src">[${l.source || 'SYS'}]</span>
-                        <span class="log-msg ${l.level.toLowerCase()}">${l.message}</span>
+                        <span class="log-time">${log.time}</span>
+                        <span class="log-src">[${log.source}]</span>
+                        <span class="log-msg ${log.level}">${log.message}</span>
                     </div>
                 `).join('');
             }
         };
-
-        function triggerTask() {
-            const city = document.getElementById('trigger-city').value;
-            const cat = document.getElementById('trigger-category').value;
-            if(!city || !cat) return notify('Select City and Category', true);
-            
-            notify('Initializing engine...');
-            fetch('/api/trigger/scrape', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({city, category: cat})
-            }).then(r=>r.json()).then(d => notify(d.message || d.error, !!d.error));
-        }
-
-        function triggerFast() {
-            notify('Initializing parallel cluster...');
-            fetch('/api/trigger/fast-scrape', {method:'POST'}).then(r=>r.json()).then(d => notify(d.message));
-        }
-
-        function refresh() {
-            const q = document.getElementById('f-q').value;
-            const city = document.getElementById('f-city').value;
-            const cat = document.getElementById('f-cat').value;
-            const sort = document.getElementById('f-sort').value;
-            
-            let p = new URLSearchParams();
-            if(q) p.set('q', q);
-            if(city) p.set('city', city);
-            if(cat) p.set('category', cat);
-            if(sort) p.set('sort', sort);
-            window.location.href = '?' + p.toString();
-        }
-
-        function showDetails(id) {
-            fetch('/api/contact/' + id).then(r=>r.json()).then(c => {
-                document.getElementById('m-title').innerText = c.name || 'Entity Details';
-                document.getElementById('m-body').innerHTML = `
-                    <div class="detail-row"><span class="detail-label">Identity</span><span style="font-weight:700;">${c.name}</span></div>
-                    <div class="detail-row"><span class="detail-label">Contact</span><span>${c.phone || '-'}<br>${c.email || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Location</span><span>${c.city || '-'}, ${c.area || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Registry</span><span>${c.source} | ${c.category}</span></div>
-                    <div class="detail-row"><span class="detail-label">Quality</span><span>Tier: ${c.quality_tier} | Score: ${c.quality_score}</span></div>
-                    <div class="detail-row"><span class="detail-label">Scraped</span><span>${c.scraped_at}</span></div>
-                `;
-                document.getElementById('modal').classList.add('active');
-            });
-        }
-
-        function closeModal() { document.getElementById('modal').classList.remove('active'); }
-        function exportData(fmt) { window.location.href = '/export/' + fmt; }
-        function cleanup() { if(confirm('Delete empty records?')) fetch('/api/cleanup/empty', {method:'DELETE'}).then(()=>location.reload()); }
     </script>
 </body>
 </html>
 """
-
-    <div class="filters">
-        <div>
-            <label>Search</label><br>
-            <input type="text" id="filter-search" placeholder="Name, phone, email..." value="{{search_query}}" style="padding:8px 12px;background:#1c1f2e;border:1px solid #2d3148;border-radius:6px;color:#c9d1d9;font-size:14px;min-width:180px;">
-        </div>
-        <div>
-            <label>Sort By</label><br>
-            <select id="sort-by" class="sort-select" onchange="applyFilters()">
-                <option value="date" {% if sort_by=='date' %}selected{% endif %}>Date Scraped</option>
-                <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name</option>
-                <option value="city" {% if sort_by=='city' %}selected{% endif %}>City</option>
-                <option value="source" {% if sort_by=='source' %}selected{% endif %}>Source</option>
-            </select>
-        </div>
-        <div>
-            <label>City</label><br>
-            <select id="filter-city" onchange="applyFilters()">
-                <option value="">All Cities</option>
-                {% for c in cities %}<option value="{{c}}" {% if selected_city==c %}selected{% endif %}>{{c}}</option>{% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Category</label><br>
-            <select id="filter-category" onchange="applyFilters()">
-                <option value="">All Categories</option>
-                {% for cat in categories %}<option value="{{cat}}" {% if selected_category==cat %}selected{% endif %}>{{cat}}</option>{% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Source</label><br>
-            <select id="filter-source" onchange="applyFilters()">
-                <option value="">All Sources</option>
-                {% for src in sources %}<option value="{{src}}" {% if selected_source==src %}selected{% endif %}>{{src}}</option>{% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Per Page</label><br>
-            <select id="limit" class="limit-select" onchange="applyFilters()">
-                <option value="25" {% if limit==25 %}selected{% endif %}>25</option>
-                <option value="50" {% if limit==50 %}selected{% endif %}>50</option>
-                <option value="100" {% if limit==100 %}selected{% endif %}>100</option>
-            </select>
-        </div>
-        <div>
-            <label>Quality</label><br>
-            <select id="filter-quality" onchange="applyFilters()">
-                <option value="">All Quality</option>
-                <option value="high" {% if selected_quality=='high' %}selected{% endif %}>High</option>
-                <option value="medium" {% if selected_quality=='medium' %}selected{% endif %}>Medium</option>
-                <option value="low" {% if selected_quality=='low' %}selected{% endif %}>Low</option>
-            </select>
-        </div>
-        <div style="display:flex;gap:8px;align-items:flex-end;">
-            <button class="btn btn-filter" onclick="applyFilters()">Apply</button>
-            <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
-        </div>
-        <div class="filter-stats">Showing {{contacts|length}} of {{s.filtered_total}} results</div>
-    </div>
-
-    {% if contacts %}
-    <table>
-        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Source</th><th>Category</th></tr></thead>
-        <tbody>{% for c in contacts %}<tr class="clickable" onclick="showContactDetail({{c.id}})">
-            <td>{{c.name or '-'}}</td>
-            <td>{{c.phone or '-'}}</td>
-            <td>{{c.email or '-'}}</td>
-            <td>{{c.city or '-'}}</td>
-            <td><span class="tag tag-source">{{c.source or '-'}}</span></td>
-            <td><span class="tag tag-cat">{{c.category or '-'}}</span></td>
-        </tr>{% endfor %}</tbody>
-    </table>
-    {% else %}
-    <div class="empty">
-        {% if search_query or selected_city or selected_category or selected_source %}
-        <h2>No matching contacts found</h2>
-        <p>Try adjusting your filters or search query.</p>
-        {% else %}
-        <h2>No contacts yet</h2>
-        <p>Click "Start Scrape" to begin collecting leads from your configured sources.</p>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    {% if total_pages > 1 %}
-    <div class="pagination">
-        <a href="/?page=1{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">« First</a>
-        <a href="/?page={{ page - 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == 1 %}disabled{% endif %}">‹ Prev</a>
-        
-        <span class="page-info">Page <b>{{ page }}</b> of <b>{{ total_pages }}</b></span>
-
-        <a href="/?page={{ page + 1 }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Next ›</a>
-        <a href="/?page={{ total_pages }}{% if search_query %}&q={{search_query}}{% endif %}{% if selected_city %}&city={{selected_city}}{% endif %}{% if selected_category %}&category={{selected_category}}{% endif %}{% if selected_source %}&source={{selected_source}}{% endif %}{% if selected_quality %}&quality={{selected_quality}}{% endif %}{% if sort_by %}&sort={{sort_by}}{% endif %}{% if limit %}&limit={{limit}}{% endif %}" class="page-link {% if page == total_pages %}disabled{% endif %}">Last »</a>
-    </div>
-    {% endif %}
-
-    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
-        <div class="modal" onclick="event.stopPropagation()">
-            <div class="modal-header">
-                <h2>Contact Details</h2>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-            <div id="modal-content"></div>
-        </div>
-    </div>
-
-    <script>
-        Chart.defaults.color = '#8b8fa3';
-        Chart.defaults.borderColor = '#2d3148';
-        const srcData = {{by_source|tojson}};
-        const catData = {{by_cat|tojson}};
-        const colors = ['#667eea','#764ba2','#3fb950','#f0883e','#58a6ff','#d2a8ff','#ff7b72'];
-
-        if (Object.keys(srcData).length > 0) {
-            new Chart(document.getElementById('c1'),{type:'doughnut',data:{labels:Object.keys(srcData),datasets:[{data:Object.values(srcData),backgroundColor:colors}]},options:{plugins:{legend:{labels:{color:'#c9d1d9'}}}}});
-        }
-        if (Object.keys(catData).length > 0) {
-            new Chart(document.getElementById('c2'),{type:'bar',data:{labels:Object.keys(catData),datasets:[{data:Object.values(catData),backgroundColor:'#667eea',borderRadius:6}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{color:'#8b8fa3'}},x:{ticks:{color:'#8b8fa3'}}}}});
-        }
-
-        function startScrape(){
-            const btn = document.getElementById('scrape-btn');
-            btn.disabled = true;
-            btn.innerText = '🚧 Starting...';
-            fetch('/api/trigger/scrape').then(r=>r.json()).then(d=>{
-                showNotification(d.message || d.error);
-                btn.innerText = '🚧 Scraping...';
-            }).catch(()=>{ btn.disabled=false; btn.innerText='🚀 Start Scrape'; });
-        }
-
-        function applyFilters(){
-            const search = document.getElementById('filter-search').value;
-            const city = document.getElementById('filter-city').value;
-            const category = document.getElementById('filter-category').value;
-            const source = document.getElementById('filter-source').value;
-            const sortBy = document.getElementById('sort-by').value;
-            const limit = document.getElementById('limit').value;
-            
-            let params = new URLSearchParams();
-            if(search) params.set('q', search);
-            if(city) params.set('city', city);
-            if(category) params.set('category', category);
-            if(source) params.set('source', source);
-            if(sortBy) params.set('sort', sortBy);
-            if(limit && limit != 50) params.set('limit', limit);
-            const quality = document.getElementById('filter-quality').value;
-            if(quality) params.set('quality', quality);
-            
-            const url = params.toString() ? '?' + params.toString() : '/';
-            window.location.href = url;
-        }
-
-        function clearFilters(){
-            window.location.href = '/';
-        }
-
-        function showContactDetail(id){
-            fetch('/api/contact/' + id).then(r=>r.json()).then(data=>{
-                if(data.error){ showNotification(data.error, true); return; }
-                const c = data;
-                document.getElementById('modal-content').innerHTML = `
-                    <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${c.name || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${c.phone || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${c.email || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">City</span><span class="detail-value">${c.city || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Area</span><span class="detail-value">${c.area || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${c.address || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Category</span><span class="detail-value">${c.category || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Source</span><span class="detail-value">${c.source || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">ARN/License</span><span class="detail-value">${c.arn || c.license_no || c.membership_no || '-'}</span></div>
-                    <div class="detail-row"><span class="detail-label">Scraped At</span><span class="detail-value">${c.scraped_at || '-'}</span></div>
-                `;
-                document.getElementById('modal').classList.add('active');
-            });
-        }
-
-        function closeModal(e){
-            if(!e || e.target.id === 'modal'){
-                document.getElementById('modal').classList.remove('active');
-            }
-        }
-
-        function exportWithFilters(fmt){
-            const search = document.getElementById('filter-search').value;
-            const city = document.getElementById('filter-city').value;
-            const category = document.getElementById('filter-category').value;
-            const source = document.getElementById('filter-source').value;
-            
-            let params = new URLSearchParams();
-            if(search) params.set('q', search);
-            if(city) params.set('city', city);
-            if(category) params.set('category', category);
-            if(source) params.set('source', source);
-            
-            const url = '/export/' + fmt + (params.toString() ? '?' + params.toString() : '');
-            window.location.href = url;
-        }
-
-        let wasRunning = false;
-        function pollStatus() {
-            fetch('/api/status').then(r=>r.json()).then(data=>{
-                const el = document.getElementById('live-status');
-                const btn = document.getElementById('scrape-btn');
-                
-                if (data.running) {
-                    let msg = data.message || 'Scraping...';
-                    if (data.stats && data.stats.leads !== undefined) {
-                        msg += `<br><span style="font-size:12px;opacity:0.8;color:#58a6ff;">✨ ${data.stats.leads} leads found on this page</span>`;
-                    }
-                    el.innerHTML = msg;
-                    el.className = 'val status-running pulse';
-                    btn.disabled = true;
-                    btn.innerText = '🚧 Scraping...';
-                    wasRunning = true;
-                } else {
-                    el.innerText = 'Idle';
-                    el.className = 'val status-idle';
-                    btn.disabled = false;
-                    btn.innerText = '🚀 Start Scrape';
-                    if (wasRunning) { wasRunning = false; location.reload(); }
-                }
-            }).catch(()=>{});
-        }
-        
-        // Live stats via Server-Sent Events
-        let lastTotal = {{s.total}};
-        try {
-            const evtSource = new EventSource('/api/stream/stats');
-            evtSource.onmessage = function(e) {
-                const data = JSON.parse(e.data);
-                
-                // Update stat cards if values changed
-                const totalEl = document.querySelector('.stat:nth-child(1) .val');
-                const phoneEl = document.querySelector('.stat:nth-child(2) .val');
-                const emailEl = document.querySelector('.stat:nth-child(3) .val');
-                
-                if(totalEl) {
-                    const newTotal = parseInt(data.total);
-                    if(newTotal !== lastTotal) {
-                        // Animate change
-                        totalEl.style.color = '#3fb950';
-                        totalEl.style.transform = 'scale(1.2)';
-                        setTimeout(() => {
-                            totalEl.style.color = '';
-                            totalEl.style.transform = '';
-                        }, 500);
-                        
-                        // Show notification
-                        const diff = newTotal - lastTotal;
-                        if(diff > 0) showNotification(`+${diff} new contacts!`);
-                        lastTotal = newTotal;
-                    }
-                    totalEl.textContent = data.total;
-                }
-                if(phoneEl) phoneEl.textContent = data.with_phone;
-                if(emailEl) emailEl.textContent = data.with_email;
-                
-                // Update header count
-                document.querySelector('.header span').textContent = data.total + ' contacts collected';
-            };
-            evtSource.onerror = function() {
-                evtSource.close();
-                // Fallback to polling
-                setInterval(pollStats, 10000);
-            };
-        } catch(e) {
-            console.log('SSE not supported, using polling');
-        }
-        
-        function pollStats() {
-            fetch('/api/stats').then(r=>r.json()).then(data=>{
-                if(data.total !== lastTotal) {
-                    lastTotal = data.total;
-                    showNotification('New data available! <a href="/">Refresh</a>');
-                }
-            }).catch(()=>{});
-        }
-        
-        function showNotification(msg) {
-            const existing = document.getElementById('live-notification');
-            if(existing) existing.remove();
-            
-            const notif = document.createElement('div');
-            notif.id = 'live-notification';
-            notif.innerHTML = msg;
-            notif.style.cssText = 'position:fixed;top:20px;right:20px;background:#238636;color:white;padding:12px 20px;border-radius:8px;z-index:9999;animation:slideIn 0.3s ease';
-            document.body.appendChild(notif);
-            setTimeout(() => notif.remove(), 5000);
-        }
-        
-        setInterval(pollStatus, 3000);
-    </script>
-</body>
-</html>
-"""
-
-
 @app.route("/")
 def index():
     try:
@@ -1417,7 +1170,7 @@ def trigger_scrape():
     """Trigger scraping tasks. Supports single (POST JSON) or batch (default)."""
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
     from tasks import fast_scrape_task, scrape_category_task, set_status
-
+    
     # Parse parameters from either GET args or POST JSON
     data = {}
     if request.method == "POST":
@@ -1426,8 +1179,9 @@ def trigger_scrape():
         except:
             data = {}
     
-    city = data.get("city")
-    category = data.get("category")
+    city = data.get("city") or request.args.get("city")
+    category = data.get("category") or request.args.get("category")
+    source = data.get("source") or request.args.get("source")
     use_business = data.get("use_business", False)
     
     if not use_business:
@@ -1435,21 +1189,23 @@ def trigger_scrape():
 
     if city and category:
         # Single target scrape
+        log_msg = f"Dashboard triggered manual scrape: {category} in {city} (Source: {source or 'Auto'})"
         set_status(
-            f"Queued scrape for {category} in {city}...",
+            f"Queued: {category} in {city}...",
             True,
-            {"city": city, "category": category, "source": "QUEUE"},
+            {"city": city, "category": category, "source": source or "QUEUE"},
         )
-        task_result = scrape_category_task.delay(city=city, category=category, use_business=use_business)
+        task_result = scrape_category_task.delay(city=city, category=category, source=source, use_business=use_business)
         msg = f"🚀 Scrape queued for {category} in {city}!"
+        logger.info(log_msg)
     else:
         # Batch scrape for everything in config
         set_status(
             "Queued batch fast-scrape for all configured targets...",
             True,
-            {"source": "QUEUE"},
+            {"source": source or "QUEUE"},
         )
-        task_result = fast_scrape_task.delay()
+        task_result = fast_scrape_task.delay(source=source)
         msg = f"🚀 Batch fast-scrape queued for all Official sources!"
     
     return jsonify({"message": msg, "task_id": getattr(task_result, "id", None)})

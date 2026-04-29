@@ -3,6 +3,7 @@ import asyncio
 import logging
 import random
 import re
+import ssl
 from typing import List, Dict, Optional, Any
 from lxml import etree
 from stealth_utils import StealthManager
@@ -17,75 +18,85 @@ class PoliteHTTPScraper:
     """
     
     def __init__(self, max_concurrent: int = 5):
-        # Even with max_concurrent, we enforce strict domain politeness
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.session: Optional[aiohttp.ClientSession] = None
-        # Generate persistent identity for this session (2026 Stealth Standard)
         self.ua = StealthManager.get_persistent_ua()
         self.base_headers = StealthManager.get_modern_headers(self.ua)
 
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession(headers=self.base_headers)
+        await self._init_session()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
             await self.session.close()
 
+    async def _init_session(self):
+        """Initializes a new aiohttp session with persistent identity."""
+        if self.session:
+            await self.session.close()
+        
+        # Use a connector that handles SSL more aggressively for 2026 instability
+        connector = aiohttp.TCPConnector(ssl=False) # Skip SSL verify if needed for gov sites, or use default
+        self.session = aiohttp.ClientSession(
+            headers=self.base_headers, 
+            connector=connector,
+            trust_env=True
+        )
+
     async def _polite_delay(self):
         """Strict randomized delay between 1.5s and 3.5s to avoid rate limits."""
         delay = random.uniform(1.5, 3.5)
-        logger.debug(f"Polite delay: sleeping for {delay:.2f}s")
         await asyncio.sleep(delay)
 
     async def fetch(self, url: str, method: str = "GET", **kwargs) -> Optional[aiohttp.ClientResponse]:
-        """Fetch URL with strict politeness, backoff for 429/50x, and NO proxies."""
+        """Fetch URL with strict politeness and aggressive error recovery for SSL/EOF."""
         async with self.semaphore:
-            for attempt in range(1, 4):
+            for attempt in range(1, 5):
                 try:
+                    if not self.session or self.session.closed:
+                        await self._init_session()
+
                     logger.info(f"Fetching: {url} (Attempt {attempt})")
-                    response = await self.session.request(method, url, timeout=30, **kwargs)
+                    response = await self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=30), **kwargs)
                     
                     if response.status == 200:
                         await self._polite_delay()
                         return response
                         
                     elif response.status == 429 or 500 <= response.status <= 504:
-                        # Too Many Requests or Server Error -> Backoff 30 to 60 seconds
-                        backoff = random.uniform(30.0, 60.0)
-                        logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff:.2f} seconds...")
+                        backoff = random.uniform(20.0, 45.0) * attempt
+                        logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff:.2f}s...")
                         await asyncio.sleep(backoff)
                         continue
                     else:
                         logger.error(f"Failed to fetch {url}: Status {response.status}")
                         await self._polite_delay()
-                        return response # Return it anyway, caller can handle 404/403
+                        return response
                         
-                except (asyncio.TimeoutError, aiohttp.ClientError, ConnectionResetError) as e:
-                    logger.warning(f"Network error on {url} (Attempt {attempt}): {e}")
-                    backoff = random.uniform(10.0, 30.0) * attempt # Exponential-ish backoff
-                    logger.info(f"Retrying in {backoff:.2f}s...")
+                except (ssl.SSLEOFError, ConnectionResetError, aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as e:
+                    logger.warning(f"🚨 Network instability (SSL/EOF/Reset) on {url}: {e}")
+                    # CRITICAL: Reset session on network-level errors to clear poisoned connections
+                    await self._init_session()
+                    backoff = random.uniform(5.0, 15.0) * attempt
+                    await asyncio.sleep(backoff)
+                except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                    logger.warning(f"Request error on {url} (Attempt {attempt}): {e}")
+                    backoff = random.uniform(5.0, 15.0) * attempt
                     await asyncio.sleep(backoff)
                 except Exception as e:
                     logger.error(f"Unexpected error fetching {url}: {e}")
-                    break # Don't retry on logic errors
+                    break
             
             return None
 
     async def scrape_json_api(self, target_endpoint: str, params: Dict = None, payload: Dict = None, method: str = "GET", pagination_key: str = "page", start_page: int = 1, max_pages: int = 50) -> List[Dict]:
-        """
-        Generic function to loop through paginated JSON endpoints.
-        Automatically increments pagination until no results are returned.
-        """
         all_results = []
         current_page = start_page
-        
-        if payload and method == "GET":
-            method = "POST"
+        if payload and method == "GET": method = "POST"
 
         while current_page <= max_pages:
             logger.info(f"Scraping JSON API page {current_page}...")
-            
             current_params = params.copy() if params else {}
             current_payload = payload.copy() if payload else {}
             
@@ -101,32 +112,20 @@ class PoliteHTTPScraper:
                 json=current_payload if current_payload else None
             )
             
-            if not response or response.status != 200:
-                logger.error(f"API extraction stopped at page {current_page} due to bad response.")
-                break
-                
+            if not response or response.status != 200: break
             try:
-                data = await response.json()
-            except Exception as e:
-                logger.error(f"Failed to parse JSON on page {current_page}: {e}")
-                break
+                data = await response.json(content_type=None)
+            except: break
             
             results = self._parse_json_response(data)
-            if not results:
-                logger.info(f"No more results found in JSON on page {current_page}. Stopping pagination.")
-                break
-                
+            if not results: break
             all_results.extend(results)
-            logger.info(f"Extracted {len(results)} items from page {current_page} (Total: {len(all_results)})")
-            
             current_page += 1
             
         return all_results
 
     def _parse_json_response(self, data: Any) -> List[Dict]:
-        """Attempts to dynamically locate the list of items inside a JSON payload."""
-        if isinstance(data, list):
-            return data
+        if isinstance(data, list): return data
         if isinstance(data, dict):
             for key in ['data', 'results', 'registrants', 'members', 'list', 'items', 'entities']:
                 if key in data and isinstance(data[key], list):
@@ -134,42 +133,28 @@ class PoliteHTTPScraper:
         return []
 
     async def extract_urls_from_sitemap(self, sitemap_url: str, filter_pattern: str = None) -> List[str]:
-        """
-        Downloads a sitemap.xml, parses it, and returns <loc> URLs matching the regex filter.
-        """
         response = await self.fetch(sitemap_url)
-        if not response or response.status != 200:
-            logger.error(f"Failed to fetch sitemap: {sitemap_url}")
-            return []
+        if not response or response.status != 200: return []
             
         xml_content = await response.text()
-        if not xml_content:
-            return []
+        if not xml_content: return []
             
         urls = []
         try:
             root = etree.fromstring(xml_content.encode('utf-8'))
             ns = {'ns': root.nsmap.get(None, 'http://www.sitemaps.org/schemas/sitemap/0.9')}
-            
             locs = root.xpath('//ns:loc', namespaces=ns)
             for loc in locs:
                 url = loc.text
                 if filter_pattern and not re.search(filter_pattern, url, re.IGNORECASE):
                     continue
                 urls.append(url)
-                
-            logger.info(f"Extracted {len(urls)} URLs matching '{filter_pattern}' from sitemap: {sitemap_url}")
         except Exception as e:
             logger.error(f"Sitemap parsing error: {e}")
-            
         return urls
 
     @staticmethod
     def extract_viewstate(html_content: str) -> Dict[str, str]:
-        """
-        Extracts ASP.NET hidden fields (__VIEWSTATE, __EVENTVALIDATION, etc.)
-        Required for interaction with government portals like IRDAI and ICAI.
-        """
         tokens = {}
         patterns = {
             '__VIEWSTATE': r'id="__VIEWSTATE"\s+value="([^"]+)"',
@@ -178,10 +163,7 @@ class PoliteHTTPScraper:
             '__EVENTTARGET': r'id="__EVENTTARGET"\s+value="([^"]+)"',
             '__EVENTARGUMENT': r'id="__EVENTARGUMENT"\s+value="([^"]+)"',
         }
-        
         for name, pattern in patterns.items():
             match = re.search(pattern, html_content)
-            if match:
-                tokens[name] = match.group(1)
-        
+            if match: tokens[name] = match.group(1)
         return tokens

@@ -10,6 +10,7 @@ import aiohttp
 import hashlib
 from typing import Optional, Dict, List
 from datetime import datetime
+from scrapers.directory import SitemapScraper
 # from playwright.async_api import Page
 Page = dict
 from bs4 import BeautifulSoup
@@ -254,60 +255,6 @@ class VykariScraper(BaseScraper):
     async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         return self.extract_raw_fallback(html_content, city, category)
 
-class SitemapScraper(BaseScraper):
-    """
-    High-speed, zero-security source: extracts leads directly from XML sitemaps 
-    of popular directories to avoid WAF blocks.
-    """
-    source_name = "SITEMAP"
-    
-    # Common sitemap patterns for target directories
-    SITEMAP_TARGETS = [
-        "https://www.exportersindia.com/sitemap.xml",
-        "https://www.asklaila.com/sitemap.xml",
-        "https://www.tradeindia.com/sitemap.xml",
-        "https://www.justdial.com/sitemap.xml"
-    ]
-
-    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
-        # For sitemap scraping, the "search URL" is the sitemap itself
-        return random.choice(self.SITEMAP_TARGETS)
-
-    async def extract_listings(self, page: Page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
-        from polite_http_scraper import PoliteHTTPScraper
-        
-        listings = []
-        try:
-            async with PoliteHTTPScraper() as engine:
-                # 1. Select a target sitemap
-                target_url = self.build_search_url(city, category)
-                
-                # 2. Extract URLs matching our city/category
-                # Filter pattern: search for both city and category in the URL path
-                filter_pat = f"({city.lower()}|{category.lower().replace(' ', '-')})"
-                urls = await engine.extract_urls_from_sitemap(target_url, filter_pattern=filter_pat)
-                
-                # 3. For each URL, perform a quick 'polite' fetch and raw extract
-                # We limit to 50 URLs per pass to avoid memory bloat
-                for url in urls[:50]:
-                    try:
-                        resp = await engine.fetch(url)
-                        if resp and resp.status == 200:
-                            html = await resp.text()
-                            raw_leads = self.extract_raw_fallback(html, city, category)
-                            for lead in raw_leads:
-                                lead['detail_url'] = url
-                                listings.append(lead)
-                        
-                        if len(listings) >= 100: break # Safety cap
-                    except Exception as e:
-                        logger.debug(f"Sitemap link fetch error: {e}")
-                        continue
-                        
-        except Exception as e:
-            logger.error(f"SitemapScraper error: {e}")
-            
-        return listings
 
 
 class SEBIScraper(BaseScraper):
