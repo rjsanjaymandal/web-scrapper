@@ -2601,12 +2601,8 @@ class ContactScraper:
 
             processed_listings.append(listing)
             
-            # 2026 Stealth Break: Sleep for 1-2 mins after every 5 leads (Proxy-less logic)
-            self.session_leads_count += 1
-            if self.session_leads_count % 5 == 0:
-                break_time = random.uniform(60, 120)
-                logger.info(f"Stealth Break Mode: Extracted {self.session_leads_count} leads. Taking a long human-like break for {break_time:.1f}s...")
-                await asyncio.sleep(break_time)
+            # The 2026 Stealth Break has been removed for polite API scraping mode
+            # to allow bulk processing to complete without 1-2 minute delays per 5 leads.
 
         # FINAL QUALITY GATE: Only keep contacts with at least one valid method (Phone or Email)
         final_listings = ProcessingHandler.filter_valid(processed_listings)
