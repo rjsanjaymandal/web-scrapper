@@ -504,9 +504,9 @@ HTML = """
         .status-dot { width: 8px; height: 8px; background: var(--accent-emerald); border-radius: 50%; box-shadow: 0 0 10px var(--accent-emerald); }
 
         /* Layout Wrapper */
-        .layout-wrapper { display: flex; width: 100%; height: 100vh; overflow: hidden; }
-        .sidebar { width: 280px; background: #0a0b10; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; gap: 32px; }
-        .main-view { flex: 1; padding: 24px; overflow-y: auto; background: #050508; min-width: 0; position: relative; }
+        .layout-wrapper { display: flex; width: 100%; min-height: 100vh; background: var(--bg-obsidian); }
+        .sidebar { width: 280px; background: #0a0b10; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; gap: 32px; height: 100vh; position: sticky; top: 0; }
+        .main-view { flex-grow: 1; padding: 24px; background: #050508; min-width: 0; position: relative; }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
