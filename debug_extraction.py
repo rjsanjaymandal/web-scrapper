@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from scrapers_registry import ScraperRegistry
+from scrapers.base import ScraperRegistry
 from stealth_utils import StealthManager
 from playwright.async_api import async_playwright
 

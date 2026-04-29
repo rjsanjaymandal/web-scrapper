@@ -8,7 +8,7 @@ from typing import List
 sys.path.append(os.getcwd())
 
 from scraper import load_config
-from scrapers_registry import ScraperRegistry
+from scrapers.base import ScraperRegistry
 from redis_manager import RedisQueueManager
 
 logging.basicConfig(

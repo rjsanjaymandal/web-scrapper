@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 try:
-    from scrapers_registry import BaseScraper, ScraperRegistry
+    from scrapers.base import BaseScraper, ScraperRegistry
 except ImportError:
     BaseScraper = object
     class ScraperRegistry:

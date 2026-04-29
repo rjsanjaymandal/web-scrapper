@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime
 from scraper import ContactScraper, load_config
-from scrapers_registry import ScraperRegistry
+from scrapers.base import ScraperRegistry
 
 # Optimized for 2026: Low RAM, Direct Official API Draining
 logging.basicConfig(

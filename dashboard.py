@@ -9,10 +9,16 @@ import logging
 import json
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from openpyxl import Workbook
 from pathlib import Path
 import sqlite3
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 app = Flask(__name__)
 
@@ -1583,7 +1589,7 @@ def stream_stats():
                         l['time'] = l['created_at'].strftime("%H:%M:%S")
                     else:
                         l['time'] = str(l['created_at'])[-8:]
-                yield f"data: {json.dumps({'total': total, 'with_phone': with_phone, 'with_email': with_email, 'scraper_status': status_data, 'activity_logs': logs})}\n\n"
+                yield f"data: {json.dumps({'total': total, 'with_phone': with_phone, 'with_email': with_email, 'scraper_status': status_data, 'activity_logs': logs}, cls=CustomJSONEncoder)}\n\n"
                 cur.close()
                 conn.close()
             except Exception as e:

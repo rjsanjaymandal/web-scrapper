@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 # from playwright.async_api import Page
 Page = dict
-from scrapers_registry import BaseScraper
+from scrapers.base import BaseScraper
 from processing import ProcessingHandler
 
 logger = logging.getLogger(__name__)
