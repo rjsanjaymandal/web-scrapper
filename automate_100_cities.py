@@ -48,6 +48,13 @@ async def run_enterprise_cycle():
                     count = await scraper.scrape_category_fast(city, cat, None)
                     total_leads += count
                     
+                    # 2026 Verification: Log current DB state to confirm storage is working
+                    try:
+                        db_stats = await scraper.get_stats()
+                        logger.info(f"📊 [DATABASE VERIFICATION] Total leads in system: {db_stats['total_contacts']} (+{count} this task)")
+                    except Exception as de:
+                        logger.warning(f"Could not fetch DB stats: {de}")
+                    
                     # Politeness: Small jittered sleep between tasks (5-15s)
                     # This prevents slamming multiple targets in a tight sequence
                     task_delay = random.uniform(5.0, 15.0)
@@ -69,7 +76,19 @@ async def run_enterprise_cycle():
             await scraper.close()
             
         # Full Cycle Delay
-        await asyncio.sleep(cycle_delay)
+        logger.info(f"🛌 Cycle complete. Entering persistent sleep for {cycle_delay}s...")
+        
+        # Heartbeat logic for 2026: Log every 10 mins during sleep to show we are alive
+        sleep_start = datetime.now()
+        while (datetime.now() - sleep_start).total_seconds() < cycle_delay:
+            remaining = cycle_delay - (datetime.now() - sleep_start).total_seconds()
+            sleep_chunk = min(600, remaining) # 10 mins or remaining
+            if sleep_chunk > 0:
+                await asyncio.sleep(sleep_chunk)
+                if remaining > 600:
+                    logger.info(f"💓 Heartbeat: Automator alive. Waiting for next cycle ({int(remaining/60)}m remaining)...")
+            else:
+                break
 
 if __name__ == "__main__":
     try:

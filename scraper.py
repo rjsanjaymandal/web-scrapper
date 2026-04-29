@@ -2427,7 +2427,7 @@ class ContactScraper:
             "CREATE INDEX IF NOT EXISTS idx_contacts_category ON contacts(category)",
             "CREATE INDEX IF NOT EXISTS idx_contacts_city ON contacts(city)",
             "CREATE INDEX IF NOT EXISTS idx_contacts_source ON contacts(source)",
-            "CREATE INDEX IF NOT EXISTS idx_contacts_phone_clean ON contacts(phone_clean)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone_clean_unique ON contacts(phone_clean) WHERE phone_clean IS NOT NULL",
         ]:
             try:
                 await self.pool.execute(idx_sql)
@@ -2643,6 +2643,7 @@ class ContactScraper:
         self, scraper: AMFIScraper, city: str, category: str, on_progress=None
     ) -> List[Dict]:
         all_listings = []
+        total_leads_acc = 0
         page_num = 1
         page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "10000"))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
@@ -2685,9 +2686,11 @@ class ContactScraper:
                         scraper.SEARCH_API_URL,
                     )
                     all_listings.extend(batch)
+                    total_leads_acc += len(batch)
+                    
                     # For massive batches, clear processed data from memory early
                     if len(all_listings) > 5000:
-                        all_listings = []  # We've already saved it
+                        all_listings = []  # We've already saved it, keep memory low
 
                 meta = payload.get("meta") or {}
                 total_pages = meta.get("pageCount") or page_num
@@ -2719,10 +2722,12 @@ class ContactScraper:
                 
                 await self.rate_limiter.wait()
 
-        logger.info(f"AMFI API extracted {len(all_listings)} listings for {city}")
+        logger.info(f"AMFI API extracted {total_leads_acc} listings for {city}")
         self.rate_limiter.record_success()
         self.stats["successful"] += 1
-        return all_listings
+        # Return a list of size total_leads_acc (dummy objects if memory cleared) 
+        # so that callers can accurately count without holding 100k objects in RAM
+        return [None] * total_leads_acc
 
     async def scrape_category_fast(self, city: str, category: str, source_name: Optional[str] = None):
         """
