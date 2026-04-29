@@ -651,6 +651,22 @@ HTML = """
             </div>
         </div>
 
+        <!-- Charts Section -->
+        <div class="charts-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px;">
+            <div class="glass-card" style="padding: 20px;">
+                <p class="label" style="margin-bottom: 16px;">Leads by Source</p>
+                <canvas id="sourceChart" height="200"></canvas>
+            </div>
+            <div class="glass-card" style="padding: 20px;">
+                <p class="label" style="margin-bottom: 16px;">Top Categories</p>
+                <canvas id="categoryChart" height="200"></canvas>
+            </div>
+            <div class="glass-card" style="padding: 20px;">
+                <p class="label" style="margin-bottom: 16px;">Growth Trend</p>
+                <canvas id="trendChart" height="200"></canvas>
+            </div>
+        </div>
+
         <div class="content-grid">
             <div class="glass-card">
                 <div class="controls-grid">
@@ -826,6 +842,69 @@ HTML = """
                 `).join('');
             }
         };
+
+        // Chart.js initialization
+        let sourceChart, categoryChart, trendChart;
+        
+        async function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+            };
+
+            // Doughnut chart - Leads by Source
+            sourceChart = new Chart(document.getElementById('sourceChart'), {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'] }] },
+                options: { plugins: { legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 10 }, boxWidth: 12 } } } }
+            });
+
+            // Bar chart - Top Categories
+            categoryChart = new Chart(document.getElementById('categoryChart'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981', borderRadius: 4 }] },
+                options: chartOptions
+            });
+
+            // Line chart - Growth Trend
+            trendChart = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }] },
+                options: chartOptions
+            });
+
+            await refreshCharts();
+            setInterval(refreshCharts, 30000);
+        }
+
+        async function refreshCharts() {
+            try {
+                const res = await fetch('/api/stats/charts');
+                const stats = await res.json();
+
+                // Update Source Chart
+                sourceChart.data.labels = stats.sources.map(s => s.source);
+                sourceChart.data.datasets[0].data = stats.sources.map(s => s.count);
+                sourceChart.update();
+
+                // Update Category Chart
+                categoryChart.data.labels = stats.categories.slice(0, 8).map(c => c.category);
+                categoryChart.data.datasets[0].data = stats.categories.slice(0, 8).map(c => c.count);
+                categoryChart.update();
+
+                // Update Trend Chart
+                trendChart.data.labels = stats.trend.map(t => t.date);
+                trendChart.data.datasets[0].data = stats.trend.map(t => t.count);
+                trendChart.update();
+            } catch(e) { console.error('Chart refresh failed:', e); }
+        }
+
+        initCharts();
     </script>
 </body>
 </html>
@@ -1630,6 +1709,60 @@ def get_stats():
         return jsonify(
             {"total": total, "with_phone": with_phone, "with_email": with_email}
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats/charts")
+def get_chart_stats():
+    """Get stats for charts - sources, categories, and trend"""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Leads by source (top 6)
+        cur.execute("""
+            SELECT source, COUNT(*) as cnt 
+            FROM contacts 
+            GROUP BY source 
+            ORDER BY cnt DESC 
+            LIMIT 6
+        """)
+        sources = [{"source": r["source"], "count": r["cnt"]} for r in cur.fetchall()]
+        
+        # Top categories
+        cur.execute("""
+            SELECT category, COUNT(*) as cnt 
+            FROM contacts 
+            GROUP BY category 
+            ORDER BY cnt DESC 
+            LIMIT 8
+        """)
+        categories = [{"category": r["category"], "count": r["cnt"]} for r in cur.fetchall()]
+        
+        # Daily trend (last 7 days)
+        if USE_SQLITE:
+            cur.execute("""
+                SELECT DATE(scraped_at) as date, COUNT(*) as cnt 
+                FROM contacts 
+                WHERE scraped_at >= DATE('now', '-7 days')
+                GROUP BY DATE(scraped_at)
+                ORDER BY date
+            """)
+        else:
+            cur.execute("""
+                SELECT DATE(scraped_at) as date, COUNT(*) as cnt 
+                FROM contacts 
+                WHERE scraped_at >= CURRENT_DATE - INTERVAL '7 days'
+                GROUP BY DATE(scraped_at)
+                ORDER BY date
+            """)
+        trend = [{"date": str(r["date"]), "count": r["cnt"]} for r in cur.fetchall()]
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({"sources": sources, "categories": categories, "trend": trend})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
