@@ -1402,7 +1402,7 @@ def api_deep_clean():
     """Trigger the deep logic-based cleanup"""
     try:
         from tasks import set_status
-        set_status({"running": True, "message": "🧹 Deep cleaning database..."})
+        set_status("🧹 Deep cleaning database...", True)
         
         def run_clean():
             try:
@@ -1437,10 +1437,10 @@ def api_deep_clean():
                 conn.commit()
                 cur.close()
                 conn.close()
-                set_status({"running": False, "message": "Idle"})
+                set_status("Idle", False)
                 return deleted, updated
             except Exception as e:
-                set_status({"running": False, "message": "Idle"})
+                set_status("Idle", False)
                 raise e
 
         deleted, updated = run_clean()
@@ -1791,12 +1791,17 @@ def cleanup_low_quality():
     """Recalculate and update quality scores for all contacts"""
     try:
         from processing import ProcessingHandler
+        from tasks import set_status
+        set_status("🔍 Auditing lead quality...", True)
+        
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM contacts LIMIT 1000")
+        cur.execute("SELECT * FROM contacts")
         contacts = cur.fetchall()
         if not contacts:
+            set_status("Idle", False)
             return jsonify({"success": True, "updated": 0, "message": "No contacts to update"})
+            
         updated = 0
         for contact in contacts:
             try:
@@ -1811,11 +1816,19 @@ def cleanup_low_quality():
                     WHERE id = {placeholder}
                 """, (processed.get("phone_clean"), processed.get("email_valid", False), processed.get("quality_score", 0), processed.get("quality_tier", "low"), contact["id"]))
                 updated += 1
+                
+                # Periodically commit and update status for very large sets
+                if updated % 500 == 0:
+                    conn.commit()
+                    set_status(f"🔍 Audited {updated} leads...", True)
+                    
             except Exception:
                 continue
+                
         conn.commit()
         cur.close()
         conn.close()
+        set_status("Idle", False)
         return jsonify({"success": True, "updated": updated})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
