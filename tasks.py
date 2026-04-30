@@ -158,10 +158,13 @@ def db_log(level, message, source=None):
 
 if not redis_url:
     logger.warning("REDIS_URL not found. Celery tasks will run locally.")
-    celery_app = Celery('web_scraper_app')
+    celery_app = Celery('web_scraper_app', include=['tasks.api_scraper', 'tasks.sitemap_crawler', 'tasks.profile_scraper'])
     celery_app.conf.update(task_always_eager=True)
 else:
-    celery_app = Celery('web_scraper_app', broker=redis_url, backend=redis_url)
+    celery_app = Celery('web_scraper_app', 
+                        broker=redis_url, 
+                        backend=redis_url,
+                        include=['tasks.api_scraper', 'tasks.sitemap_crawler', 'tasks.profile_scraper'])
     celery_app.conf.update(
         task_track_started=True,
         task_acks_late=True,
