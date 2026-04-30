@@ -180,7 +180,7 @@ def _load_runtime_config():
 # Google Footprints and high-WAF business targets are strictly limited.
 DEACTIVATED_SOURCES = ["Google", "IndiaMart", "TradeIndia"]
 
-@celery_app.task(name="tasks.scrape_category_task")
+@celery_app.task(name="tasks.scrape_category_task", time_limit=1800, soft_time_limit=1500)
 def scrape_category_task(city: str, category: str, source: str = None, use_business: bool = False):
     """
     Main entry point for scraping.
@@ -228,7 +228,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
     return asyncio.run(_run_scrape())
 
 
-@celery_app.task(name="tasks.fast_scrape_task")
+@celery_app.task(name="tasks.fast_scrape_task", time_limit=3600, soft_time_limit=3300)
 def fast_scrape_task(source: str = None, max_concurrent: int = None):
     """Drains all open APIs and sitemaps for the 2 Lakh target."""
     set_status(

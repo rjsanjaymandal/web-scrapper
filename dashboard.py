@@ -508,7 +508,7 @@ HTML = """
         /* Layout Wrapper */
         .layout-wrapper { 
             display: grid; 
-            grid-template-columns: 200px 1fr; 
+            grid-template-columns: 160px 1fr; 
             min-height: 100vh; 
             background: var(--bg-obsidian); 
             width: 100%;
@@ -595,7 +595,7 @@ HTML = """
         .btn-sm { padding: 6px 12px; font-size: 10px; }
 
         /* HUD Table */
-        .table-wrap { background: #0a0a0f; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-muted); }
+        .table-wrap { background: #0a0a0f; border-radius: 12px; overflow-x: auto; border: 1px solid var(--border-muted); }
         table { width: 100%; border-collapse: collapse; }
         th { background: rgba(255,255,255,0.02); padding: 12px 16px; text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1px; }
         td { padding: 12px 16px; border-bottom: 1px solid var(--border-muted); font-size: 12px; }
@@ -767,6 +767,7 @@ HTML = """
                                 <th>Lead Name</th>
                                 <th>Phone</th>
                                 <th>Email</th>
+                                <th>Gmail</th>
                                 <th>Category</th>
                                 <th>Source</th>
                                 <th>Score</th>
@@ -778,6 +779,7 @@ HTML = """
                                 <td style="font-weight:700;">{{c.name}}</td>
                                 <td>{{c.phone or '---'}}</td>
                                 <td style="color:var(--accent-blue);">{{c.email or '---'}}</td>
+                                <td style="color:var(--accent-emerald);">{{c.email if c.email and '@gmail.com' in c.email else '---'}}</td>
                                 <td>{{c.category}}</td>
                                 <td><span class="badge badge-src">{{c.source}}</span></td>
                                 <td>
@@ -889,7 +891,7 @@ HTML = """
             if (!tbody) return;
             
             if (leads.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-secondary);">No records found matching filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-secondary);">No records found matching filters.</td></tr>';
                 return;
             }
 
@@ -899,6 +901,7 @@ HTML = """
                     '<td style="font-weight:700;">' + c.name + '</td>' +
                     '<td>' + c.phone + '</td>' +
                     '<td style="color:var(--accent-blue);">' + c.email + '</td>' +
+                    '<td style="color:var(--accent-emerald);">' + (c.email && c.email.includes('@gmail.com') ? c.email : '---') + '</td>' +
                     '<td>' + c.category + '</td>' +
                     '<td><span class="badge badge-src">' + c.source + '</span></td>' +
                     '<td>' +
@@ -949,10 +952,13 @@ HTML = """
         window.addEventListener('popstate', function(event) {
             if (event.state && event.state.url) {
                 window.loadLeads(event.state.url, false);
-            } else {
-                window.location.reload();
             }
         });
+        
+        // Initialize history state on load
+        if (typeof history.replaceState === 'function') {
+            history.replaceState({page: window.currentPage, url: window.location.href}, '', window.location.href);
+        }
 
         window.startCollection = async function() {
             const city = document.getElementById('t-city').value;
@@ -1041,18 +1047,7 @@ HTML = """
                 }
             }
 
-            if (data.activity_logs) {
-                const logContainer = document.getElementById('activity-logs');
-                if (logContainer) {
-                    logContainer.innerHTML = data.activity_logs.map(function(log) {
-                        return '<div class="log-entry">' +
-                            '<span class="log-time">' + log.time + '</span>' +
-                            '<span class="log-src">[' + log.source + ']</span>' +
-                            '<span class="log-msg ' + log.level + '">' + log.message + '</span>' +
-                        '</div>';
-                    }).join('');
-                }
-            }
+            // Activity logs hidden per user request
             
             const badge = document.getElementById('status-badge');
             if (badge) {

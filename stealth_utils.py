@@ -114,7 +114,7 @@ class StealthManager:
             "Upgrade-Insecure-Requests": "1",
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Site": "none", # 2026 Standard for direct entry
             "Sec-Fetch-User": "?1",
             "User-Agent": user_agent,
             "Referer": "https://www.google.com/",  # Standard entry point
@@ -132,13 +132,14 @@ class StealthManager:
                 if "Macintosh" in user_agent: platform = '"macOS"'
                 elif "Linux" in user_agent: platform = '"Linux"'
                 
-                platform = '"macOS"'
                 headers["sec-ch-ua-platform"] = platform
                 
                 # 2026 Refined Client Hints: Full Version List
                 headers["sec-ch-ua-full-version-list"] = f'"Not(A:Brand";v="99", "Google Chrome";v="{major_version}.0.0.0", "Chromium";v="{major_version}.0.0.0"'
                 headers["sec-ch-ua"] = f'"Not(A:Brand";v="99", "Google Chrome";v="{major_version}", "Chromium";v="{major_version}"'
                 headers["sec-ch-ua-mobile"] = "?0"
+                headers["sec-ch-ua-model"] = '""'
+                headers["sec-ch-ua-platform-version"] = '"15.0.0"' if platform == '"macOS"' else '"10.0.0"'
             except Exception:
                 headers["sec-ch-ua"] = '"Chromium";v="147", "Not(A:Brand";v="24", "Google Chrome";v="147"'
                 headers["sec-ch-ua-mobile"] = "?0"

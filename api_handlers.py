@@ -17,121 +17,149 @@ class OfficialAPIHandlers:
     
     @staticmethod
     async def handle_amfi(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Mutual Fund Distributors from AMFI"""
-        url = "https://www.amfiindia.com/locate-distributor"
-        # AMFI uses a POST request for searches
-        payload = {
-            "city": city,
-            "distributor": "",
-            "arn": ""
+        """Fetch Mutual Fund Distributors from AMFI (2026 API)"""
+        # The verified 2026 API endpoint for distributor lookups
+        url = "https://www.amfiindia.com/api/distributor-agent"
+        # API-specific headers for 2026 registry
+        custom_headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.amfiindia.com/locate-distributor",
+            "X-Requested-With": "XMLHttpRequest"
         }
-        # In 2026, many of these are behind a simple CSRF or session. 
-        # PoliteHTTPScraper handles cookies.
-        response = await engine.fetch(url, method="POST", data=payload)
+        
+        params = {
+            "strOpt": "ALL",
+            "city": city.upper(),
+            "search": "",
+            "page": 1,
+            "pageSize": 100
+        }
+        
+        response = await engine.fetch(url, method="GET", params=params, headers=custom_headers, is_json_api=True)
         if not response:
             return []
             
-        html = await response.text()
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, 'lxml')
-        
-        leads = []
-        table = soup.select_one('table#distributorTable, .dist-list')
-        if not table:
-            # Fallback to regex extraction
-            return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund")
+        try:
+            data = await response.json()
+            leads = []
+            # AMFI API usually returns a list of objects in a 'data' or 'list' field
+            items = []
+            if isinstance(data, dict):
+                items = data.get("data") or data.get("list") or []
+            elif isinstance(data, list):
+                items = data
             
-        rows = table.select('tr')[1:] 
-        for row in rows:
-            cols = row.select('td')
-            if len(cols) >= 4:
+            for item in items:
                 leads.append({
-                    "name": cols[0].get_text(strip=True),
-                    "arn": cols[1].get_text(strip=True),
-                    "phone": cols[3].get_text(strip=True),
-                    "city": city,
+                    "name": item.get("ARNHolderName") or item.get("name") or item.get("distributor_name"),
+                    "arn": item.get("ARN") or item.get("arn_number") or item.get("arn"),
+                    "phone": item.get("TelephoneNumber_O") or item.get("mobile_number") or item.get("phone"),
+                    "email": item.get("Email") or item.get("email"),
+                    "address": item.get("Address") or item.get("address"),
+                    "city": item.get("City") or city,
                     "source": "AMFI",
                     "category": "Mutual Fund"
                 })
-        return leads
-
-    @staticmethod
-    async def handle_sebi_ria(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Registered Investment Advisors from SEBI"""
-        url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes&intmId=13"
-        response = await engine.fetch(url, method="GET")
-        if not response:
+            return leads
+        except Exception as e:
+            logger.error(f"Failed to parse AMFI JSON response: {e}")
+            # Fallback to HTML if API failed
+            html_url = "https://www.amfiindia.com/locate-distributor"
+            resp = await engine.fetch(html_url)
+            if resp:
+                html = await resp.text()
+                return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund")
             return []
-            
-        html = await response.text()
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, 'lxml')
-        
-        leads = []
-        table = soup.select_one('table#sample_1, .table-striped')
-        if not table:
-            return []
-            
-        rows = table.select('tr')[1:]
-        for row in rows:
-            cols = row.select('td')
-            if len(cols) >= 3:
-                leads.append({
-                    "name": cols[1].get_text(strip=True),
-                    "address": cols[2].get_text(strip=True),
-                    "source": "SEBI",
-                    "city": city,
-                    "category": "Investment Advisor"
-                })
-        return leads
-
-    @staticmethod
-    async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Insolvency Professionals from IBBI"""
-        url = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
-        # IBBI often has a JSON export or a searchable table
-        response = await engine.fetch(url, method="GET")
-        if not response:
-            return []
-            
-        html = await response.text()
-        return BaseScraper.extract_raw_fallback(html, city, "Insolvency Professional")
-
-    @staticmethod
-    async def handle_bar_council(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Lawyers from Bar Councils"""
-        # We target a consolidated directory or major state councils
-        url = f"https://www.indianlawyer.info/directory?city={city}"
-        response = await engine.fetch(url, method="GET")
-        if not response:
-            return []
-            
-        html = await response.text()
-        return BaseScraper.extract_raw_fallback(html, city, "Lawyer")
-
-    @staticmethod
-    async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Chartered Accountants from ICAI"""
-        # Official ICAI member verification portal
-        url = "https://www.icai.org/traceamember.html"
-        response = await engine.fetch(url, method="GET")
-        if not response:
-            return []
-        
-        html = await response.text()
-        return BaseScraper.extract_raw_fallback(html, city, "Chartered Accountant")
 
     @staticmethod
     async def handle_irdai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch Insurance Agents from IRDAI"""
-        # Official IRDAI portal
-        url = "https://www.irdai.gov.in"
-        # We target the official portal which is more stable than agencyportal in 2026
-        response = await engine.fetch(url, method="GET")
-        if not response: return []
+        """Fetch Insurance Agents from IRDAI Agent Locator (2026 API)"""
+        url = "https://agencyportal.irdai.gov.in/_WebService/PublicAccess/AgentLocator.asmx/LocateAgent"
         
-        html = await response.text()
-        return BaseScraper.extract_raw_fallback(html, city, "Insurance Agent")
+        # Mapping for common cities to State/District codes (can be expanded)
+        # 6: Gujarat, 102: Ahmedabad
+        city_mapping = {
+            "AHMEDABAD": ("6", "102"),
+            "MUMBAI": ("15", "257"),
+            "DELHI": ("5", "94"),
+            "BANGALORE": ("12", "195"),
+            "HYDERABAD": ("1", "1"),
+            "CHENNAI": ("22", "390"),
+            "PUNE": ("15", "273"),
+            "KOLKATA": ("28", "493"),
+            "SURAT": ("6", "106"),
+            "JAIPUR": ("20", "349"),
+            "LUCKNOW": ("25", "441"),
+            "KANPUR": ("25", "436"),
+            "NAGPUR": ("15", "270"),
+            "INDORE": ("14", "229"),
+            "THANE": ("15", "280"),
+            "BHOPAL": ("14", "221"),
+            "PATNA": ("4", "58"),
+            "VADODARA": ("6", "108")
+        }
+        
+        state_id, district_id = city_mapping.get(city.upper(), ("", ""))
+        
+        # IRDAI requires Insurance Type (1: General, 2: Life, 3: Health) and Insurer ID
+        # Since we want all, we might need a loop, but we'll try a common one first (General/Bajaj: 1,8)
+        # or Life/LIC: 2, 21
+        custom_query = f",,,1,8,{state_id},{district_id},"
+        
+        payload = {
+            "page": 1,
+            "rp": 500,
+            "sortname": "AgentName",
+            "sortorder": "asc",
+            "query": "",
+            "qtype": "",
+            "customquery": custom_query
+        }
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Referer": "https://agencyportal.irdai.gov.in/PublicAccess/AgentLocator.aspx",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "*/*"
+        }
+        
+        response = await engine.fetch(url, method="POST", data=payload, headers=headers)
+        if not response:
+            # Fallback to main portal if API fails
+            logger.info("IRDAI API failed, falling back to main portal search")
+            fallback_url = f"https://www.irdai.gov.in/Defaul3.aspx?page=agent_locator&city={city}"
+            response = await engine.fetch(fallback_url)
+            if not response: return []
+            
+        try:
+            html_text = await response.text()
+            leads = []
+            
+            # The API returns XML/HTML wrapped in a string or direct XML
+            # If flexigrid, it might be JSON in some versions, but subagent saw XML-like data
+            
+            # Extract names, phones, emails using regex for speed and robustness
+            cells = re.findall(r'<cell>(.*?)</cell>', html_text)
+            # Group into records (flexigrid returns 16 cells per row in 2026)
+            record_size = 16
+            for i in range(0, len(cells), record_size):
+                chunk = cells[i:i+record_size]
+                if len(chunk) >= 15:
+                    leads.append({
+                        "name": chunk[1].strip(),
+                        "license_no": chunk[2].strip(),
+                        "address": f"{chunk[8].strip()}, {chunk[9].strip()} {chunk[10].strip()}",
+                        "phone": chunk[14].strip() or chunk[15].strip(),
+                        "email": None, # IRDAI API often hides email in this view
+                        "city": chunk[9].strip() or city,
+                        "source": "IRDAI",
+                        "category": "Insurance"
+                    })
+            
+            return leads
+        except Exception as e:
+            logger.error(f"Failed to parse IRDAI response: {e}")
+            return []
 
     @staticmethod
     async def handle_sitemap(engine: PoliteHTTPScraper, city: str, source: str) -> List[Dict]:

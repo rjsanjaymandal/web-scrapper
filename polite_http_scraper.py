@@ -17,10 +17,11 @@ class PoliteHTTPScraper:
     No Playwright, no Proxies. Strict randomized delays to prevent DDoS/rate limits.
     """
     
-    def __init__(self, max_concurrent: int = 2):
+    def __init__(self, max_concurrent: int = 2, proxy: str = None):
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.session: Optional[aiohttp.ClientSession] = None
         self.ua = StealthManager.get_persistent_ua()
+        self.proxy = proxy
         self.base_headers = {}  # Set per-request based on is_json_api
 
     async def __aenter__(self):
@@ -37,10 +38,12 @@ class PoliteHTTPScraper:
             await self.session.close()
         
         connector = aiohttp.TCPConnector(ssl=False)
+        # 2026 Stability Fix: Disable trust_env if proxy is used to prevent 127.0.0.1 loops
+        # in environments like Railway/Docker.
         self.session = aiohttp.ClientSession(
             headers=headers or self.base_headers, 
             connector=connector,
-            trust_env=True
+            trust_env=False if self.proxy else True
         )
 
     async def _get_headers(self, is_json_api: bool = False) -> Dict[str, str]:
@@ -60,9 +63,11 @@ class PoliteHTTPScraper:
         delay = random.uniform(1.5, 3.5)
         await asyncio.sleep(delay)
 
-    async def fetch(self, url: str, method: str = "GET", is_json_api: bool = False, **kwargs) -> Optional[aiohttp.ClientResponse]:
+    async def fetch(self, url: str, method: str = "GET", is_json_api: bool = False, headers: Dict = None, **kwargs) -> Optional[aiohttp.ClientResponse]:
         """Fetch URL with strict politeness and aggressive error recovery for SSL/EOF."""
-        headers = await self._get_headers(is_json_api)
+        request_headers = await self._get_headers(is_json_api)
+        if headers:
+            request_headers.update(headers)
         
         async with self.semaphore:
             # Polite delay BEFORE request (not after)
@@ -74,7 +79,14 @@ class PoliteHTTPScraper:
                         await self._init_session(headers)
 
                     logger.info(f"Fetching: {url} (Attempt {attempt})")
-                    response = await self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=30), headers=headers, **kwargs)
+                    response = await self.session.request(
+                        method, 
+                        url, 
+                        timeout=aiohttp.ClientTimeout(total=30), 
+                        headers=request_headers, 
+                        proxy=self.proxy,
+                        **kwargs
+                    )
                     
                     if response.status == 200:
                         return response

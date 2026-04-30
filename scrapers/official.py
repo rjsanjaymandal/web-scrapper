@@ -12,7 +12,7 @@ class AMFIScraper(BaseScraper):
     """Scraper for AMFI - Mutual Fund Agents"""
     source_name = "AMFI"
     BASE_URL = "https://www.amfiindia.com/locate-distributor"
-    SEARCH_API_URL = "https://www.amfiindia.com/api/locate-distributor"
+    SEARCH_API_URL = "https://www.amfiindia.com/api/distributor-agent"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return self.BASE_URL

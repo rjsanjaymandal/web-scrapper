@@ -3,36 +3,29 @@ import logging
 from scraper import ContactScraper, load_config
 from api_handlers import OfficialAPIHandlers
 from polite_http_scraper import PoliteHTTPScraper
-import os
-import sys
-
-# Ensure stdout supports UTF-8 for emojis if possible, or just avoid them
-# sys.stdout.reconfigure(encoding='utf-8') 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def test_amfi():
+async def test_irdai():
     config = load_config()
     scraper = ContactScraper(config)
-    city = "AGRA"
+    city = "Ahmedabad"
     
-    print(f"Testing direct API extraction for {city}...")
+    print(f"Testing IRDAI API extraction for {city}...")
     
     proxy = None # Test without proxy
-    print(f"Using Proxy: {proxy}")
-    
     async with PoliteHTTPScraper(max_concurrent=1, proxy=proxy) as engine:
-        leads = await OfficialAPIHandlers.handle_amfi(engine, city)
+        leads = await OfficialAPIHandlers.handle_irdai(engine, city)
     
     print(f"Total Leads Extracted: {len(leads)}")
     if leads:
         sample = leads[0]
         print(f"Sample Lead: {sample.get('name')} | Phone: {sample.get('phone')} | Email: {sample.get('email')}")
     else:
-        print("FAILED: No leads found via API.")
+        print("FAILED: No leads found via IRDAI API.")
     
     await scraper.close()
 
 if __name__ == "__main__":
-    asyncio.run(test_amfi())
+    asyncio.run(test_irdai())

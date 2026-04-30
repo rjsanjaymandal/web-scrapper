@@ -862,40 +862,69 @@ class ContactScraper:
         all_listings = []
         total_leads_acc = 0
         page_num = 1
-        page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "10000"))
+        page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "100"))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
 
         user_agent = StealthManager.get_random_ua()
         headers = StealthManager.get_modern_headers(user_agent)
+        proxy = self.proxy_manager.get_proxy_string()
 
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        # Disable trust_env if proxy is used to prevent 127.0.0.1 loops
+        async with aiohttp.ClientSession(
+            timeout=timeout, 
+            headers=headers,
+            trust_env=False if proxy else True
+        ) as session:
             while True:
-                params = scraper.get_search_params(
-                    city=city, page=page_num, page_size=page_size
-                )
+                params = {
+                    "strOpt": "ALL",
+                    "city": city.upper(),
+                    "search": "",
+                    "page": page_num,
+                    "pageSize": page_size
+                }
                 logger.info(f"Fetching AMFI API page {page_num} for {city}")
 
-                async with session.get(
-                    scraper.SEARCH_API_URL, params=params
-                ) as response:
-                    if response.status != 200:
-                        raise RuntimeError(f"AMFI API returned HTTP {response.status}")
+                try:
+                    async with session.get(
+                        scraper.SEARCH_API_URL, params=params, proxy=proxy
+                    ) as response:
+                        if response.status != 200:
+                            logger.error(f"AMFI API error {response.status}")
+                            break
 
-                    payload = await response.json(content_type=None)
-
-                if not payload or not isinstance(payload, dict):
-                    logger.warning(f"AMFI API returned empty or invalid payload for {city}")
+                        payload = await response.json(content_type=None)
+                except Exception as e:
+                    logger.error(f"AMFI API connection failed: {e}")
                     break
 
-                records = payload.get("data") or []
+                if not payload or not isinstance(payload, (dict, list)):
+                    break
+
+                # Support both old 'data' and new 'list' schemas
+                records = []
+                if isinstance(payload, dict):
+                    records = payload.get("list") or payload.get("data") or []
+                elif isinstance(payload, list):
+                    records = payload
+
                 if not records:
                     break
 
-                batch = [
-                    self._format_amfi_listing(record, city)
-                    for record in records
-                    if record and record.get("ARNHolderName")
-                ]
+                batch = []
+                for record in records:
+                    # Map new 2026 fields to internal schema
+                    leads_data = {
+                        "name": record.get("ARNHolderName") or record.get("name") or record.get("distributor_name"),
+                        "phone": record.get("TelephoneNumber_O") or record.get("mobile_number") or record.get("phone"),
+                        "email": record.get("Email") or record.get("email"),
+                        "address": record.get("Address") or record.get("address"),
+                        "city": record.get("City") or city,
+                        "arn": record.get("ARN") or record.get("arn_number") or record.get("arn")
+                    }
+                    if leads_data["name"]:
+                        batch.append(leads_data)
+
                 batch = await self._process_listings(batch)
 
                 if batch:
@@ -963,7 +992,8 @@ class ContactScraper:
         sources = self._select_scrapers(category, source_name, use_business=False)
         total_extracted = 0
         
-        async with PoliteHTTPScraper(max_concurrent=self.config.max_concurrent) as fast_engine:
+        proxy = self.proxy_manager.get_proxy_string()
+        async with PoliteHTTPScraper(max_concurrent=self.config.max_concurrent, proxy=proxy) as fast_engine:
             for scraper_obj in sources:
                 source = scraper_obj.source_name
                 logger.info(f"⚡ Fast Extraction: {source} | {category} | {city}")
