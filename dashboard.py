@@ -508,7 +508,7 @@ HTML = """
         /* Layout Wrapper */
         .layout-wrapper { 
             display: grid; 
-            grid-template-columns: 280px 1fr; 
+            grid-template-columns: 240px 1fr; 
             min-height: 100vh; 
             background: var(--bg-obsidian); 
             width: 100%;
@@ -516,7 +516,7 @@ HTML = """
         .sidebar { 
             background: #0a0b10; 
             border-right: 1px solid var(--border-muted); 
-            padding: 24px; 
+            padding: 20px; 
             display: flex; 
             flex-direction: column; 
             gap: 32px; 
@@ -654,18 +654,6 @@ HTML = """
                     Quality Check
                 </a>
             </nav>
-
-            <div style="margin-top:24px; border-top: 1px solid var(--border-muted); padding-top: 24px; display: flex; flex-direction: column; flex: 1; overflow: hidden;">
-                <div class="terminal-header">
-                    <div>
-                        <p style="font-size:10px; font-weight:800; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">Activity Feed</p>
-                    </div>
-                    <div class="pulse" style="width:6px; height:6px; background:var(--accent-emerald); border-radius:50%;"></div>
-                </div>
-                <div class="terminal" id="activity-logs" style="max-height: 300px; margin-bottom: 12px;">
-                    <!-- Logs will stream here -->
-                </div>
-            </div>
 
             <div class="system-footer">
                 <p>System Status</p>
@@ -842,21 +830,19 @@ HTML = """
             setTimeout(() => { n.style.display = 'none'; }, dur);
         }
 
-        let currentPage = {{page}};
-        let totalPages = {{total_pages}};
+        let currentPage = parseInt("{{page}}") || 1;
+        let totalPages = parseInt("{{total_pages}}") || 1;
 
         function changePage(delta) {
-            const newPage = currentPage + delta;
-            if (newPage < 1 || newPage > totalPages) return;
-            const url = new URL(window.location);
-            url.searchParams.set('page', newPage);
-            window.location.href = url.toString();
+            let newPage = currentPage + delta;
+            goToPage(newPage);
         }
         
         function goToPage(p) {
             if (p < 1 || p > totalPages) return;
-            const url = new URL(window.location);
+            const url = new URL(window.location.href);
             url.searchParams.set('page', p);
+            console.log("Navigating to page:", p);
             window.location.href = url.toString();
         }
 
@@ -1115,13 +1101,13 @@ def index():
         cur.execute(count_sql, params)
         filtered_total = cur.fetchone()["cnt"]
 
+        # Final Page Calculation
         total_pages = (filtered_total + limit - 1) // limit if filtered_total > 0 else 1
-
-        # Clamp page
-        if page > total_pages:
-            page = total_pages
-        if page < 1:
-            page = 1
+        
+        # Clamp and validate current page
+        if page < 1: page = 1
+        if page > total_pages: page = total_pages
+        
         offset = (page - 1) * limit
 
         placeholder = "?" if USE_SQLITE else "%s"
