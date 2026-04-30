@@ -508,7 +508,7 @@ HTML = """
         /* Layout Wrapper */
         .layout-wrapper { 
             display: grid; 
-            grid-template-columns: 240px 1fr; 
+            grid-template-columns: 200px 1fr; 
             min-height: 100vh; 
             background: var(--bg-obsidian); 
             width: 100%;
@@ -534,7 +534,6 @@ HTML = """
             display: flex;
             flex-direction: column;
             gap: 40px;
-            pointer-events: auto;
         }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
@@ -604,7 +603,7 @@ HTML = """
         .badge { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; }
         .badge-src { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
         
-        .pagination { display: flex; align-items: center; justify-content: space-between; padding: 24px 0; border-top: 1px solid var(--border-muted); margin-top: 24px; }
+        .pagination { display: flex; align-items: center; justify-content: space-between; padding: 24px 0; border-top: 1px solid var(--border-muted); margin-top: 24px; position: relative; z-index: 50; }
         .pagination-info { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
         .pagination-btns { display: flex; gap: 8px; }
         .pagination-btn { 
@@ -637,10 +636,6 @@ HTML = """
                 <a href="/" class="nav-item active">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Dashboard
-                </a>
-                <a href="/logs" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                    Activity Logs
                 </a>
                 <a href="#" class="nav-item" onclick="exportData('csv')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -826,32 +821,36 @@ HTML = """
 </div>
 
     <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
-    <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>
-
-    <script>
-        function showNotif(msg, dur=3000) {
+    <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>    <script>
+        // CORE NAVIGATION FUNCTIONS (Defined early)
+        window.showNotif = function(msg, dur) {
+            if (dur === undefined) dur = 3000;
             const n = document.getElementById('notif');
-            n.innerText = msg; n.style.display = 'block';
-            setTimeout(() => { n.style.display = 'none'; }, dur);
-        }
+            if (n) {
+                n.innerText = msg; n.style.display = 'block';
+                setTimeout(function() { n.style.display = 'none'; }, dur);
+            }
+        };
 
-        let currentPage = parseInt("{{page}}") || 1;
-        let totalPages = parseInt("{{total_pages}}") || 1;
+        window.currentPage = parseInt("{{page}}") || 1;
+        window.totalPages = parseInt("{{total_pages}}") || 1;
 
-        function changePage(delta) {
-            let newPage = currentPage + delta;
-            goToPage(newPage);
-        }
+        window.changePage = function(delta) {
+            window.goToPage(window.currentPage + delta);
+        };
         
-        function goToPage(p) {
-            if (p < 1 || p > totalPages) return;
+        window.goToPage = function(p) {
+            if (p < 1 || p > window.totalPages) {
+                console.log("Page out of bounds:", p);
+                return;
+            }
             const url = new URL(window.location.href);
             url.searchParams.set('page', p);
             console.log("Navigating to page:", p);
             window.location.href = url.toString();
-        }
+        };
 
-        function applyFilters() {
+        window.applyFilters = function() {
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
@@ -860,17 +859,17 @@ HTML = """
             if (city) url.searchParams.set('city', city); else url.searchParams.delete('city');
             if (cat) url.searchParams.set('category', cat); else url.searchParams.delete('category');
             if (source) url.searchParams.set('source', source); else url.searchParams.delete('source');
-            url.searchParams.set('page', 1); // Reset to first page on new filter
+            url.searchParams.set('page', 1);
             window.location.href = url.toString();
-        }
+        };
 
-        async function startCollection() {
+        window.startCollection = async function() {
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             const btn = document.getElementById('start-btn');
             
-            if(!city || !cat) return showNotif('Please enter location and search term', 2000);
+            if(!city || !cat) return window.showNotif('Please enter location and search term', 2000);
             
             btn.disabled = true;
             btn.innerHTML = '<span class="pulse">COLLECTING...</span>';
@@ -882,110 +881,94 @@ HTML = """
                     body: JSON.stringify({city, category: cat, source})
                 });
                 const data = await res.json();
-                showNotif(data.message);
+                window.showNotif(data.message);
             } catch (e) {
-                showNotif('Failed to trigger collection');
+                window.showNotif('Failed to trigger collection');
                 btn.disabled = false;
                 btn.innerText = 'Start Collection';
             }
-        }
+        };
 
-        function setTemplate(city, cat, src) {
+        window.setTemplate = function(city, cat, src) {
             document.getElementById('t-city').value = city;
             document.getElementById('t-cat').value = cat;
             document.getElementById('t-source').value = src;
-            applyFilters();
-        }
+            window.applyFilters();
+        };
 
-        async function triggerFast() {
-            const res = await fetch('/api/trigger/fast-scrape', {method: 'POST'});
-            const data = await res.json();
-            showNotif(data.message);
-        }
+        window.exportData = function(fmt) {
+            window.location.href = "/export/" + fmt;
+        };
 
-        async function cleanup() {
-            showNotif('Cleaning started...');
-            const res = await fetch('/api/cleanup/deep', {method: 'POST'});
-            const data = await res.json();
-            showNotif(`Done: ${data.deleted} deleted, ${data.updated} updated`);
-        }
+        window.cleanup = async function() {
+            window.showNotif('Cleaning started...');
+            try {
+                const res = await fetch('/api/cleanup/deep', {method: 'POST'});
+                const data = await res.json();
+                window.showNotif('Done: ' + data.deleted + ' deleted');
+            } catch(e) { window.showNotif('Cleanup failed'); }
+        };
 
-        async function updateQuality() {
-            showNotif('Quality audit started...');
-            const res = await fetch('/api/cleanup/quality', {method: 'POST'});
-            const data = await res.json();
-            showNotif(`Audited ${data.updated} records`);
-        }
-
-        function exportData(fmt) {
-            window.location.href = `/export/${fmt}`;
-        }
+        window.updateQuality = async function() {
+            window.showNotif('Quality audit started...');
+            try {
+                const res = await fetch('/api/cleanup/quality', {method: 'POST'});
+                const data = await res.json();
+                window.showNotif('Audited ' + data.updated + ' records');
+            } catch(e) { window.showNotif('Audit failed'); }
+        };
 
         // Live Telemetry Stream
         const evtSource = new EventSource("/api/stream/stats");
         evtSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            document.getElementById('stat-total').innerText = data.total;
-            document.getElementById('stat-phone').innerText = data.with_phone;
-            document.getElementById('stat-email').innerText = data.with_email;
-            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+            if (document.getElementById('stat-total')) document.getElementById('stat-total').innerText = data.total;
+            if (document.getElementById('stat-phone')) document.getElementById('stat-phone').innerText = data.with_phone;
+            if (document.getElementById('stat-email')) document.getElementById('stat-email').innerText = data.with_email;
+            if (document.getElementById('last-update')) document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
             
             const status = data.scraper_status;
             const statusEl = document.getElementById('live-status');
             const progWrap = document.getElementById('prog-wrap');
             const progBar = document.getElementById('prog-bar');
-
             const startBtn = document.getElementById('start-btn');
 
             if (status && status.running) {
-                statusEl.innerText = status.message || 'RUNNING';
-                statusEl.style.color = 'var(--accent-emerald)';
-                progWrap.style.display = 'block';
-                if(status.stats && status.stats.progress) {
-                    progBar.style.width = status.stats.progress + '%';
-                } else {
-                    progBar.style.width = '100%';
-                }
-                
+                if(statusEl) { statusEl.innerText = status.message || 'RUNNING'; statusEl.style.color = 'var(--accent-emerald)'; }
+                if(progWrap) progWrap.style.display = 'block';
+                if(progBar) progBar.style.width = (status.stats && status.stats.progress ? status.stats.progress : 100) + '%';
                 if (startBtn) {
                     startBtn.disabled = true;
                     startBtn.innerHTML = '<span class="pulse">COLLECTING...</span>';
                 }
             } else {
-                statusEl.innerText = 'ONLINE'; // Online but not currently scraping
-                statusEl.style.color = 'var(--text-secondary)';
-                progWrap.style.display = 'none';
-                
+                if(statusEl) { statusEl.innerText = 'ONLINE'; statusEl.style.color = 'var(--text-secondary)'; }
+                if(progWrap) progWrap.style.display = 'none';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.innerText = 'Start Collection';
                 }
             }
 
-            // Stream Logs
             if (data.activity_logs) {
                 const logContainer = document.getElementById('activity-logs');
-                logContainer.innerHTML = data.activity_logs.map(log => `
-                    <div class="log-entry">
-                        <span class="log-time">${log.time}</span>
-                        <span class="log-src">[${log.source}]</span>
-                        <span class="log-msg ${log.level}">${log.message}</span>
-                    </div>
-                `).join('');
+                if (logContainer) {
+                    logContainer.innerHTML = data.activity_logs.map(function(log) {
+                        return '<div class="log-entry">' +
+                            '<span class="log-time">' + log.time + '</span>' +
+                            '<span class="log-src">[' + log.source + ']</span>' +
+                            '<span class="log-msg ' + log.level + '">' + log.message + '</span>' +
+                        '</div>';
+                    }).join('');
+                }
             }
-            
-            // Sidebar Telemetry
-            const sidebarTime = document.getElementById('last-update-sidebar');
-            if (sidebarTime) sidebarTime.innerText = new Date().toLocaleTimeString();
             
             const badge = document.getElementById('status-badge');
             if (badge) {
                 if (status && status.running) {
-                    badge.innerText = 'SCRAPING';
-                    badge.style.color = 'var(--accent-emerald)';
+                    badge.innerText = 'SCRAPING'; badge.style.color = 'var(--accent-emerald)';
                 } else {
-                    badge.innerText = 'ONLINE';
-                    badge.style.color = 'var(--text-secondary)';
+                    badge.innerText = 'ONLINE'; badge.style.color = 'var(--text-secondary)';
                 }
             }
         };
@@ -997,23 +980,50 @@ HTML = """
             const chartColors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
             const baseOpt = { responsive: true, maintainAspectRatio: false, animation: false };
 
-            sourceChart = new Chart(document.getElementById('sourceChart'), {
-                type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: chartColors }] },
-                options: { ...baseOpt, plugins: { legend: { position: 'bottom', labels: { color: '#64748b', font: { size: 8 }, padding: 4 } } }, cutout: '50%' }
-            });
+            const srcEl = document.getElementById('sourceChart');
+            if (srcEl) {
+                sourceChart = new Chart(srcEl, {
+                    type: 'doughnut',
+                    data: { labels: [], datasets: [{ data: [], backgroundColor: chartColors }] },
+                    options: { 
+                        ...baseOpt, 
+                        plugins: { legend: { position: 'bottom', labels: { color: '#64748b', font: { size: 8 }, padding: 4 } } }, 
+                        cutout: '50%' 
+                    }
+                });
+            }
 
-            categoryChart = new Chart(document.getElementById('categoryChart'), {
-                type: 'bar',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981' }] },
-                options: { ...baseOpt, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', font: { size: 7 } }, grid: { display: false } }, y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } }
-            });
+            const catEl = document.getElementById('categoryChart');
+            if (catEl) {
+                categoryChart = new Chart(catEl, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [{ data: [], backgroundColor: '#10b981' }] },
+                    options: { 
+                        ...baseOpt, 
+                        plugins: { legend: { display: false } }, 
+                        scales: { 
+                            x: { ticks: { color: '#64748b', font: { size: 7 } }, grid: { display: false } }, 
+                            y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } 
+                        } 
+                    }
+                });
+            }
 
-            trendChart = new Chart(document.getElementById('trendChart'), {
-                type: 'line',
-                data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 2 }] },
-                options: { ...baseOpt, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { display: false } }, y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } }
-            });
+            const trnEl = document.getElementById('trendChart');
+            if (trnEl) {
+                trendChart = new Chart(trnEl, {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 2 }] },
+                    options: { 
+                        ...baseOpt, 
+                        plugins: { legend: { display: false } }, 
+                        scales: { 
+                            x: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { display: false } }, 
+                            y: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } } 
+                        } 
+                    }
+                });
+            }
 
             refreshCharts();
             setInterval(refreshCharts, 30000);
@@ -1021,19 +1031,33 @@ HTML = """
 
         async function refreshCharts() {
             try {
-                const stats = await fetch('/api/stats/charts').then(r => r.json());
+                const response = await fetch('/api/stats/charts');
+                const stats = await response.json();
                 if (!stats.sources) return;
-                sourceChart.data.labels = stats.sources.map(s => s.source);
-                sourceChart.data.datasets[0].data = stats.sources.map(s => s.count);
-                categoryChart.data.labels = stats.categories.slice(0,5).map(c => c.category);
-                categoryChart.data.datasets[0].data = stats.categories.slice(0,5).map(c => c.count);
-                trendChart.data.labels = stats.trend.map(t => t.date);
-                trendChart.data.datasets[0].data = stats.trend.map(t => t.count);
-                sourceChart.update(); categoryChart.update(); trendChart.update();
+                
+                if (sourceChart) {
+                    sourceChart.data.labels = stats.sources.map(function(s) { return s.source; });
+                    sourceChart.data.datasets[0].data = stats.sources.map(function(s) { return s.count; });
+                    sourceChart.update();
+                }
+                
+                if (categoryChart) {
+                    categoryChart.data.labels = stats.categories.slice(0,5).map(function(c) { return c.category; });
+                    categoryChart.data.datasets[0].data = stats.categories.slice(0,5).map(function(c) { return c.count; });
+                    categoryChart.update();
+                }
+                
+                if (trendChart) {
+                    trendChart.data.labels = stats.trend.map(function(t) { return t.date; });
+                    trendChart.data.datasets[0].data = stats.trend.map(function(t) { return t.count; });
+                    trendChart.update();
+                }
             } catch(e) { console.log('Chart error:', e); }
         }
 
-        initCharts();
+        if (document.getElementById('sourceChart')) {
+            initCharts();
+        }
     </script>
 </body>
 </html>
