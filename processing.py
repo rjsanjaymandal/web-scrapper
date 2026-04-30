@@ -2,6 +2,7 @@ import re
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
+import sys
 from datetime import datetime
 from blockchain_utils import BlockchainUtils
 
@@ -285,9 +286,11 @@ class ProcessingHandler:
         updated = 0
         cat_changes = 0
         
+        placeholder = "?" if "sqlite3" in str(type(db_conn)) else "%s"
+        
         for row in rows:
-            contact_id = row['id']
-            raw_cat = row['category']
+            contact_id = row[0] if isinstance(row, tuple) else row['id']
+            raw_cat = row[1] if isinstance(row, tuple) else row['category']
             
             if not raw_cat:
                 continue
@@ -296,7 +299,7 @@ class ProcessingHandler:
             
             if norm_cat != raw_cat:
                 cur.execute(
-                    "UPDATE contacts SET category = %s WHERE id = %s",
+                    f"UPDATE contacts SET category = {placeholder} WHERE id = {placeholder}",
                     (norm_cat, contact_id)
                 )
                 cat_changes += 1
