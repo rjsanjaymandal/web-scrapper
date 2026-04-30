@@ -145,9 +145,7 @@ class ScraperWatchdog(threading.Thread):
             if conn: conn.close()
             self.logger.error(f"Status check failed: {e}")
 
-# Start Watchdog
-watchdog = ScraperWatchdog()
-watchdog.start()
+
 
 
 DB_INIT_IN_PROGRESS = False
@@ -432,6 +430,10 @@ def init_tables():
     finally:
         DB_INIT_IN_PROGRESS = False
 
+# Start Watchdog after DB utilities are defined
+watchdog = ScraperWatchdog()
+watchdog.start()
+
 
 def load_config():
     try:
@@ -505,8 +507,8 @@ HTML = """
 
         /* Layout Wrapper */
         .layout-wrapper { display: flex; width: 100%; min-height: 100vh; background: var(--bg-obsidian); }
-        .sidebar { width: 280px; background: #0a0b10; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; gap: 32px; height: 100vh; position: sticky; top: 0; }
-        .main-view { flex-grow: 1; padding: 24px; background: #050508; min-width: 0; position: relative; }
+        .sidebar { width: 280px; background: #0a0b10; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; gap: 32px; height: 100vh; position: sticky; top: 0; z-index: 100; }
+        .main-view { flex-grow: 1; padding: 24px; background: #050508; min-width: 0; position: relative; min-height: 100vh; display: flex; flex-direction: column; }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
@@ -1149,6 +1151,9 @@ def index():
                 FROM contacts
             """)
         stats_row = cur.fetchone()
+        if stats_row:
+            stats_row = dict(stats_row)
+        
         
         cur.execute("SELECT source, COUNT(*) as c FROM contacts GROUP BY source")
         by_source = {r["source"]: r["c"] for r in cur.fetchall()}
