@@ -506,9 +506,34 @@ HTML = """
         .status-dot { width: 8px; height: 8px; background: var(--accent-emerald); border-radius: 50%; box-shadow: 0 0 10px var(--accent-emerald); }
 
         /* Layout Wrapper */
-        .layout-wrapper { display: flex; width: 100%; min-height: 100vh; background: var(--bg-obsidian); }
-        .sidebar { width: 280px; background: #0a0b10; border-right: 1px solid var(--border-muted); padding: 24px; display: flex; flex-direction: column; flex-shrink: 0; gap: 32px; height: 100vh; position: sticky; top: 0; z-index: 100; }
-        .main-view { flex-grow: 1; padding: 24px; background: #050508; min-width: 0; position: relative; min-height: 100vh; display: flex; flex-direction: column; }
+        .layout-wrapper { 
+            display: grid; 
+            grid-template-columns: 280px 1fr; 
+            min-height: 100vh; 
+            background: var(--bg-obsidian); 
+            width: 100%;
+        }
+        .sidebar { 
+            background: #0a0b10; 
+            border-right: 1px solid var(--border-muted); 
+            padding: 24px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 32px; 
+            height: 100vh; 
+            position: sticky; 
+            top: 0; 
+            z-index: 100;
+        }
+        .main-view { 
+            padding: 40px; 
+            background: #050508; 
+            min-width: 0; 
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
         /* HUD Components */
