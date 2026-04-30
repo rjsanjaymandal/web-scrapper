@@ -11,14 +11,22 @@ logger = logging.getLogger(__name__)
 class AMFIScraper(BaseScraper):
     """Scraper for AMFI - Mutual Fund Agents"""
     source_name = "AMFI"
-    BASE_URL = "https://www.amfiindia.com/locate-your-nearest-mutual-fund-distributor"
+    BASE_URL = "https://www.amfiindia.com/locate-distributor"
+    SEARCH_API_URL = "https://www.amfiindia.com/api/locate-distributor"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return self.BASE_URL
 
+    def get_search_params(self, city: str, page: int = 1, page_size: int = 100) -> Dict:
+        """API Parameters for AMFI extraction"""
+        return {
+            "city": city,
+            "page": page,
+            "size": page_size
+        }
+
     async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
         # Implementation is handled via OfficialAPIHandlers.handle_amfi high-speed method
-        # but we keep the class for registry compliance
         return self.extract_raw_fallback(html_content, city, category)
 
 class IRDAIScraper(BaseScraper):
@@ -35,7 +43,7 @@ class IRDAIScraper(BaseScraper):
 class ICAIScraper(BaseScraper):
     """Scraper for ICAI - Chartered Accountants"""
     source_name = "ICAI"
-    BASE_URL = "https://trace.icai.org/trace/trace_main.php"
+    BASE_URL = "https://www.icai.org/traceamember.html"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return self.BASE_URL

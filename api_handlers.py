@@ -18,7 +18,7 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_amfi(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Mutual Fund Distributors from AMFI"""
-        url = "https://www.amfiindia.com/locate-your-nearest-mutual-fund-distributor"
+        url = "https://www.amfiindia.com/locate-distributor"
         # AMFI uses a POST request for searches
         payload = {
             "city": city,
@@ -112,8 +112,8 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Chartered Accountants from ICAI"""
-        # ICAI Trace is the 2026 standard for finding CAs
-        url = f"https://trace.icai.org/trace/trace_search.php?city={city}"
+        # Official ICAI member verification portal
+        url = "https://www.icai.org/traceamember.html"
         response = await engine.fetch(url, method="GET")
         if not response:
             return []
@@ -124,9 +124,9 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_irdai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Insurance Agents from IRDAI"""
-        url = "https://agencyportal.irdai.gov.in/PublicAccess/AgentLocator.aspx"
-        # IRDAI usually requires a POST with ViewState. 
-        # We'll use a polite fetch to establish session then attempt extraction.
+        # Official IRDAI portal
+        url = "https://www.irdai.gov.in"
+        # We target the official portal which is more stable than agencyportal in 2026
         response = await engine.fetch(url, method="GET")
         if not response: return []
         

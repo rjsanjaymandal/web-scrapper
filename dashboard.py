@@ -530,9 +530,11 @@ HTML = """
             background: #050508; 
             min-width: 0; 
             position: relative;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             gap: 40px;
+            pointer-events: auto;
         }
         .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
         
@@ -602,14 +604,17 @@ HTML = """
         .badge { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; }
         .badge-src { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
         
-        /* Pagination */
-        .pagination { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
-        .pagination-info { font-size: 11px; color: var(--text-secondary); }
-        .pagination-btns { display: flex; gap: 6px; }
-        .pagination-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: 0.2s; }
-        .pagination-btn:hover { border-color: var(--accent-emerald); color: var(--accent-emerald); }
-        .pagination-btn.active { background: var(--accent-emerald); color: #000; border-color: var(--accent-emerald); }
-        .pagination-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .pagination { display: flex; align-items: center; justify-content: space-between; padding: 24px 0; border-top: 1px solid var(--border-muted); margin-top: 24px; }
+        .pagination-info { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .pagination-btns { display: flex; gap: 8px; }
+        .pagination-btn { 
+            padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.02); color: var(--text-secondary); 
+            font-size: 12px; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 600;
+            pointer-events: auto;
+        }
+        .pagination-btn:hover:not(:disabled) { border-color: var(--accent-emerald); color: var(--accent-emerald); transform: translateY(-1px); background: rgba(16, 185, 129, 0.05); }
+        .pagination-btn.active { background: var(--accent-emerald); color: #000; border-color: var(--accent-emerald); box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); }
+        .pagination-btn:disabled { opacity: 0.2; cursor: not-allowed; }
         
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -1335,22 +1340,59 @@ def view_logs():
                     }
                 )
         log_files.sort(key=lambda x: x["modified"], reverse=True)
-        return render_template_string(LOGS_HTML, logs=log_files[:20])
+        return render_template_string(LOGS_HTML, logs=log_files[:30])
     except Exception as e:
         return f"Error reading logs: {e}"
 
+
+LOG_DETAIL_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Log Detail - {{name}}</title>
+    <style>
+        body { background: #050508; color: #c9d1d9; font-family: 'JetBrains Mono', monospace; margin: 0; padding: 20px; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2d3148; padding-bottom: 10px; margin-bottom: 20px; }
+        .terminal { background: #0a0a0f; padding: 20px; border-radius: 12px; border: 1px solid #2d3148; overflow-x: auto; font-size: 12px; }
+        .back-btn { color: #10b981; text-decoration: none; font-size: 14px; font-weight: bold; }
+        .back-btn:hover { text-decoration: underline; }
+        .line { margin-bottom: 4px; padding-left: 8px; border-left: 2px solid transparent; }
+        .ERROR { color: #ef4444; border-left-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+        .SUCCESS { color: #10b981; border-left-color: #10b981; }
+        .INFO { color: #94a3b8; }
+        .WARNING { color: #f59e0b; border-left-color: #f59e0b; }
+        h2 { margin:0; font-size:16px; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/logs" class="back-btn">← Back to Logs</a>
+        <h2>{{name}}</h2>
+        <div style="font-size: 10px; color: #64748b;">LIVE TAIL (LAST 1000 LINES)</div>
+    </div>
+    <div class="terminal">
+        {% for line in lines %}
+        <div class="line {{ 'ERROR' if 'ERROR' in line else 'SUCCESS' if 'SUCCESS' in line else 'WARNING' if 'WARNING' in line else 'INFO' }}">{{ line }}</div>
+        {% endfor %}
+    </div>
+    <script>
+        window.scrollTo(0, document.body.scrollHeight);
+    </script>
+</body>
+</html>
+"""
 
 @app.route("/logs/<name>")
 def get_log(name):
     try:
         log_file = LOGS_DIR / name
         if log_file.exists():
-            content = log_file.read_text()
+            content = log_file.read_text(errors='replace')
             lines = content.split("\n")
-            return jsonify({"name": name, "lines": lines[-500:]})
-        return jsonify({"error": "Log not found"}), 404
+            return render_template_string(LOG_DETAIL_HTML, name=name, lines=lines[-1000:])
+        return "Log file not found", 404
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return f"Error reading log detail: {e}", 500
 
 
 @app.route("/api/trigger/scrape", methods=["POST", "GET"])
