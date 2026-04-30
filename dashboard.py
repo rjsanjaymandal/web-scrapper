@@ -457,7 +457,7 @@ HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aurora Obsidian | Registry HUD</title>
+    <title>MaysanLabs Scrapper</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -1879,7 +1879,10 @@ def api_chart_stats():
         cur = conn.cursor()
         cur.execute("SELECT source, COUNT(*) as count FROM contacts GROUP BY source")
         sources = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT category, COUNT(*) as count FROM contacts GROUP BY category ORDER BY count DESC LIMIT 10")
+        if USE_SQLITE:
+            cur.execute("SELECT TRIM(category) as category, COUNT(*) as count FROM contacts GROUP BY TRIM(category) ORDER BY count DESC LIMIT 10")
+        else:
+            cur.execute("SELECT INITCAP(LOWER(TRIM(category))) as category, COUNT(*) as count FROM contacts GROUP BY INITCAP(LOWER(TRIM(category))) ORDER BY count DESC LIMIT 10")
         categories = [dict(r) for r in cur.fetchall()]
         if USE_SQLITE:
             cur.execute("SELECT strftime('%Y-%m-%d', scraped_at) as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
