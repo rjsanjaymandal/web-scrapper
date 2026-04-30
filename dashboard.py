@@ -772,7 +772,7 @@ HTML = """
                                 <th>Score</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="leads-tbody">
                             {% for c in contacts %}
                             <tr>
                                 <td style="font-weight:700;">{{c.name}}</td>
@@ -794,13 +794,13 @@ HTML = """
                     </table>
                 </div>
                 
-                <div class="pagination">
+                <div class="pagination" id="pagination-wrapper">
                     <div class="pagination-info">
-                        Showing {{ contacts|length }} of {{ s.filtered_total }} leads
+                        Showing <span id="current-count">{{ contacts|length }}</span> of <span id="filtered-total">{{ s.filtered_total }}</span> leads
                         <span style="margin-left: 10px; color: rgba(255,255,255,0.2);">|</span>
-                        <span style="margin-left: 10px;">Page {{ page }} of {{ total_pages }}</span>
+                        <span style="margin-left: 10px;">Page <span id="current-page-num">{{ page }}</span> of <span id="total-pages-num">{{ total_pages }}</span></span>
                     </div>
-                    <div class="pagination-btns">
+                    <div class="pagination-btns" id="pagination-btns-container">
                         <button class="pagination-btn" onclick="goToPage(1)" {% if page <= 1 %}disabled{% endif %}>First</button>
                         <button class="pagination-btn" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>Prev</button>
                         
@@ -842,14 +842,10 @@ HTML = """
         };
         
         window.goToPage = function(p) {
-            if (p < 1 || p > window.totalPages) {
-                console.log("Page out of bounds:", p);
-                return;
-            }
+            if (p < 1 || p > window.totalPages) return;
             const url = new URL(window.location.href);
             url.searchParams.set('page', p);
-            console.log("Navigating to page:", p);
-            window.location.href = url.toString();
+            window.loadLeads(url.toString(), true);
         };
 
         window.applyFilters = function() {
@@ -857,13 +853,106 @@ HTML = """
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             
-            const url = new URL(window.location);
-            if (city) url.searchParams.set('city', city); else url.searchParams.delete('city');
-            if (cat) url.searchParams.set('category', cat); else url.searchParams.delete('category');
-            if (source) url.searchParams.set('source', source); else url.searchParams.delete('source');
+            const url = new URL(window.location.origin + window.location.pathname);
+            if (city) url.searchParams.set('city', city);
+            if (cat) url.searchParams.set('category', cat);
+            if (source) url.searchParams.set('source', source);
             url.searchParams.set('page', 1);
-            window.location.href = url.toString();
+            window.loadLeads(url.toString(), true);
         };
+
+        window.loadLeads = async function(url, pushState) {
+            try {
+                const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                const data = await res.json();
+                
+                window.currentPage = data.page;
+                window.totalPages = data.total_pages;
+                
+                window.renderLeads(data.contacts);
+                window.updatePaginationUI(data);
+                
+                if (pushState) {
+                    history.pushState({page: data.page, url: url}, '', url);
+                }
+                
+                // Scroll to top of table
+                document.querySelector('.glass-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (e) {
+                console.error("AJAX Load Error:", e);
+                window.showNotif('Failed to load data', 3000);
+            }
+        };
+
+        window.renderLeads = function(leads) {
+            const tbody = document.getElementById('leads-tbody');
+            if (!tbody) return;
+            
+            if (leads.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-secondary);">No records found matching filters.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = leads.map(function(c) {
+                const scoreColor = c.quality_score > 70 ? 'var(--accent-emerald)' : (c.quality_score > 40 ? 'var(--accent-blue)' : 'var(--accent-red)');
+                return '<tr>' +
+                    '<td style="font-weight:700;">' + c.name + '</td>' +
+                    '<td>' + c.phone + '</td>' +
+                    '<td style="color:var(--accent-blue);">' + c.email + '</td>' +
+                    '<td>' + c.category + '</td>' +
+                    '<td><span class="badge badge-src">' + c.source + '</span></td>' +
+                    '<td>' +
+                        '<div style="display:flex; align-items:center; gap:8px;">' +
+                            '<div style="flex:1; background:rgba(255,255,255,0.05); height:4px; width:40px; border-radius:2px;">' +
+                                '<div style="height:100%; background:' + scoreColor + '; width:' + c.quality_score + '%;"></div>' +
+                            '</div>' +
+                            '<span style="font-size:10px;">' + c.quality_score + '%</span>' +
+                        '</div>' +
+                    '</td>' +
+                '</tr>';
+            }).join('');
+        };
+
+        window.updatePaginationUI = function(data) {
+            // Update counts
+            if (document.getElementById('current-count')) document.getElementById('current-count').innerText = data.contacts.length;
+            if (document.getElementById('filtered-total')) document.getElementById('filtered-total').innerText = data.filtered_total;
+            if (document.getElementById('current-page-num')) document.getElementById('current-page-num').innerText = data.page;
+            if (document.getElementById('total-pages-num')) document.getElementById('total-pages-num').innerText = data.total_pages;
+
+            // Rebuild buttons
+            const btnContainer = document.getElementById('pagination-btns-container');
+            if (!btnContainer) return;
+
+            let html = '';
+            const isFirst = data.page <= 1;
+            const isLast = data.page >= data.total_pages;
+
+            html += '<button class="pagination-btn" onclick="goToPage(1)" ' + (isFirst ? 'disabled' : '') + '>First</button>';
+            html += '<button class="pagination-btn" onclick="changePage(-1)" ' + (isFirst ? 'disabled' : '') + '>Prev</button>';
+
+            let start_p = Math.max(1, data.page - 2);
+            let end_p = Math.min(data.total_pages, start_p + 4);
+            start_p = Math.max(1, end_p - 4);
+
+            for (let i = start_p; i <= end_p; i++) {
+                html += '<button class="pagination-btn ' + (i === data.page ? 'active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
+            }
+
+            html += '<button class="pagination-btn" onclick="changePage(1)" ' + (isLast ? 'disabled' : '') + '>Next</button>';
+            html += '<button class="pagination-btn" onclick="goToPage(' + data.total_pages + ')" ' + (isLast ? 'disabled' : '') + '>Last</button>';
+
+            btnContainer.innerHTML = html;
+        };
+
+        // Handle Browser Back/Forward
+        window.addEventListener('popstate', function(event) {
+            if (event.state && event.state.url) {
+                window.loadLeads(event.state.url, false);
+            } else {
+                window.location.reload();
+            }
+        });
 
         window.startCollection = async function() {
             const city = document.getElementById('t-city').value;
@@ -1213,6 +1302,32 @@ def index():
         search_query = ""
         sort_by = "date"
         limit = page_size
+
+    # Support AJAX / JSON response for flicker-free pagination
+    if request.args.get("format") == "json" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        leads_list = []
+        for c in contacts:
+            leads_list.append({
+                "id": c["id"],
+                "name": c["name"],
+                "phone": c["phone"] or "---",
+                "email": c["email"] or "---",
+                "city": c["city"] or "---",
+                "source": c["source"] or "---",
+                "category": c["category"] or "---",
+                "quality_score": c["quality_score"] or 0
+            })
+        return jsonify({
+            "contacts": leads_list,
+            "page": page,
+            "total_pages": total_pages,
+            "filtered_total": filtered_total,
+            "stats": {
+                "total": total,
+                "phone": stats_row.get("with_phone", 0) if stats_row else 0,
+                "email": stats_row.get("with_email", 0) if stats_row else 0,
+            }
+        })
 
     return render_template_string(
         HTML,
