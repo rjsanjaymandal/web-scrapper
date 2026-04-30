@@ -799,20 +799,47 @@ HTML = """
             </div>
         </div>
 
-        <!-- Charts Section -->
+        <!-- Charts & Health Section -->
         <div class="charts-row">
             <div class="chart-card">
                 <p>Leads by Source</p>
                 <div class="chart-container"><canvas id="sourceChart"></canvas></div>
             </div>
             <div class="chart-card">
+                <p>Lead Health & Completeness</p>
+                <div style="margin-top: 10px;">
+                    <div style="margin-bottom: 20px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; font-weight:700; color:var(--text-secondary);">
+                            <span>PHONE VERIFICATION</span>
+                            <span class="mono">{{s.with_phone_pct}}%</span>
+                        </div>
+                        <div class="progress-bar-container"><div class="progress-bar" style="width:{{s.with_phone_pct}}%; background:var(--accent-emerald);"></div></div>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; font-weight:700; color:var(--text-secondary);">
+                            <span>DIGITAL REACH (EMAIL)</span>
+                            <span class="mono">{{s.with_email_pct}}%</span>
+                        </div>
+                        <div class="progress-bar-container"><div class="progress-bar" style="width:{{s.with_email_pct}}%; background:var(--accent-blue);"></div></div>
+                    </div>
+                    <div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; font-weight:700; color:var(--text-secondary);">
+                            <span>AVG DATA FIDELITY</span>
+                            <span class="mono">{{s.avg_quality}}%</span>
+                        </div>
+                        <div class="progress-bar-container"><div class="progress-bar" style="width:{{s.avg_quality}}%; background:var(--accent-amber);"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-card">
                 <p>Top Categories</p>
                 <div class="chart-container"><canvas id="categoryChart"></canvas></div>
             </div>
-            <div class="chart-card">
-                <p>Growth Trend</p>
-                <div class="chart-container"><canvas id="trendChart"></canvas></div>
-            </div>
+        </div>
+
+        <div class="chart-card" style="margin-top: -12px;">
+            <p>Intelligence Growth Trend (Last 7 Days)</p>
+            <div class="chart-container" style="height: 120px;"><canvas id="trendChart"></canvas></div>
         </div>
 
         <div class="content-grid">
@@ -1455,6 +1482,8 @@ def index():
             "quality_medium": stats_row.get("q_medium", 0) if stats_row else 0,
             "quality_low": stats_row.get("q_low", 0) if stats_row else 0,
             "avg_quality": round(stats_row.get("avg_score", 0) or 0, 1) if stats_row else 0,
+            "with_phone_pct": round((stats_row.get("with_phone", 0) / total * 100) if total > 0 else 0, 1),
+            "with_email_pct": round((stats_row.get("with_email", 0) / total * 100) if total > 0 else 0, 1),
         },
         by_source=by_source,
         by_cat=by_cat,
@@ -1997,11 +2026,17 @@ def api_chart_stats():
         cur = conn.cursor()
         cur.execute("SELECT source, COUNT(*) as count FROM contacts GROUP BY source")
         sources = [dict(r) for r in cur.fetchall()]
-        if USE_SQLITE:
-            cur.execute("SELECT UPPER(TRIM(category)) as category, COUNT(*) as count FROM contacts GROUP BY UPPER(TRIM(category)) ORDER BY count DESC LIMIT 10")
-        else:
-            cur.execute("SELECT INITCAP(LOWER(TRIM(category))) as category, COUNT(*) as count FROM contacts GROUP BY INITCAP(LOWER(TRIM(category))) ORDER BY count DESC LIMIT 10")
-        categories = [dict(r) for r in cur.fetchall()]
+        # Normalize categories in Python to ensure perfect grouping regardless of DB state
+        cur.execute("SELECT category, COUNT(*) as count FROM contacts GROUP BY category")
+        raw_cats = cur.fetchall()
+        from processing import ProcessingHandler
+        cat_map = {}
+        for r in raw_cats:
+            norm = ProcessingHandler.normalize_category(r["category"])
+            cat_map[norm] = cat_map.get(norm, 0) + r["count"]
+        
+        categories = [{"category": k, "count": v} for k, v in sorted(cat_map.items(), key=lambda x: x[1], reverse=True)[:10]]
+
         if USE_SQLITE:
             cur.execute("SELECT strftime('%Y-%m-%d', scraped_at) as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
         else:

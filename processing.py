@@ -47,6 +47,46 @@ class ProcessingHandler:
         r'^placeholder@', r'^dummy@', r'^example@'
     ]
 
+    CATEGORY_MAP = {
+        'mutual fund agent': 'Mutual Fund Agent',
+        'mutual fund agents': 'Mutual Fund Agent',
+        'mutual fund advisor': 'Mutual Fund Agent',
+        'mutual fund consultants': 'Mutual Fund Agent',
+        'insurance agent': 'Insurance Agent',
+        'insurance agents': 'Insurance Agent',
+        'insurance advisor': 'Insurance Agent',
+        'insurance consultant': 'Insurance Agent',
+        'chartered accountant': 'Chartered Accountant',
+        'chartered accountants': 'Chartered Accountant',
+        'ca': 'Chartered Accountant',
+        'tax advocate': 'Tax Advocate',
+        'tax consultants': 'Tax Advocate',
+        'investment advisor': 'Investment Advisor',
+        'investment advisors': 'Investment Advisor',
+        'investment adviser': 'Investment Advisor',
+        'investment advisers': 'Investment Advisor',
+        'sebi registered': 'Investment Advisor',
+        'lawyer': 'Lawyer',
+        'lawyers': 'Lawyer',
+        'advocate': 'Lawyer',
+        'advocates': 'Lawyer',
+        'company secretary': 'Company Secretary',
+        'company secretaries': 'Company Secretary',
+        'insolvency professional': 'Insolvency Professional',
+        'insolvency professionals': 'Insolvency Professional',
+        'gst practitioner': 'GST Practitioner',
+        'gst practitioners': 'GST Practitioner',
+        'gst consultant': 'GST Practitioner',
+        'stock broker': 'Stock Broker',
+        'stock brokers': 'Stock Broker',
+        'real estate agent': 'Real Estate Agent',
+        'real estate agents': 'Real Estate Agent',
+        'merchants': 'Merchant',
+        'merchant': 'Merchant',
+        'exporters': 'Exporter',
+        'importers': 'Importer',
+    }
+
     @staticmethod
     def normalize_phone(phone: Any) -> Optional[str]:
         """Validate and clean phone number to a standard 10-digit format for India."""
@@ -79,6 +119,28 @@ class ProcessingHandler:
                 return False
                 
         return True
+    @staticmethod
+    def normalize_category(category: Any) -> str:
+        """Normalize category names to a canonical display name."""
+        if not category:
+            return "General"
+        
+        # 1. Clean the string
+        cat = str(category).lower().strip()
+        cat = re.sub(r'[^a-z0-9 ]+', ' ', cat).strip()
+        cat = re.sub(r'\s+', ' ', cat)
+        
+        # 2. Check the map (direct match or fuzzy space/hyphen match)
+        for key, canonical in ProcessingHandler.CATEGORY_MAP.items():
+            if cat == key or cat == key.replace(' ', '-'):
+                return canonical
+        
+        # 3. Handle pluralization (simple)
+        if cat.endswith('s') and cat[:-1] in ProcessingHandler.CATEGORY_MAP:
+             return ProcessingHandler.CATEGORY_MAP[cat[:-1]]
+             
+        # 4. Fallback to Title Case
+        return cat.title()
 
     @staticmethod
     def calculate_quality_score(contact: Optional[Dict]) -> int:
@@ -168,6 +230,8 @@ class ProcessingHandler:
                 val = re.sub(r'\s+', ' ', str(val)).strip()
                 if field == 'name':
                     val = val.title()
+                elif field == 'category':
+                    val = cls.normalize_category(val)
                 contact[field] = val
         
         # 4. Extract Blockchain Contract Addresses (CAs)

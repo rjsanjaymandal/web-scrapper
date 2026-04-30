@@ -34,9 +34,10 @@ class PoliteHTTPScraper:
     def __init__(self, max_concurrent: int = 2, proxy: str = None):
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.session: Optional[aiohttp.ClientSession] = None
+        self.session_lock = asyncio.Lock()
         self.ua = StealthManager.get_persistent_ua()
         self.proxy = proxy
-        self.base_headers = {}  # Set per-request based on is_json_api
+        self.base_headers = {}
 
     async def __aenter__(self):
         await self._init_session()
@@ -47,18 +48,20 @@ class PoliteHTTPScraper:
             await self.session.close()
 
     async def _init_session(self, headers: Dict[str, str] = None):
-        """Initializes a new aiohttp session with persistent identity."""
-        if self.session:
-            await self.session.close()
-        
-        connector = aiohttp.TCPConnector(ssl=False)
-        # 2026 Stability Fix: Disable trust_env if proxy is used to prevent 127.0.0.1 loops
-        # in environments like Railway/Docker.
-        self.session = aiohttp.ClientSession(
-            headers=headers or self.base_headers, 
-            connector=connector,
-            trust_env=False if self.proxy else True
-        )
+        """Initializes a new aiohttp session with persistent identity. Thread-safe."""
+        async with self.session_lock:
+            if self.session and not self.session.closed:
+                return # Already initialized
+                
+            if self.session:
+                await self.session.close()
+            
+            connector = aiohttp.TCPConnector(ssl=False, force_close=False, limit=100)
+            self.session = aiohttp.ClientSession(
+                headers=headers or self.base_headers, 
+                connector=connector,
+                trust_env=False if self.proxy else True
+            )
 
     async def _get_headers(self, is_json_api: bool = False) -> Dict[str, str]:
         """Get headers based on request type."""
@@ -126,40 +129,45 @@ class PoliteHTTPScraper:
                             return FetchResult(response.status, text, None, str(response.url))
                         
                 except (ssl.SSLEOFError, ConnectionResetError, aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as e:
-                    logger.warning(f"SSL/EOF/Reset error on {url}: {e}")
+                    logger.warning(f"Network error on {url} (Attempt {attempt}): {e}")
                     await self._init_session(headers)
-                    backoff = random.uniform(5.0, 15.0) * attempt
-                    await asyncio.sleep(backoff)
+                    await asyncio.sleep(random.uniform(2.0, 5.0) * attempt)
                 except (asyncio.TimeoutError, aiohttp.ClientError) as e:
                     error_msg = str(e).upper()
-                    if "SITE_PERMANENTLY_BLOCKED" in error_msg or "403" in error_msg or "418" in error_msg:
-                        if self.proxy:
-                            logger.warning(f"Proxy blocked target {url} (Status {error_msg}). Attempting direct connection fallback...")
-                            try:
-                                if not self.session or self.session.closed:
-                                    await self._init_session(headers)
-                                async with self.session.request(
-                                    method, 
-                                    url, 
-                                    timeout=aiohttp.ClientTimeout(total=30), 
-                                    headers=request_headers, 
-                                    proxy=None, # DIRECT FALLBACK
-                                    **kwargs
-                                ) as response:
-                                    if response.status == 200:
-                                        text = await response.text()
-                                        json_data = None
-                                        try: json_data = await response.json(content_type=None)
-                                        except: pass
-                                        return FetchResult(response.status, text, json_data, str(response.url))
-                            except Exception as fallback_err:
-                                logger.error(f"Direct fallback failed for {url}: {fallback_err}")
+                    status_code = getattr(e, 'status', 0)
+                    
+                    # Direct Fallback Trigger
+                    is_blocked = any(x in error_msg for x in ["403", "418", "SITE_PERMANENTLY_BLOCKED", "FORBIDDEN"]) or status_code in [403, 418]
+                    
+                    if is_blocked and self.proxy:
+                        logger.warning(f"Proxy blocked target {url} ({error_msg}). Attempting direct bypass...")
+                        try:
+                            await self._init_session(headers)
+                            async with self.session.request(
+                                method, url, 
+                                timeout=aiohttp.ClientTimeout(total=20), 
+                                headers=request_headers, 
+                                proxy=None,
+                                **kwargs
+                            ) as response:
+                                if response.status == 200:
+                                    text = await response.text()
+                                    json_data = None
+                                    try: json_data = await response.json(content_type=None)
+                                    except: pass
+                                    return FetchResult(response.status, text, json_data, str(response.url))
+                                else:
+                                    logger.warning(f"Direct bypass also failed for {url} (Status {response.status})")
+                        except Exception as fallback_err:
+                            logger.error(f"Direct fallback failed for {url}: {fallback_err}")
+                    
+                    if "502" in error_msg or status_code == 502:
+                        logger.warning(f"Gateway error on {url} (Proxy issue). Retrying...")
                     
                     logger.warning(f"Request error on {url} (Attempt {attempt}): {e}")
-                    backoff = random.uniform(5.0, 15.0) * attempt
-                    await asyncio.sleep(backoff)
+                    await asyncio.sleep(random.uniform(5.0, 10.0) * attempt)
                 except Exception as e:
-                    logger.error(f"Unexpected error fetching {url}: {e}")
+                    logger.error(f"Critical fetch error {url}: {e}")
                     break
             
             return None

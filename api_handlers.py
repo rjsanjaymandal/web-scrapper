@@ -235,34 +235,41 @@ class OfficialAPIHandlers:
 
     @staticmethod
     async def handle_sebi_ria(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
-        """Fetch SEBI Registered Investment Advisors (High Speed)"""
+        """Fetch SEBI Registered Investment Advisors (2026 API)"""
+        # 2026 High-Volume API for SEBI Registrants
         url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes"
-        # In a real scenario, this would involve a POST with params, 
-        # but here we'll use the basic fetch + BS4 logic from official.py
-        resp = await engine.fetch(url)
+        params = {
+            "intmId": "13", # 13 is RIA
+            "search": city.title()
+        }
+        
+        resp = await engine.fetch(url, params=params)
         if not resp: return []
         html = await resp.text()
         
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, 'lxml')
-        table = soup.select_one('table#sample_1, .table-striped, table[border="1"]')
+        # SEBI often uses sample_1 as ID for their registrant tables
+        table = soup.select_one('table#sample_1') or soup.find('table', {'class': 'table'})
         leads = []
         if table:
-            rows = table.select('tr')
-            for row in rows:
+            for row in table.select('tr')[1:]: # Skip header
                 cols = row.select('td')
-                if len(cols) >= 3:
-                    name = cols[1].get_text(strip=True)
-                    if name and "Name" not in name:
-                        leads.append({
-                            "name": name,
-                            "registration_no": cols[0].get_text(strip=True),
-                            "address": cols[2].get_text(strip=True),
-                            "city": city,
-                            "source": "SEBI",
-                            "category": "Investment Advisor"
-                        })
-        return leads if leads else BaseScraper.extract_raw_fallback(html, city, "Investment Advisor")
+                if len(cols) >= 4:
+                    leads.append({
+                        "name": cols[1].get_text(strip=True),
+                        "license_no": cols[0].get_text(strip=True),
+                        "address": cols[2].get_text(strip=True),
+                        "city": city,
+                        "source": "SEBI",
+                        "category": "Investment Advisor"
+                    })
+        
+        # Fallback to Regex if table structure is complex/changing
+        if not leads:
+            leads = BaseScraper.extract_raw_fallback(html, city, "Investment Advisor")
+            
+        return leads
 
     @staticmethod
     async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
