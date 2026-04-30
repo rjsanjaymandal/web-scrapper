@@ -493,6 +493,12 @@ HTML = """
             background-attachment: fixed;
         }
 
+        .film-grain {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/7/76/1k_noise.png');
+            opacity: 0.02; pointer-events: none; z-index: 9999; mix-blend-mode: overlay;
+        }
+
         /* Typography */
         h1, h2, h3, .brand-box p { font-family: 'Outfit', sans-serif; }
         .mono { font-family: 'JetBrains Mono', monospace; }
@@ -742,6 +748,10 @@ HTML = """
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                     Quality Check
                 </a>
+                <a href="#" class="nav-item" onclick="openMaintenance()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                    Maintenance
+                </a>
             </nav>
 
             <div class="system-footer">
@@ -796,6 +806,34 @@ HTML = """
             <div class="stat-card amber">
                 <span class="label">Engine Precision</span>
                 <span class="value mono">98.4%</span>
+            </div>
+        </div>
+
+        <div class="charts-row">
+            <div class="chart-card">
+                <p>Industry Distribution</p>
+                <div class="chart-container"><canvas id="catChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <p>Intelligence Sources</p>
+                <div class="chart-container"><canvas id="srcChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <p>Extraction Velocity</p>
+                <div class="chart-container"><canvas id="trendChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 24px;">
+            <div class="terminal-header">
+                <h3>Live Activity Feed</h3>
+                <div style="display:flex; gap:10px;">
+                    <div class="status-dot pulse" style="background:var(--accent-emerald);"></div>
+                    <span style="font-size:10px; color:var(--accent-emerald); font-weight:700; letter-spacing:1px;">REAL-TIME LINK ACTIVE</span>
+                </div>
+            </div>
+            <div id="terminal" class="terminal">
+                <div class="log-entry"><span class="log-time">--:--:--</span> <span class="log-src">SYSTEM</span> <span class="log-msg">Initializing Intelligence HUD...</span></div>
             </div>
         </div>
 
@@ -1284,6 +1322,67 @@ HTML = """
                     trendChart.update();
                 }
             } catch(e) { console.log('Chart error:', e); }
+        }
+
+        // Live Feed SSE
+        const evtSource = new EventSource("/api/stream/stats");
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            // Update Stats
+            if (data.total) document.getElementById('stat-total').innerText = data.total.toLocaleString();
+            if (data.with_phone) document.getElementById('stat-phone').innerText = data.with_phone.toLocaleString();
+            if (data.with_email) document.getElementById('stat-email').innerText = data.with_email.toLocaleString();
+            
+            // Update Status
+            if (data.scraper_status) {
+                const s = data.scraper_status;
+                document.getElementById('live-status').innerText = s.running ? 'ACTIVE' : 'IDLE';
+                document.getElementById('live-status').style.color = s.running ? 'var(--accent-emerald)' : 'var(--text-secondary)';
+                if (s.running) {
+                    document.getElementById('prog-wrap').style.display = 'block';
+                    document.getElementById('prog-bar').style.width = '100%'; // Pulsing is done via CSS
+                } else {
+                    document.getElementById('prog-wrap').style.display = 'none';
+                }
+            }
+            
+            // Update Terminal Feed
+            if (data.activity_logs) {
+                const term = document.getElementById('terminal');
+                const currentContent = term.innerHTML;
+                let newLogs = '';
+                data.activity_logs.forEach(log => {
+                    const levelClass = log.level || 'INFO';
+                    newLogs += `<div class="log-entry">
+                        <span class="log-time">${log.time}</span>
+                        <span class="log-src">${log.source || 'SYS'}</span>
+                        <span class="log-msg ${levelClass}">${log.message}</span>
+                    </div>`;
+                });
+                term.innerHTML = newLogs;
+            }
+            
+            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+            document.getElementById('last-update-sidebar').innerText = new Date().toLocaleTimeString();
+        };
+
+        async function openMaintenance() {
+            if (!confirm("Run system-wide category normalization? This will fix duplicate charts by merging similar categories.")) return;
+            
+            showNotif("Starting database maintenance...");
+            try {
+                const resp = await fetch('/api/maintenance/normalize', { method: 'POST' });
+                const res = await resp.json();
+                if (res.success) {
+                    showNotif(`Success! Normalized ${res.category_normalized} entries.`);
+                    refreshCharts();
+                } else {
+                    showNotif("Error: " + res.error);
+                }
+            } catch(e) {
+                showNotif("Maintenance failed: " + e);
+            }
         }
 
         if (document.getElementById('sourceChart')) {
@@ -1973,6 +2072,23 @@ def cleanup_low_quality():
         set_status("Idle", False)
         return jsonify({"success": True, "updated": updated})
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+@app.route("/api/maintenance/normalize", methods=["POST"])
+def api_maintenance_normalize():
+    """Trigger system-wide category normalization"""
+    try:
+        from processing import ProcessingHandler
+        from tasks import set_status
+        set_status("🧹 Normalizing all categories...", True)
+        
+        conn = get_db()
+        stats = ProcessingHandler.clean_database_logic(conn)
+        conn.close()
+        
+        set_status("Idle", False)
+        return jsonify({"success": True, **stats})
+    except Exception as e:
+        logger.error(f"Maintenance failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

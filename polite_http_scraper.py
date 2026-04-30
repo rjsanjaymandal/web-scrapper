@@ -116,6 +116,21 @@ class PoliteHTTPScraper:
                                     pass
                             return FetchResult(response.status, text, json_data, str(response.url))
                             
+                        elif response.status == 403:
+                            logger.warning(f"🚫 403 Forbidden on {url}. Proxy: {self.proxy or 'Direct'}")
+                            if self.proxy:
+                                # Trigger direct bypass for 403 immediately
+                                raise aiohttp.ClientResponseError(
+                                    response.request_info, 
+                                    response.history, 
+                                    status=403, 
+                                    message="Forbidden - Triggering Bypass"
+                                )
+                            else:
+                                logger.error(f"Target {url} has blocked direct access (403).")
+                                text = await response.text()
+                                return FetchResult(response.status, text, None, str(response.url))
+
                         elif response.status in [418, 429, 500, 502, 503, 504]:
                             # Exponential backoff
                             backoff_time = (attempt) * 30

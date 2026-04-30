@@ -51,11 +51,18 @@ class ProcessingHandler:
         'mutual fund agent': 'Mutual Fund Agent',
         'mutual fund agents': 'Mutual Fund Agent',
         'mutual fund advisor': 'Mutual Fund Agent',
+        'mutual fund advisors': 'Mutual Fund Agent',
         'mutual fund consultants': 'Mutual Fund Agent',
+        'mutual fund consultant': 'Mutual Fund Agent',
+        'mf agent': 'Mutual Fund Agent',
+        'mf agents': 'Mutual Fund Agent',
+        'amfi registered': 'Mutual Fund Agent',
         'insurance agent': 'Insurance Agent',
         'insurance agents': 'Insurance Agent',
         'insurance advisor': 'Insurance Agent',
         'insurance consultant': 'Insurance Agent',
+        'lic agent': 'Insurance Agent',
+        'insurance brokers': 'Insurance Agent',
         'chartered accountant': 'Chartered Accountant',
         'chartered accountants': 'Chartered Accountant',
         'ca': 'Chartered Accountant',
@@ -66,6 +73,7 @@ class ProcessingHandler:
         'investment adviser': 'Investment Advisor',
         'investment advisers': 'Investment Advisor',
         'sebi registered': 'Investment Advisor',
+        'sebi ria': 'Investment Advisor',
         'lawyer': 'Lawyer',
         'lawyers': 'Lawyer',
         'advocate': 'Lawyer',
@@ -85,6 +93,8 @@ class ProcessingHandler:
         'merchant': 'Merchant',
         'exporters': 'Exporter',
         'importers': 'Importer',
+        'importer': 'Importer',
+        'exporter': 'Exporter',
     }
 
     @staticmethod
@@ -261,3 +271,37 @@ class ProcessingHandler:
     def filter_valid(contacts: List[Dict]) -> List[Dict]:
         """Returns only contacts that have at least a valid phone or email."""
         return [c for c in contacts if c.get('phone_clean') or (c.get('email') and c.get('email_valid'))]
+
+    @classmethod
+    def clean_database_logic(cls, db_conn) -> Dict[str, int]:
+        """
+        Deep database cleaning logic: normalizes categories and removes duplicates.
+        Returns stats about the operation.
+        """
+        cur = db_conn.cursor()
+        cur.execute("SELECT id, category FROM contacts")
+        rows = cur.fetchall()
+        
+        updated = 0
+        cat_changes = 0
+        
+        for row in rows:
+            contact_id = row['id']
+            raw_cat = row['category']
+            
+            if not raw_cat:
+                continue
+                
+            norm_cat = cls.normalize_category(raw_cat)
+            
+            if norm_cat != raw_cat:
+                cur.execute(
+                    "UPDATE contacts SET category = %s WHERE id = %s",
+                    (norm_cat, contact_id)
+                )
+                cat_changes += 1
+                updated += 1
+        
+        db_conn.commit()
+        cur.close()
+        return {"total_checked": len(rows), "updated": updated, "category_normalized": cat_changes}

@@ -26,6 +26,7 @@ class OfficialAPIHandlers:
         direct_handlers = {
             "AMFI": "handle_amfi",
             "SEBI": "handle_sebi_ria",
+            "SEBI_RIA": "handle_sebi_ria",
             "IBBI": "handle_ibbi_insolvency",
             "BAR_COUNCIL": "handle_bar_council",
             "ICAI": "handle_icai",
@@ -334,6 +335,8 @@ class OfficialAPIHandlers:
         if resp and resp.status == 200:
             html = await resp.text()
             return await scraper.extract_listings(None, city, category, html)
+        elif resp and resp.status == 403:
+            logger.warning(f"Fast extraction for {source} in {city} was blocked (403).")
         return []
 
     @staticmethod
