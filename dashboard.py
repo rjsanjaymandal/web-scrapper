@@ -766,6 +766,7 @@ HTML = """
                             <tr>
                                 <th>Lead Name</th>
                                 <th>Phone</th>
+                                <th>Email</th>
                                 <th>Category</th>
                                 <th>Source</th>
                                 <th>Score</th>
@@ -776,6 +777,7 @@ HTML = """
                             <tr>
                                 <td style="font-weight:700;">{{c.name}}</td>
                                 <td>{{c.phone or '---'}}</td>
+                                <td style="color:var(--accent-blue);">{{c.email or '---'}}</td>
                                 <td>{{c.category}}</td>
                                 <td><span class="badge badge-src">{{c.source}}</span></td>
                                 <td>
