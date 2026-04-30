@@ -1880,7 +1880,7 @@ def api_chart_stats():
         cur.execute("SELECT source, COUNT(*) as count FROM contacts GROUP BY source")
         sources = [dict(r) for r in cur.fetchall()]
         if USE_SQLITE:
-            cur.execute("SELECT TRIM(category) as category, COUNT(*) as count FROM contacts GROUP BY TRIM(category) ORDER BY count DESC LIMIT 10")
+            cur.execute("SELECT UPPER(TRIM(category)) as category, COUNT(*) as count FROM contacts GROUP BY UPPER(TRIM(category)) ORDER BY count DESC LIMIT 10")
         else:
             cur.execute("SELECT INITCAP(LOWER(TRIM(category))) as category, COUNT(*) as count FROM contacts GROUP BY INITCAP(LOWER(TRIM(category))) ORDER BY count DESC LIMIT 10")
         categories = [dict(r) for r in cur.fetchall()]

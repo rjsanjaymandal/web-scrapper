@@ -1267,6 +1267,9 @@ class ContactScraper:
         if not listings:
             return
 
+        # Normalize category to prevent duplicates like "Mutual Fund Agent" vs "mutual fund agent"
+        category = category.strip().title() if category else "General"
+
         # Use Unified Processing Handler to ensure only valid data is stored
         valid_listings = ProcessingHandler.filter_valid(listings)
 

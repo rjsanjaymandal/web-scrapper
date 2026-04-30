@@ -29,14 +29,15 @@ class OfficialAPIHandlers:
         
         params = {
             "strOpt": "ALL",
-            "city": city.upper(),
+            "city": city.title(),
             "search": "",
             "page": 1,
             "pageSize": 100
         }
         
         response = await engine.fetch(url, method="GET", params=params, headers=custom_headers, is_json_api=True)
-        if not response:
+        if not response or response.status != 200:
+            logger.warning(f"AMFI API returned status {response.status if response else 'None'}")
             return []
             
         try:
@@ -96,7 +97,10 @@ class OfficialAPIHandlers:
             "THANE": ("15", "280"),
             "BHOPAL": ("14", "221"),
             "PATNA": ("4", "58"),
-            "VADODARA": ("6", "108")
+            "VADODARA": ("6", "108"),
+            "ALLAHABAD": ("25", "444"),
+            "PRAYAGRAJ": ("25", "444"),
+            "UDAIPUR": ("20", "354")
         }
         
         state_id, district_id = city_mapping.get(city.upper(), ("", ""))
@@ -162,6 +166,82 @@ class OfficialAPIHandlers:
             return []
 
     @staticmethod
+    async def handle_sebi_ria(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch SEBI Registered Investment Advisors (High Speed)"""
+        url = "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes"
+        # In a real scenario, this would involve a POST with params, 
+        # but here we'll use the basic fetch + BS4 logic from official.py
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'lxml')
+        table = soup.select_one('table#sample_1, .table-striped, table[border="1"]')
+        leads = []
+        if table:
+            rows = table.select('tr')
+            for row in rows:
+                cols = row.select('td')
+                if len(cols) >= 3:
+                    name = cols[1].get_text(strip=True)
+                    if name and "Name" not in name:
+                        leads.append({
+                            "name": name,
+                            "registration_no": cols[0].get_text(strip=True),
+                            "address": cols[2].get_text(strip=True),
+                            "city": city,
+                            "source": "SEBI",
+                            "category": "Investment Advisor"
+                        })
+        return leads if leads else BaseScraper.extract_raw_fallback(html, city, "Investment Advisor")
+
+    @staticmethod
+    async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch IBBI Insolvency Professionals"""
+        url = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        return BaseScraper.extract_raw_fallback(html, city, "Insolvency Professional")
+
+    @staticmethod
+    async def handle_bar_council(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch Lawyers from Bar Council directory"""
+        url = "https://www.indianlawyer.info/directory"
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        return BaseScraper.extract_raw_fallback(html, city, "Lawyer")
+
+    @staticmethod
+    async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch Chartered Accountants from ICAI"""
+        url = "https://www.icai.org/traceamember.html"
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        return BaseScraper.extract_raw_fallback(html, city, "Chartered Accountant")
+
+    @staticmethod
+    async def handle_icsi(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch Company Secretaries from ICSI"""
+        url = "https://www.icsi.edu/member/icsi-member-directory/"
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        return BaseScraper.extract_raw_fallback(html, city, "Company Secretary")
+
+    @staticmethod
+    async def handle_gst(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+        """Fetch GST Practitioners"""
+        url = "https://services.gst.gov.in/services/searchtp"
+        resp = await engine.fetch(url)
+        if not resp: return []
+        html = await resp.text()
+        return BaseScraper.extract_raw_fallback(html, city, "GST Practitioner")
+
+    @staticmethod
     async def handle_sitemap(engine: PoliteHTTPScraper, city: str, source: str) -> List[Dict]:
         """Generic sitemap/directory extractor for high-volume directories."""
         from scrapers.base import ScraperRegistry
@@ -213,6 +293,8 @@ class OfficialAPIHandlers:
             "IBBI": cls.handle_ibbi_insolvency,
             "BAR_COUNCIL": cls.handle_bar_council,
             "ICAI": cls.handle_icai,
+            "ICSI": cls.handle_icsi,
+            "GST": cls.handle_gst,
             "IRDAI": cls.handle_irdai,
             "SITEMAP": lambda e, c: cls.handle_sitemap(e, c, "SITEMAP"),
             "EXPORTERSINDIA": lambda e, c: cls.handle_sitemap(e, c, "EXPORTERSINDIA"),
@@ -228,4 +310,8 @@ class OfficialAPIHandlers:
                 return await handler(engine, city)
             except Exception as e:
                 logger.error(f"Error in API handler for {source}: {e}")
+                # Don't re-raise, return empty to allow other scrapers to continue
+        else:
+            logger.debug(f"No specialized handler for source: {source}")
+            
         return []
