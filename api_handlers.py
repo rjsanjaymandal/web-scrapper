@@ -6,7 +6,7 @@ Targets: AMFI, SEBI, IBBI, Bar Council, ICAI, IRDAI.
 import logging
 import re
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable, Awaitable
 from polite_http_scraper import PoliteHTTPScraper
 
 from scrapers.base import BaseScraper
@@ -14,6 +14,74 @@ logger = logging.getLogger(__name__)
 
 class OfficialAPIHandlers:
     """Specialized handlers for each regulatory body"""
+    
+    @classmethod
+    def get_handler(
+        cls, source: str, category: Optional[str] = None
+    ) -> Optional[Callable[[PoliteHTTPScraper, str], Awaitable[List[Dict]]]]:
+        """Resolve handlers lazily so a missing method only disables one source."""
+        key = (source or "").upper()
+        category_name = category or "business"
+
+        direct_handlers = {
+            "AMFI": "handle_amfi",
+            "SEBI": "handle_sebi_ria",
+            "IBBI": "handle_ibbi_insolvency",
+            "BAR_COUNCIL": "handle_bar_council",
+            "ICAI": "handle_icai",
+            "ICSI": "handle_icsi",
+            "GST": "handle_gst",
+            "IRDAI": "handle_irdai",
+            "YELLOWPAGES": "handle_yellowpages",
+            "JUSTDIAL": "handle_justdial_fallback",
+        }
+
+        sitemap_sources = {
+            "SITEMAP",
+            "EXPORTERSINDIA",
+            "ASKLAILA",
+            "VYKARI",
+            "CLICKINDIA",
+            "GROTAL",
+            "NSE",
+            "BSE",
+            "RBI",
+        }
+
+        if key in sitemap_sources:
+            method = getattr(cls, "handle_sitemap", None)
+            if not method:
+                return None
+
+            async def _handler(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+                return await method(engine, city, key, category_name)
+
+            return _handler
+
+        method_name = direct_handlers.get(key)
+        if not method_name:
+            return None
+
+        handler = getattr(cls, method_name, None)
+        if not handler:
+            logger.warning(
+                "Handler %s for source %s is not available; skipping source.",
+                method_name,
+                key,
+            )
+            return None
+
+        if key in {"YELLOWPAGES", "JUSTDIAL"}:
+            async def _handler(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+                return await handler(engine, city, category_name)
+
+            return _handler
+
+        return handler
+
+    @classmethod
+    def supports(cls, source: str, category: Optional[str] = None) -> bool:
+        return cls.get_handler(source, category) is not None
     
     @staticmethod
     async def handle_amfi(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
@@ -242,76 +310,72 @@ class OfficialAPIHandlers:
         return BaseScraper.extract_raw_fallback(html, city, "GST Practitioner")
 
     @staticmethod
-    async def handle_sitemap(engine: PoliteHTTPScraper, city: str, source: str) -> List[Dict]:
+    async def handle_sitemap(
+        engine: PoliteHTTPScraper,
+        city: str,
+        source: str,
+        category: str = "business",
+    ) -> List[Dict]:
         """Generic sitemap/directory extractor for high-volume directories."""
         from scrapers.base import ScraperRegistry
         scraper = ScraperRegistry.get(source)
         if not scraper:
             return []
         
-        if source == "SITEMAP":
-            return await scraper.extract_listings(None, city, "business", None)
-            
-        url = scraper.build_search_url(city, "business")
+        url = scraper.build_search_url(city, category)
         resp = await engine.fetch(url)
         if resp and resp.status == 200:
             html = await resp.text()
-            return await scraper.extract_listings(None, city, "business", html)
+            return await scraper.extract_listings(None, city, category, html)
         return []
 
     @staticmethod
-    async def handle_yellowpages(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+    async def handle_yellowpages(
+        engine: PoliteHTTPScraper, city: str, category: str = "business"
+    ) -> List[Dict]:
         """Fetch from YellowPages India (Stable HTTP target)"""
         from scrapers.directory import YellowPagesIndiaScraper
         scraper = YellowPagesIndiaScraper()
-        url = scraper.build_search_url(city, "business")
+        url = scraper.build_search_url(city, category)
         resp = await engine.fetch(url)
         if resp and resp.status == 200:
             html = await resp.text()
-            return await scraper.extract_listings(None, city, "business", html)
+            return await scraper.extract_listings(None, city, category, html)
         return []
 
     @staticmethod
-    async def handle_justdial_fallback(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+    async def handle_justdial_fallback(
+        engine: PoliteHTTPScraper, city: str, category: str = "business"
+    ) -> List[Dict]:
         """Lightweight JustDial extraction attempt via HTTP (Often WAF blocked)"""
         from scrapers.business import JustDialScraper
         scraper = JustDialScraper()
-        url = scraper.build_search_url(city, "business")
+        url = scraper.build_search_url(city, category)
         # JD is very sensitive, we use a more aggressive delay if possible or just try once
         resp = await engine.fetch(url)
         if resp and resp.status == 200:
             html = await resp.text()
-            return await scraper.extract_listings(None, city, "business", html)
+            return await scraper.extract_listings(None, city, category, html)
         return []
 
     @classmethod
-    async def dispatch(cls, source: str, engine: PoliteHTTPScraper, city: str) -> List[Dict]:
+    async def dispatch(
+        cls,
+        source: str,
+        engine: PoliteHTTPScraper,
+        city: str,
+        category: Optional[str] = None,
+    ) -> List[Dict]:
         """Routes to the correct handler based on source name"""
-        handlers = {
-            "AMFI": cls.handle_amfi,
-            "SEBI": cls.handle_sebi_ria,
-            "IBBI": cls.handle_ibbi_insolvency,
-            "BAR_COUNCIL": cls.handle_bar_council,
-            "ICAI": cls.handle_icai,
-            "ICSI": cls.handle_icsi,
-            "GST": cls.handle_gst,
-            "IRDAI": cls.handle_irdai,
-            "SITEMAP": lambda e, c: cls.handle_sitemap(e, c, "SITEMAP"),
-            "EXPORTERSINDIA": lambda e, c: cls.handle_sitemap(e, c, "EXPORTERSINDIA"),
-            "ASKLAILA": lambda e, c: cls.handle_sitemap(e, c, "ASKLAILA"),
-            "VYKARI": lambda e, c: cls.handle_sitemap(e, c, "VYKARI"),
-            "YELLOWPAGES": cls.handle_yellowpages,
-            "JUSTDIAL": cls.handle_justdial_fallback
-        }
-        
-        handler = handlers.get(source.upper())
-        if handler:
-            try:
-                return await handler(engine, city)
-            except Exception as e:
-                logger.error(f"Error in API handler for {source}: {e}")
-                # Don't re-raise, return empty to allow other scrapers to continue
-        else:
-            logger.debug(f"No specialized handler for source: {source}")
+        handler = cls.get_handler(source, category)
+        if not handler:
+            logger.info("Skipping %s: no fast HTTP handler registered.", source)
+            return []
+
+        try:
+            return await handler(engine, city)
+        except Exception as e:
+            logger.error(f"Error in API handler for {source}: {e}")
+            # Don't re-raise, return empty to allow other scrapers to continue
             
         return []

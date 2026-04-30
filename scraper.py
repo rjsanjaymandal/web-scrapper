@@ -93,20 +93,25 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "sebi-registered": ["SEBI"],
     "sebi-advisor": ["SEBI"],
     "investment-advisor": ["SEBI"],
+    "investment-advisors": ["SEBI"],
     "investment-adviser": ["SEBI"],
+    "investment-advisers": ["SEBI"],
+    "pms-providers": ["SEBI"],
     "advisor": ["SEBI", "JUSTDIAL", "YELLOWPAGES"],
     "gst-practitioners": ["GST"],
     "insolvency-professionals": ["IBBI"],
     "insolvency-professional": ["IBBI"],
+    "registered-valuers": ["IBBI", "YELLOWPAGES"],
     "lawyers": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
     "lawyer": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
     "advocates": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
     "advocate": ["BAR_COUNCIL", "YELLOWPAGES", "VYKARI", "SITEMAP"],
     "gst-consultant": ["GST", "ASKLAILA"],
     "gst": ["GST", "ASKLAILA"],
-    "rbi-regulated": ["RBI"],
-    "banks": ["RBI"],
-    "nbfc": ["RBI"],
+    "rbi-regulated": ["RBI", "YELLOWPAGES", "SITEMAP"],
+    "banks": ["RBI", "YELLOWPAGES", "SITEMAP"],
+    "nbfc": ["RBI", "YELLOWPAGES", "SITEMAP"],
+    "microfinance": ["RBI", "YELLOWPAGES", "SITEMAP"],
     "financial-advisor": ["AMFI", "SEBI", "YELLOWPAGES", "SITEMAP"],
     "wealth-manager": ["AMFI", "SEBI", "YELLOWPAGES", "SITEMAP"],
     "investment-consultant": ["SEBI", "YELLOWPAGES", "SITEMAP"],
@@ -114,6 +119,13 @@ OFFICIAL_CATEGORY_SOURCE_MAP = {
     "business-consultants": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "EXPORTERSINDIA"],
     "chartered-engineers": ["YELLOWPAGES", "TRADEINDIA", "EXPORTERSINDIA"],
     "cost-accountants": ["YELLOWPAGES", "ASKLAILA"],
+    "real-estate-agents": ["YELLOWPAGES", "ASKLAILA", "SITEMAP"],
+    "architects": ["YELLOWPAGES", "ASKLAILA", "SITEMAP"],
+    "doctors": ["YELLOWPAGES", "ASKLAILA", "SITEMAP"],
+    "merchants": ["YELLOWPAGES", "ASKLAILA", "SITEMAP"],
+    "exporters": ["EXPORTERSINDIA", "YELLOWPAGES", "SITEMAP"],
+    "importers": ["EXPORTERSINDIA", "YELLOWPAGES", "SITEMAP"],
+    "startups": ["YELLOWPAGES", "SITEMAP"],
     "business": ["YELLOWPAGES", "TRADEINDIA", "INDIAMART", "JUSTDIAL", "EXPORTERSINDIA", "ASKLAILA", "SITEMAP"],
     "local": ["YELLOWPAGES", "GROTAL", "SULEKHA", "CLICKINDIA", "VYKARI"],
     "person": ["LINKEDIN"],
@@ -153,6 +165,19 @@ class Config:
     scraper_settings: Dict
     max_concurrent: int
     redis_url: Optional[str] = None
+
+
+def _normalize_proxy_host(host: str, default_port: Optional[str] = None) -> str:
+    host = (host or "").strip()
+    if not host:
+        return ""
+
+    host = re.sub(r"^https?://", "", host, flags=re.IGNORECASE).rstrip("/")
+    if ":" not in host:
+        port = default_port or ("823" if "dataimpulse.com" in host else "")
+        if port:
+            host = f"{host}:{port}"
+    return host
 
 
 def load_config() -> Config:
@@ -209,7 +234,10 @@ def load_config() -> Config:
     if env_proxy_host:
         proxies.append(
             {
-                "host": env_proxy_host,
+                "host": _normalize_proxy_host(
+                    env_proxy_host,
+                    os.environ.get("PROXY_PORT") or proxy_cfg.get("port"),
+                ),
                 "username": os.environ.get("PROXY_USER", ""),
                 "password": os.environ.get("PROXY_PASS", ""),
             }
@@ -218,7 +246,7 @@ def load_config() -> Config:
         for p in proxy_cfg["proxies"]:
             proxies.append(
                 {
-                    "host": p.get("host", ""),
+                    "host": _normalize_proxy_host(p.get("host", ""), p.get("port")),
                     "username": p.get("username", ""),
                     "password": p.get("password", ""),
                 }
@@ -226,7 +254,7 @@ def load_config() -> Config:
     elif proxy_cfg.get("host"):
         proxies.append(
             {
-                "host": proxy_cfg["host"],
+                "host": _normalize_proxy_host(proxy_cfg["host"], proxy_cfg.get("port")),
                 "username": proxy_cfg.get("username", ""),
                 "password": proxy_cfg.get("password", ""),
             }
@@ -989,7 +1017,21 @@ class ContactScraper:
         from api_handlers import OfficialAPIHandlers
         
         # Determine the target source
-        sources = self._select_scrapers(category, source_name, use_business=False)
+        normalized_category = self._normalize_key(category)
+        if source_name is None and normalized_category not in OFFICIAL_CATEGORY_SOURCE_MAP:
+            fallback_sources = {"YELLOWPAGES", "ASKLAILA", "SITEMAP"}
+            sources = [
+                s
+                for s in self.scrapers + self.business_scrapers
+                if s.source_name in fallback_sources
+            ]
+            logger.info(
+                "No fast source map for %s; using directory fallbacks only.",
+                category,
+            )
+        else:
+            sources = self._select_scrapers(category, source_name, use_business=False)
+
         total_extracted = 0
         
         proxy = self.proxy_manager.get_proxy_string()
@@ -997,10 +1039,21 @@ class ContactScraper:
             for scraper_obj in sources:
                 source = scraper_obj.source_name
                 logger.info(f"⚡ Fast Extraction: {source} | {category} | {city}")
+
+                if not OfficialAPIHandlers.supports(source, category):
+                    logger.info(
+                        "Skipping %s for %s/%s: no fast HTTP handler.",
+                        source,
+                        city,
+                        category,
+                    )
+                    continue
                 
                 try:
                     # 1. Specialized API Handlers (High-Speed)
-                    batch = await OfficialAPIHandlers.dispatch(source, fast_engine, city)
+                    batch = await OfficialAPIHandlers.dispatch(
+                        source, fast_engine, city, category
+                    )
                     
                     # 2. Legacy API Fallback (AMFI)
                     if not batch and source == "AMFI":

@@ -193,6 +193,15 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         set_status(msg, False)
         return {"status": "skipped", "reason": "deactivated"}
 
+    from scrape_state import claim_scrape_job, finish_scrape_job
+
+    claimed, reason, token = claim_scrape_job(city, category, source)
+    if not claimed:
+        msg = f"Skipped: {category} in {city} ({reason})"
+        logger.info(msg)
+        set_status(msg, False)
+        return {"status": "skipped", "reason": reason}
+
     set_status(
         f"Started: High-Speed Scraping {category} in {city}...",
         True,
@@ -216,9 +225,19 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
             # Use the new high-speed extraction methods
             # This bypasses Playwright/Puppeteer entirely for supported sources
             count = await scraper.scrape_category_fast(city, category, source)
+            finish_scrape_job(city, category, source, token=token, count=count, success=True)
             set_status(f"Success: Extracted {count} leads from {source or 'Official Registries'}", False)
             return {"status": "completed", "count": count}
         except Exception as e:
+            finish_scrape_job(
+                city,
+                category,
+                source,
+                token=token,
+                count=0,
+                success=False,
+                error=str(e),
+            )
             set_status(f"Error: {str(e)}", False)
             logger.error(f"Task failed: {e}")
             return {"status": "failed", "error": str(e)}
@@ -240,6 +259,7 @@ def fast_scrape_task(source: str = None, max_concurrent: int = None):
     try:
         from polite_http_scraper import PoliteHTTPScraper
         from scraper import load_config, ContactScraper
+        from scrape_state import claim_scrape_job, finish_scrape_job
     except Exception as e:
         set_status(f"Error: fast scrape startup failed: {e}", False)
         logger.error(f"Fast scrape startup failed: {e}")
@@ -255,15 +275,37 @@ def fast_scrape_task(source: str = None, max_concurrent: int = None):
         try:
             # Optimized batch extraction for all cities and categories
             total = 0
+            skipped = 0
             for city in config.cities:
                 for cat in config.categories:
-                    count = await scraper.scrape_category_fast(city, cat, source)
+                    claimed, reason, token = claim_scrape_job(city, cat, source)
+                    if not claimed:
+                        skipped += 1
+                        logger.info(f"Skipping: {cat} in {city} ({reason})")
+                        continue
+
+                    try:
+                        count = await scraper.scrape_category_fast(city, cat, source)
+                        finish_scrape_job(city, cat, source, token=token, count=count, success=True)
+                    except Exception as scrape_error:
+                        finish_scrape_job(
+                            city,
+                            cat,
+                            source,
+                            token=token,
+                            count=0,
+                            success=False,
+                            error=str(scrape_error),
+                        )
+                        logger.error(f"Fast scrape failed for {cat} in {city}: {scrape_error}")
+                        continue
+
                     total += count
                     if count > 0:
                         set_status(f"Progress: Found {total} leads total...")
             
-            set_status(f"Success: Drained {total} records from official APIs.", False)
-            return {"status": "completed", "total": total}
+            set_status(f"Success: Drained {total} records from official APIs. Skipped {skipped} recent jobs.", False)
+            return {"status": "completed", "total": total, "skipped": skipped}
         except Exception as e:
             set_status(f"Error: {e}", False)
             logger.error(f"Fast scrape failed: {e}")

@@ -4,6 +4,7 @@ import os
 import yaml
 from datetime import datetime
 from scraper import ContactScraper, load_config
+from scrape_state import claim_scrape_job, finish_scrape_job
 
 # Configure Logging for Production (Railway)
 logging.basicConfig(
@@ -44,9 +45,27 @@ async def run_enterprise_cycle():
                 random.shuffle(shuffled_cats)
                 
                 for cat in shuffled_cats:
+                    claimed, reason, token = claim_scrape_job(city, cat)
+                    if not claimed:
+                        logger.info(f"Skipping: {cat} in {city} ({reason})")
+                        continue
+
                     logger.info(f"Processing: {cat} in {city}...")
-                    count = await scraper.scrape_category_fast(city, cat, None)
-                    total_leads += count
+                    try:
+                        count = await scraper.scrape_category_fast(city, cat, None)
+                        finish_scrape_job(city, cat, token=token, count=count, success=True)
+                        total_leads += count
+                    except Exception as task_error:
+                        finish_scrape_job(
+                            city,
+                            cat,
+                            token=token,
+                            count=0,
+                            success=False,
+                            error=str(task_error),
+                        )
+                        logger.error(f"Task failed for {cat} in {city}: {task_error}")
+                        continue
                     
                     # 2026 Verification: Log current DB state to confirm storage is working
                     try:
