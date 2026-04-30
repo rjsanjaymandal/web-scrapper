@@ -11,6 +11,20 @@ from stealth_utils import StealthManager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("polite_http_scraper")
 
+class FetchResult:
+    """Wrapper to pre-read response and ensure connection closure."""
+    def __init__(self, status: int, text: str, json_data: Any, url: str):
+        self.status = status
+        self._text = text
+        self._json = json_data
+        self.url = url
+
+    async def text(self) -> str:
+        return self._text
+
+    async def json(self, **kwargs) -> Any:
+        return self._json
+
 class PoliteHTTPScraper:
     """
     Ultra-lightweight, 'polite' HTTP scraper for Level 1 targets (associations, gov boards).
@@ -79,27 +93,37 @@ class PoliteHTTPScraper:
                         await self._init_session(headers)
 
                     logger.info(f"Fetching: {url} (Attempt {attempt})")
-                    response = await self.session.request(
+                    async with self.session.request(
                         method, 
                         url, 
                         timeout=aiohttp.ClientTimeout(total=30), 
                         headers=request_headers, 
                         proxy=self.proxy,
                         **kwargs
-                    )
-                    
-                    if response.status == 200:
-                        return response
+                    ) as response:
                         
-                    elif response.status in [429, 500, 502, 503, 504]:
-                        # Exponential backoff: 30s, 60s, 90s
-                        backoff_time = (attempt) * 30
-                        logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff_time}s...")
-                        await asyncio.sleep(backoff_time)
-                        continue
-                    else:
-                        logger.error(f"Failed to fetch {url}: Status {response.status}")
-                        return response
+                        if response.status == 200:
+                            # Pre-read and wrap
+                            text = await response.text()
+                            json_data = None
+                            if "application/json" in response.headers.get("Content-Type", "").lower():
+                                try:
+                                    json_data = await response.json(content_type=None)
+                                except:
+                                    pass
+                            return FetchResult(response.status, text, json_data, str(response.url))
+                            
+                        elif response.status in [418, 429, 500, 502, 503, 504]:
+                            # Exponential backoff
+                            backoff_time = (attempt) * 30
+                            logger.warning(f"Server returned {response.status} on {url}. Backing off for {backoff_time}s...")
+                            await asyncio.sleep(backoff_time)
+                            continue
+                        else:
+                            logger.error(f"Failed to fetch {url}: Status {response.status}")
+                            # Still wrap so callers can check status
+                            text = await response.text()
+                            return FetchResult(response.status, text, None, str(response.url))
                         
                 except (ssl.SSLEOFError, ConnectionResetError, aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as e:
                     logger.warning(f"SSL/EOF/Reset error on {url}: {e}")
@@ -107,6 +131,30 @@ class PoliteHTTPScraper:
                     backoff = random.uniform(5.0, 15.0) * attempt
                     await asyncio.sleep(backoff)
                 except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                    error_msg = str(e).upper()
+                    if "SITE_PERMANENTLY_BLOCKED" in error_msg or "403" in error_msg or "418" in error_msg:
+                        if self.proxy:
+                            logger.warning(f"Proxy blocked target {url} (Status {error_msg}). Attempting direct connection fallback...")
+                            try:
+                                if not self.session or self.session.closed:
+                                    await self._init_session(headers)
+                                async with self.session.request(
+                                    method, 
+                                    url, 
+                                    timeout=aiohttp.ClientTimeout(total=30), 
+                                    headers=request_headers, 
+                                    proxy=None, # DIRECT FALLBACK
+                                    **kwargs
+                                ) as response:
+                                    if response.status == 200:
+                                        text = await response.text()
+                                        json_data = None
+                                        try: json_data = await response.json(content_type=None)
+                                        except: pass
+                                        return FetchResult(response.status, text, json_data, str(response.url))
+                            except Exception as fallback_err:
+                                logger.error(f"Direct fallback failed for {url}: {fallback_err}")
+                    
                     logger.warning(f"Request error on {url} (Attempt {attempt}): {e}")
                     backoff = random.uniform(5.0, 15.0) * attempt
                     await asyncio.sleep(backoff)

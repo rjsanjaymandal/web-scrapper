@@ -865,7 +865,8 @@ HTML = """
                                 <th>Score</th>
                             </tr>
                         </thead>
-                        <tbody id="leads-tbody"                             {% for c in contacts %}
+                        <tbody id="leads-tbody">
+                            {% for c in contacts %}
                             <tr>
                                 <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
                                 <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
@@ -889,7 +890,6 @@ HTML = """
                                 </td>
                             </tr>
                             {% endfor %}
-}
                         </tbody>
                     </table>
                 </div>
