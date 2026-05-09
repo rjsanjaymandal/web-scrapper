@@ -750,23 +750,271 @@ HTML = """
         .badge-src { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2); }
         
         /* Pagination */
-        .pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 32px; margin-top: 32px; border-top: 1px solid var(--border-muted); }
-        .pagination-info { font-size: 12px; color: var(--text-muted); font-weight: 500; }
-        .pagination-info span { color: var(--text-secondary); font-weight: 700; }
-        .pagination-btns { display: flex; gap: 10px; }
-        .pagination-btn { 
-            padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border-muted); 
-            background: rgba(255,255,255,0.02); color: var(--text-secondary); 
-            font-size: 13px; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 600;
-            outline: none;
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 24px;
+            margin-top: 24px;
+            border-top: 1px solid var(--border-muted);
+            flex-wrap: wrap;
+            gap: 16px;
         }
-        .pagination-btn:hover:not(:disabled) { border-color: var(--accent-emerald); color: var(--accent-emerald); background: rgba(16, 185, 129, 0.05); transform: translateY(-2px); }
-        .pagination-btn.active { background: var(--accent-emerald); color: #064e3b; border-color: var(--accent-emerald); box-shadow: 0 4px 15px var(--glow-emerald); }
-        .pagination-btn:disabled { opacity: 0.2; cursor: not-allowed; transform: none !important; }
-        
+        .pagination-info {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pagination-info span { color: var(--text-secondary); font-weight: 700; }
+        .pagination-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+        .pagination-btn {
+            min-width: 40px;
+            height: 40px;
+            padding: 0 16px;
+            border-radius: 10px;
+            border: 1px solid var(--border-muted);
+            background: rgba(255,255,255,0.03);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+            background: rgba(16, 185, 129, 0.08);
+            transform: translateY(-1px);
+        }
+        .pagination-btn.active {
+            background: var(--accent-emerald);
+            color: #000;
+            border-color: var(--accent-emerald);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        .pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .pagination-btn.icon-btn {
+            min-width: 40px;
+            padding: 0;
+        }
+
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 16px;
+        }
+        .page-size-selector label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .page-size-selector select {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-muted);
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: var(--text-primary);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .quick-jump {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .quick-jump input {
+            width: 60px;
+            height: 36px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-muted);
+            border-radius: 8px;
+            padding: 0 12px;
+            color: var(--text-primary);
+            font-size: 13px;
+            text-align: center;
+        }
+        .quick-jump button {
+            height: 36px;
+            padding: 0 16px;
+            background: var(--accent-blue);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-jump button:hover {
+            background: #4f9ef7;
+            transform: translateY(-1px);
+        }
+
         /* Progress Animation */
         .progress-bar-container { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; margin-top: 8px; }
         .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent-emerald), var(--accent-blue)); transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        /* Table Styling */
+        .lead-row {
+            transition: all 0.2s ease;
+        }
+        .lead-row:hover {
+            background: rgba(16, 185, 129, 0.04);
+        }
+        .lead-row:hover td {
+            color: #fff;
+        }
+
+        .score-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .score-bar {
+            width: 50px;
+            height: 6px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .score-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .score-value {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            min-width: 35px;
+        }
+
+        .action-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: 1px solid var(--border-muted);
+            background: rgba(255,255,255,0.03);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .action-btn:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+        }
+
+        /* Stats Cards Enhancement */
+        .stats-hud {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+        .stat-card {
+            background: var(--card-glass);
+            padding: 24px;
+            border-radius: 20px;
+            border: 1px solid var(--border-muted);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(12px);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--accent-emerald), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(16, 185, 129, 0.2);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        /* Charts Enhancement */
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .chart-card {
+            background: var(--card-glass);
+            border-radius: 20px;
+            border: 1px solid var(--border-muted);
+            padding: 24px;
+            min-height: 280px;
+            backdrop-filter: blur(8px);
+            transition: all 0.3s ease;
+        }
+        .chart-card:hover {
+            border-color: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
+        }
+        .chart-card p {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+        .chart-container {
+            position: relative;
+            height: 180px;
+            width: 100%;
+        }
+
+        /* Notification Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            background: var(--card-glass);
+            border: 1px solid var(--accent-emerald);
+            color: var(--accent-emerald);
+            font-weight: 600;
+            font-size: 13px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            animation: slideUp 0.3s ease;
+            z-index: 1000;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
 
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
@@ -776,6 +1024,212 @@ HTML = """
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 10px; border: 2px solid var(--bg-obsidian); }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+        /* Mobile Responsive */
+        @media (max-width: 1200px) {
+            .stats-hud { grid-template-columns: repeat(2, 1fr); }
+            .charts-row { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .stats-hud { grid-template-columns: 1fr; }
+            .charts-row { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+            .layout-wrapper { grid-template-columns: 1fr; }
+        }
+
+        /* Controls Card */
+        .controls-card {
+            background: var(--card-glass);
+            border-radius: 20px;
+            border: 1px solid var(--border-muted);
+            padding: 24px;
+            backdrop-filter: blur(12px);
+        }
+        .search-bar-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #08090c;
+            border: 1px solid var(--border-muted);
+            border-radius: 14px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+        }
+        .search-bar-wrapper svg {
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .search-bar-wrapper input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+        }
+        .search-bar-wrapper input::placeholder {
+            color: var(--text-muted);
+        }
+        .search-btn {
+            padding: 10px 24px;
+            background: var(--accent-emerald);
+            border: none;
+            border-radius: 10px;
+            color: #000;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .search-btn:hover {
+            background: #10c991;
+            transform: translateY(-1px);
+        }
+        .filter-row {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr 1.5fr;
+            gap: 16px;
+            align-items: flex-end;
+            margin-bottom: 16px;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            letter-spacing: 1.5px;
+            font-weight: 700;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            background: #08090c;
+            border: 1px solid var(--border-muted);
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .input-group input:focus, .input-group select:focus {
+            border-color: var(--accent-emerald);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+        .input-group select {
+            appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 40px;
+        }
+        .quick-filters {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .quick-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            font-weight: 700;
+        }
+        .quick-btn {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-muted);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-btn:hover {
+            background: rgba(16, 185, 129, 0.08);
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary {
+            background: var(--accent-emerald);
+            color: #000;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-primary:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 25px var(--glow-emerald);
+            background: #10c991;
+        }
+        .btn-outline {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-muted);
+            color: var(--text-primary);
+        }
+        .btn-outline:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: var(--text-secondary);
+            color: #fff;
+        }
+
+        /* Table Section */
+        .table-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .table-header h3 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            font-weight: 700;
+        }
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .record-count {
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            border: 1px solid var(--border-muted);
+        }
+        .record-count span {
+            color: var(--accent-emerald);
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
@@ -900,20 +1354,55 @@ HTML = """
             </div>
         </div>
 
-        <div class="glass-card" style="padding: 24px;">
-            <div class="terminal-header">
-                <h3>Live Activity Feed</h3>
-                <div style="display:flex; gap:10px;">
-                    <div class="status-dot pulse" style="background:var(--accent-emerald);"></div>
-                    <span style="font-size:10px; color:var(--accent-emerald); font-weight:700; letter-spacing:1px;">REAL-TIME LINK ACTIVE</span>
+<div class="controls-card">
+            <div class="search-bar-wrapper">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="t-cat" placeholder="Search leads, categories, sources..." list="cats-list" value="{{selected_category or search_query}}">
+                <button class="search-btn" onclick="applyFilters()">Search</button>
+            </div>
+
+            <div class="filter-row">
+                <div class="input-group">
+                    <label>Location</label>
+                    <input type="text" id="t-city" placeholder="City..." list="cities-list" value="{{selected_city}}">
+                </div>
+                <div class="input-group">
+                    <label>Source</label>
+                    <select id="t-source">
+                        <option value="">All Sources</option>
+                        <option value="BAR_COUNCIL" {% if selected_source == 'BAR_COUNCIL' %}selected{% endif %}>Bar Council</option>
+                        <option value="ICAI" {% if selected_source == 'ICAI' %}selected{% endif %}>ICAI</option>
+                        <option value="SEBI" {% if selected_source == 'SEBI' %}selected{% endif %}>SEBI</option>
+                        <option value="SITEMAP" {% if selected_source == 'SITEMAP' %}selected{% endif %}>Sitemap</option>
+                        <option value="YELLOWPAGES" {% if selected_source == 'YELLOWPAGES' %}selected{% endif %}>YellowPages</option>
+                        <option value="JUSTDIAL" {% if selected_source == 'JUSTDIAL' %}selected{% endif %}>JustDial</option>
+                        <option value="GMB" {% if selected_source == 'GMB' %}selected{% endif %}>Google Maps</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Sort By</label>
+                    <select id="t-sort" onchange="applyFilters()">
+                        <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Recent First</option>
+                        <option value="name" {% if sort_by == 'name' %}selected{% endif %}>Name A-Z</option>
+                        <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Quality Score</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary" id="start-btn" onclick="startCollection()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Start Collection
+                    </button>
                 </div>
             </div>
-            <div id="terminal" class="terminal">
-                <div class="log-entry"><span class="log-time">--:--:--</span> <span class="log-src">SYSTEM</span> <span class="log-msg">Initializing Intelligence HUD...</span></div>
+
+<div class="quick-filters">
+                <span class="quick-label">Quick:</span>
+                <button class="quick-btn" onclick="setFilter('Delhi', 'Lawyers')">Lawyers Delhi</button>
+                <button class="quick-btn" onclick="setFilter('Mumbai', 'CAs')">CAs Mumbai</button>
+                <button class="quick-btn" onclick="setFilter('Bangalore', 'Doctors')">Doctors Bangalore</button>
             </div>
         </div>
 
-        <!-- Charts & Health Section -->
         <div class="charts-row">
             <div class="chart-card">
                 <p>Leads by Source</p>
@@ -958,107 +1447,86 @@ HTML = """
 
         <div class="content-grid">
             <div class="glass-card">
-                <div class="controls-grid">
-                    <div class="input-group">
-                        <label>Search For</label>
-                        <input type="text" id="t-cat" placeholder="e.g. Lawyers" list="cats-list" value="{{selected_category or search_query}}">
+                <div class="table-section">
+                    <div class="table-header">
+                        <h3>Lead Records</h3>
+                        <div class="table-actions">
+                            <span class="record-count">{{ contacts|length }} of {{ s.total }} records</span>
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label>Location</label>
-                        <input type="text" id="t-city" placeholder="e.g. Delhi" list="cities-list" value="{{selected_city}}">
-                    </div>
-                    <div class="input-group">
-                        <label>Data Source</label>
-                        <select id="t-source">
-                            <option value="">Auto-Select</option>
-                            <option value="BAR_COUNCIL" {% if selected_source == 'BAR_COUNCIL' %}selected{% endif %}>Bar Council (Lawyers)</option>
-                            <option value="ICAI" {% if selected_source == 'ICAI' %}selected{% endif %}>ICAI (CAs)</option>
-                            <option value="SEBI" {% if selected_source == 'SEBI' %}selected{% endif %}>SEBI (Advisors)</option>
-                            <option value="SITEMAP" {% if selected_source == 'SITEMAP' %}selected{% endif %}>Sitemap</option>
-                            <option value="YELLOWPAGES" {% if selected_source == 'YELLOWPAGES' %}selected{% endif %}>YellowPages</option>
-                            <option value="JUSTDIAL" {% if selected_source == 'JUSTDIAL' %}selected{% endif %}>JustDial</option>
-                            <option value="GMB" {% if selected_source == 'GMB' %}selected{% endif %}>Google Maps</option>
-                        </select>
-                    </div>
-                    <div class="input-group" style="display:flex; align-items:flex-end; gap:10px;">
-                        <button class="btn btn-outline" style="flex:1;" onclick="applyFilters()">Apply Filters</button>
-                        <button class="btn btn-primary" id="start-btn" style="flex:1;" onclick="startCollection()">Start Collection</button>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
-                    <span style="font-size: 10px; color: var(--text-secondary); align-self: center;">Quick Filters:</span>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Delhi', 'Lawyers', 'BAR_COUNCIL')">Lawyers in Delhi</button>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Mumbai', 'Chartered Accountants', 'ICAI')">CAs in Mumbai</button>
-                    <button class="btn btn-outline btn-sm" onclick="setTemplate('Bangalore', 'Software Companies', 'YELLOWPAGES')">Tech in Bangalore</button>
-                </div>
-
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Lead Name</th>
-                                <th>Phone</th>
-                                <th>Email</th>
-                                <th>Gmail</th>
-                                <th>Category</th>
-                                <th>Source</th>
-                                <th>Score</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leads-tbody">
-                            {% for c in contacts %}
-                            <tr>
-                                <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
-                                <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
-                                <td class="mono" style="color:var(--accent-blue); font-size:11px;">{{c.email or '---'}}</td>
-                                <td>
-                                    {% if c.email and '@gmail.com' in c.email %}
-                                    <span class="badge" style="background:rgba(16,185,129,0.1); color:var(--accent-emerald); border:1px solid rgba(16,185,129,0.2);">PERSONAL</span>
-                                    {% else %}
-                                    <span style="color:var(--text-muted); font-size:10px;">---</span>
-                                    {% endif %}
-                                </td>
-                                <td style="font-size:12px; font-weight:500;">{{c.category}}</td>
-                                <td><span class="badge badge-src">{{c.source}}</span></td>
-                                <td>
-                                    <div style="display:flex; align-items:center; gap:10px;">
-                                        <div class="progress-bar-container" style="flex:1; width:60px; margin-top:0;">
-                                            <div class="progress-bar" style="width:{{c.quality_score}}%; background:{{ 'var(--accent-emerald)' if c.quality_score > 70 else 'var(--accent-blue)' if c.quality_score > 40 else 'var(--accent-red)' }}; box-shadow:0 0 10px {{ 'var(--glow-emerald)' if c.quality_score > 70 else 'rgba(59,130,246,0.2)' }};"></div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width:40px;">#</th>
+                                    <th>Lead Name</th>
+                                    <th>Phone</th>
+                                    <th>Email</th>
+                                    <th>Category</th>
+                                    <th>City</th>
+                                    <th>Source</th>
+                                    <th style="width:100px;">Score</th>
+                                    <th style="width:60px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leads-tbody">
+                                {% for c in contacts %}
+                                <tr class="lead-row">
+                                    <td style="color:var(--text-muted); font-size:11px;">{{ loop.index + (page - 1) * 50 }}</td>
+                                    <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
+                                    <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
+                                    <td class="mono" style="color:var(--accent-blue); font-size:11px;">{{c.email or '---'}}</td>
+                                    <td style="font-size:12px; font-weight:500;">{{c.category}}</td>
+                                    <td style="font-size:12px; color:var(--text-secondary);">{{c.city or '---'}}</td>
+                                    <td><span class="badge badge-src">{{c.source}}</span></td>
+                                    <td>
+                                        <div class="score-wrapper">
+                                            <div class="score-bar"><div class="score-fill" style="width:{{c.quality_score}}%; background:{{ 'var(--accent-emerald)' if c.quality_score > 70 else 'var(--accent-blue)' if c.quality_score > 40 else 'var(--accent-red)' }};"></div></div>
+                                            <span class="mono score-value">{{c.quality_score}}%</span>
                                         </div>
-                                        <span class="mono" style="font-size:10px; font-weight:700;">{{c.quality_score}}%</span>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="pagination" id="pagination-wrapper">
-                    <div class="pagination-info">
-                        Showing <span id="current-count">{{ contacts|length }}</span> of <span id="filtered-total">{{ s.filtered_total }}</span> leads
-                        <span style="margin-left: 10px; color: rgba(255,255,255,0.2);">|</span>
-                        <span style="margin-left: 10px;">Page <span id="current-page-num">{{ page }}</span> of <span id="total-pages-num">{{ total_pages }}</span></span>
+                                    </td>
+                                    <td>
+                                        <div style="display:flex; gap:4px;">
+                                            <button class="action-btn" title="Copy" onclick="copyLead('{{c.phone or c.email}}')">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="pagination-btns" id="pagination-btns-container">
-                        <button class="pagination-btn" onclick="goToPage(1)" {% if page <= 1 %}disabled{% endif %}>First</button>
-                        <button class="pagination-btn" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>Prev</button>
-                        
-                        {% set start_p = [1, page - 2]|max %}
-                        {% set end_p = [total_pages, start_p + 4]|min %}
-                        {% set start_p = [1, end_p - 4]|max %}
-                        
-                        {% for p in range(start_p, end_p + 1) %}
-                        <button class="pagination-btn {% if p == page %}active{% endif %}" onclick="goToPage({{ p }})">{{ p }}</button>
-                        {% endfor %}
+                    
+                    <div class="pagination" id="pagination-wrapper">
+                        <div class="pagination-info">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            <span>Showing <span>{{ contacts|length }}</span> results</span>
+                            <span style="color:var(--border-muted);">|</span>
+                            <span>Page <span>{{ page }}</span> of <span>{{ total_pages }}</span></span>
+                        </div>
+                        <div class="pagination-btns" id="pagination-btns-container">
+                            <button class="pagination-btn icon-btn" onclick="goToPage(1)" {% if page <= 1 %}disabled{% endif %} title="First">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+                            </button>
+                            <button class="pagination-btn" onclick="changePage(-1)" {% if page <= 1 %}disabled{% endif %}>Prev</button>
+                            
+                            {% set start_p = [1, page - 2]|max %}
+                            {% set end_p = [total_pages, start_p + 4]|min %}
+                            {% set start_p = [1, end_p - 4]|max %}
+                            
+                            {% for p in range(start_p, end_p + 1) %}
+                            <button class="pagination-btn {% if p == page %}active{% endif %}" onclick="goToPage({{ p }})">{{ p }}</button>
+                            {% endfor %}
 
-                        <button class="pagination-btn" onclick="changePage(1)" {% if page >= total_pages %}disabled{% endif %}>Next</button>
-                        <button class="pagination-btn" onclick="goToPage({{ total_pages }})" {% if page >= total_pages %}disabled{% endif %}>Last</button>
+                            <button class="pagination-btn" onclick="changePage(1)" {% if page >= total_pages %}disabled{% endif %}>Next</button>
+                            <button class="pagination-btn icon-btn" onclick="goToPage({{ total_pages }})" {% if page >= total_pages %}disabled{% endif %} title="Last">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-
         </div>
     </main>
 </div>
@@ -1093,13 +1561,33 @@ HTML = """
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
+            const sort = document.getElementById('t-sort')?.value || 'date';
             
             const url = new URL(window.location.origin + window.location.pathname);
             if (city) url.searchParams.set('city', city);
             if (cat) url.searchParams.set('category', cat);
             if (source) url.searchParams.set('source', source);
+            if (sort) url.searchParams.set('sort', sort);
             url.searchParams.set('page', 1);
             window.loadLeads(url.toString(), true);
+        };
+
+        window.setFilter = function(city, cat) {
+            document.getElementById('t-city').value = city;
+            document.getElementById('t-cat').value = cat;
+            window.applyFilters();
+        };
+
+        window.copyLead = function(text) {
+            if (!text || text === '---') {
+                window.showNotif('No data to copy');
+                return;
+            }
+            navigator.clipboard.writeText(text).then(function() {
+                window.showNotif('Copied to clipboard!');
+            }).catch(function() {
+                window.showNotif('Failed to copy');
+            });
         };
 
         window.loadLeads = async function(url, pushState) {
@@ -1156,36 +1644,42 @@ HTML = """
             }).join('');
         };
 
-        window.updatePaginationUI = function(data) {
-            // Update counts
-            if (document.getElementById('current-count')) document.getElementById('current-count').innerText = data.contacts.length;
-            if (document.getElementById('filtered-total')) document.getElementById('filtered-total').innerText = data.filtered_total;
-            if (document.getElementById('current-page-num')) document.getElementById('current-page-num').innerText = data.page;
-            if (document.getElementById('total-pages-num')) document.getElementById('total-pages-num').innerText = data.total_pages;
-
-            // Rebuild buttons
-            const btnContainer = document.getElementById('pagination-btns-container');
+window.updatePaginationUI = function(data) {
+            var btnContainer = document.getElementById('pagination-btns-container');
             if (!btnContainer) return;
 
-            let html = '';
-            const isFirst = data.page <= 1;
-            const isLast = data.page >= data.total_pages;
+            var html = '';
+            var isFirst = data.page <= 1;
+            var isLast = data.page >= data.total_pages;
 
-            html += '<button class="pagination-btn" onclick="goToPage(1)" ' + (isFirst ? 'disabled' : '') + '>First</button>';
+            html += '<button class="pagination-btn icon-btn" onclick="goToPage(1)" ' + (isFirst ? 'disabled' : '') + ' title="First">';
+            html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>';
+            html += '</button>';
             html += '<button class="pagination-btn" onclick="changePage(-1)" ' + (isFirst ? 'disabled' : '') + '>Prev</button>';
 
-            let start_p = Math.max(1, data.page - 2);
-            let end_p = Math.min(data.total_pages, start_p + 4);
+            var start_p = Math.max(1, data.page - 2);
+            var end_p = Math.min(data.total_pages, start_p + 4);
             start_p = Math.max(1, end_p - 4);
 
-            for (let i = start_p; i <= end_p; i++) {
+            for (var i = start_p; i <= end_p; i++) {
                 html += '<button class="pagination-btn ' + (i === data.page ? 'active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
             }
 
             html += '<button class="pagination-btn" onclick="changePage(1)" ' + (isLast ? 'disabled' : '') + '>Next</button>';
-            html += '<button class="pagination-btn" onclick="goToPage(' + data.total_pages + ')" ' + (isLast ? 'disabled' : '') + '>Last</button>';
+            html += '<button class="pagination-btn icon-btn" onclick="goToPage(' + data.total_pages + ')" ' + (isLast ? 'disabled' : '') + ' title="Last">';
+            html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>';
+            html += '</button>';
 
             btnContainer.innerHTML = html;
+
+            // Update info
+            var infoEl = document.querySelector('.pagination-info');
+            if (infoEl) {
+                infoEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' +
+                    '<span>Showing <span>' + data.contacts.length + '</span> results</span>' +
+                    '<span style="color:var(--border-muted);">|</span>' +
+                    '<span>Page <span>' + data.page + '</span> of <span>' + data.total_pages + '</span></span>';
+            }
         };
 
         // Handle Browser Back/Forward
