@@ -991,12 +991,12 @@ HTML = """
             width: 100%;
         }
 
-        /* Notification Toast */
+/* Notification Toast */
         .toast {
             position: fixed;
             bottom: 24px;
             right: 24px;
-            padding: 16px 24px;
+            padding: 14px 24px;
             border-radius: 12px;
             background: var(--card-glass);
             border: 1px solid var(--accent-emerald);
@@ -1008,12 +1008,25 @@ HTML = """
             gap: 12px;
             animation: slideUp 0.3s ease;
             z-index: 1000;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(16, 185, 129, 0.1);
+            max-width: 350px;
+        }
+        .toast.error {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(239, 68, 68, 0.1);
+        }
+        .toast svg {
+            flex-shrink: 0;
         }
         @keyframes slideUp {
             from { transform: translateY(20px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
         .pulse { animation: pulse 2s infinite; }
@@ -1025,215 +1038,31 @@ HTML = """
         ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 10px; border: 2px solid var(--bg-obsidian); }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
-        /* Mobile Responsive */
+        /* Responsive Grid */
+        @media (max-width: 1400px) {
+            .stats-hud { grid-template-columns: repeat(2, 1fr); }
+        }
         @media (max-width: 1200px) {
             .stats-hud { grid-template-columns: repeat(2, 1fr); }
             .charts-row { grid-template-columns: repeat(2, 1fr); }
+            .filter-row { grid-template-columns: 1fr 1fr; }
         }
         @media (max-width: 768px) {
             .stats-hud { grid-template-columns: 1fr; }
             .charts-row { grid-template-columns: 1fr; }
             .sidebar { display: none; }
             .layout-wrapper { grid-template-columns: 1fr; }
-        }
-
-        /* Controls Card */
-        .controls-card {
-            background: var(--card-glass);
-            border-radius: 20px;
-            border: 1px solid var(--border-muted);
-            padding: 24px;
-            backdrop-filter: blur(12px);
-        }
-        .search-bar-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: #08090c;
-            border: 1px solid var(--border-muted);
-            border-radius: 14px;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-        }
-        .search-bar-wrapper svg {
-            color: var(--text-muted);
-            flex-shrink: 0;
-        }
-        .search-bar-wrapper input {
-            flex: 1;
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 15px;
-            outline: none;
-        }
-        .search-bar-wrapper input::placeholder {
-            color: var(--text-muted);
-        }
-        .search-btn {
-            padding: 10px 24px;
-            background: var(--accent-emerald);
-            border: none;
-            border-radius: 10px;
-            color: #000;
-            font-weight: 700;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .search-btn:hover {
-            background: #10c991;
-            transform: translateY(-1px);
-        }
-        .filter-row {
-            display: grid;
-            grid-template-columns: 1.5fr 1fr 1fr 1.5fr;
-            gap: 16px;
-            align-items: flex-end;
-            margin-bottom: 16px;
-        }
-        .filter-actions {
-            display: flex;
-            gap: 10px;
-        }
-        .input-group label {
-            display: block;
-            font-size: 10px;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            letter-spacing: 1.5px;
-            font-weight: 700;
-        }
-        .input-group input, .input-group select {
-            width: 100%;
-            background: #08090c;
-            border: 1px solid var(--border-muted);
-            padding: 12px 16px;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 13px;
-            outline: none;
-            transition: all 0.2s;
-        }
-        .input-group input:focus, .input-group select:focus {
-            border-color: var(--accent-emerald);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-        }
-        .input-group select {
-            appearance: none;
-            cursor: pointer;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 40px;
-        }
-        .quick-filters {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .quick-label {
-            font-size: 10px;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            letter-spacing: 1px;
-            font-weight: 700;
-        }
-        .quick-btn {
-            padding: 8px 16px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid var(--border-muted);
-            border-radius: 8px;
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .quick-btn:hover {
-            background: rgba(16, 185, 129, 0.08);
-            border-color: var(--accent-emerald);
-            color: var(--accent-emerald);
-        }
-
-        /* Buttons */
-        .btn {
-            padding: 12px 24px;
-            border-radius: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            border: none;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-primary {
-            background: var(--accent-emerald);
-            color: #000;
-            position: relative;
-            overflow: hidden;
-        }
-        .btn-primary:hover {
-            transform: scale(1.02);
-            box-shadow: 0 0 25px var(--glow-emerald);
-            background: #10c991;
-        }
-        .btn-outline {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid var(--border-muted);
-            color: var(--text-primary);
-        }
-        .btn-outline:hover {
-            background: rgba(255,255,255,0.06);
-            border-color: var(--text-secondary);
-            color: #fff;
-        }
-
-        /* Table Section */
-        .table-section {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        .table-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .table-header h3 {
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: var(--text-secondary);
-            font-weight: 700;
-        }
-        .table-actions {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .record-count {
-            font-size: 12px;
-            color: var(--text-muted);
-            padding: 6px 14px;
-            background: rgba(255,255,255,0.03);
-            border-radius: 8px;
-            border: 1px solid var(--border-muted);
-        }
-        .record-count span {
-            color: var(--accent-emerald);
-            font-weight: 700;
+            .filter-row { grid-template-columns: 1fr; }
+            .main-view { padding: 20px; }
         }
     </style>
 </head>
 <body>
-    <div id="notif" style="position:fixed; top:20px; right:20px; padding:16px 24px; border-radius:12px; background:var(--accent-emerald); color:#000; font-weight:800; z-index:1000; display:none; animation:slideIn 0.3s ease-out;"></div>
+    <div id="notif" class="toast">
+        <svg id="notif-icon-success" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <svg id="notif-icon-error" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <span id="notif-text"></span>
+    </div>
 
     <div class="layout-wrapper">
         <aside class="sidebar">
@@ -1395,11 +1224,12 @@ HTML = """
                 </div>
             </div>
 
-<div class="quick-filters">
+            <div class="quick-filters">
                 <span class="quick-label">Quick:</span>
                 <button class="quick-btn" onclick="setFilter('Delhi', 'Lawyers')">Lawyers Delhi</button>
                 <button class="quick-btn" onclick="setFilter('Mumbai', 'CAs')">CAs Mumbai</button>
                 <button class="quick-btn" onclick="setFilter('Bangalore', 'Doctors')">Doctors Bangalore</button>
+                <button class="clear-btn" onclick="clearFilters()">Clear All</button>
             </div>
         </div>
 
@@ -1578,6 +1408,14 @@ HTML = """
             window.applyFilters();
         };
 
+        window.clearFilters = function() {
+            document.getElementById('t-city').value = '';
+            document.getElementById('t-cat').value = '';
+            document.getElementById('t-source').value = '';
+            document.getElementById('t-sort').value = 'date';
+            window.applyFilters();
+        };
+
         window.copyLead = function(text) {
             if (!text || text === '---') {
                 window.showNotif('No data to copy');
@@ -1592,11 +1430,13 @@ HTML = """
 
         window.loadLeads = async function(url, pushState) {
             try {
+                window.showNotif('Loading...', 500);
                 const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
                 const data = await res.json();
                 
                 window.currentPage = data.page;
                 window.totalPages = data.total_pages;
+                window.currentFilters = url;
                 
                 window.renderLeads(data.contacts);
                 window.updatePaginationUI(data);
@@ -1618,26 +1458,33 @@ HTML = """
             if (!tbody) return;
             
             if (leads.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-secondary);">No records found matching filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:60px; color:var(--text-secondary);"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.3; margin-bottom:12px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><br>No records found matching filters</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = leads.map(function(c) {
+            tbody.innerHTML = leads.map(function(c, i) {
                 const scoreColor = c.quality_score > 70 ? 'var(--accent-emerald)' : (c.quality_score > 40 ? 'var(--accent-blue)' : 'var(--accent-red)');
-                const isGmail = c.email && c.email.includes('@gmail.com');
-                return '<tr>' +
+                const rowNum = (window.currentPage - 1) * 50 + i + 1;
+                const copyText = c.phone || c.email;
+                return '<tr class="lead-row">' +
+                    '<td style="color:var(--text-muted); font-size:11px;">' + rowNum + '</td>' +
                     '<td style="font-weight:700; font-family:\'Outfit\',sans-serif; color:#fff;">' + c.name + '</td>' +
                     '<td class="mono" style="font-size:12px;">' + c.phone + '</td>' +
                     '<td class="mono" style="color:var(--accent-blue); font-size:11px;">' + c.email + '</td>' +
-                    '<td>' + (isGmail ? '<span class="badge" style="background:rgba(16,185,129,0.1); color:var(--accent-emerald); border:1px solid rgba(16,185,129,0.2);">PERSONAL</span>' : '<span style="color:var(--text-muted); font-size:10px;">---</span>') + '</td>' +
                     '<td style="font-size:12px; font-weight:500;">' + c.category + '</td>' +
+                    '<td style="font-size:12px; color:var(--text-secondary);">' + c.city + '</td>' +
                     '<td><span class="badge badge-src">' + c.source + '</span></td>' +
                     '<td>' +
-                        '<div style="display:flex; align-items:center; gap:10px;">' +
-                            '<div class="progress-bar-container" style="flex:1; width:60px; margin-top:0;">' +
-                                '<div class="progress-bar" style="width:' + c.quality_score + '%; background:' + scoreColor + '; box-shadow:0 0 10px ' + (c.quality_score > 70 ? 'var(--glow-emerald)' : 'rgba(59,130,246,0.2)') + ';"></div>' +
-                            '</div>' +
-                            '<span class="mono" style="font-size:10px; font-weight:700;">' + c.quality_score + '%</span>' +
+                        '<div class="score-wrapper">' +
+                            '<div class="score-bar"><div class="score-fill" style="width:' + c.quality_score + '%; background:' + scoreColor + ';"></div></div>' +
+                            '<span class="mono score-value">' + c.quality_score + '%</span>' +
+                        '</div>' +
+                    '</td>' +
+                    '<td>' +
+                        '<div style="display:flex; gap:4px;">' +
+                            '<button class="action-btn" title="Copy" onclick="copyLead(\'' + copyText + '\')">' +
+                                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+                            '</button>' +
                         '</div>' +
                     '</td>' +
                 '</tr>';
