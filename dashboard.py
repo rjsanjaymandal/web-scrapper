@@ -732,10 +732,14 @@ HTML = """
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Dashboard
                 </a>
-                <a href="#" class="nav-item" onclick="exportData('csv')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Export Data
-                </a>
+                <div class="nav-item-group" style="padding: 10px 16px;">
+                    <p class="nav-label" style="padding: 0; margin-bottom: 8px; font-size: 9px; opacity: 0.5;">EXPORT TOOLS</p>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('csv')">CSV</button>
+                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('excel')">Excel</button>
+                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('json')">JSON</button>
+                    </div>
+                </div>
             </nav>
 
             <nav class="nav-group">
@@ -1158,7 +1162,16 @@ HTML = """
         };
 
         window.exportData = function(fmt) {
-            window.location.href = "/export/" + fmt;
+            const city = document.getElementById('t-city').value;
+            const cat = document.getElementById('t-cat').value;
+            const src = document.getElementById('t-source').value;
+            
+            const url = new URL(window.location.origin + "/export/" + fmt);
+            if (city) url.searchParams.set('city', city);
+            if (cat) url.searchParams.set('category', cat);
+            if (src) url.searchParams.set('source', src);
+            
+            window.location.href = url.toString();
         };
 
         window.cleanup = async function() {
@@ -1941,7 +1954,9 @@ def export(fmt):
         import csv
         out = io.StringIO()
         if rows:
-            w = csv.DictWriter(out, fieldnames=rows[0].keys())
+            # Convert first row to dict to get keys safely
+            first_row = dict(rows[0])
+            w = csv.DictWriter(out, fieldnames=first_row.keys())
             w.writeheader()
             for r in rows:
                 w.writerow(dict(r))
@@ -1957,9 +1972,11 @@ def export(fmt):
         ws = wb.active
         ws.title = "Contacts"
         if rows:
-            ws.append(list(rows[0].keys()))
+            # Convert first row to dict to get keys safely
+            first_row = dict(rows[0])
+            ws.append(list(first_row.keys()))
             for r in rows:
-                ws.append(list(r.values()))
+                ws.append(list(dict(r).values()))
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
