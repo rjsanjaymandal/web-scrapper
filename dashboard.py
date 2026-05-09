@@ -1925,6 +1925,7 @@ def api_contacts():
 
 @app.route("/export/<fmt>")
 def export(fmt):
+    logger.info(f"Export requested: fmt={fmt}, args={request.args}")
     try:
         search_query = request.args.get("q", "")
         filter_city = request.args.get("city", "")
@@ -1954,31 +1955,34 @@ def export(fmt):
 
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
+        query = f"SELECT * FROM contacts WHERE {where_sql}"
+        logger.info(f"Export query: {query}, params: {params}")
+        cur.execute(query, params)
         rows = cur.fetchall()
+        logger.info(f"Export fetched {len(rows)} rows")
         cur.close()
         conn.close()
     except Exception as e:
+        logger.error(f"Export error: {e}")
         return jsonify({"error": str(e)}), 500
 
     if fmt == "csv":
         import csv
         out = io.StringIO()
+        default_fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"]
         if rows:
-            # Convert first row to dict to get keys safely
+            # Convert first row to dict safely
             first_row = dict(rows[0])
-            w = csv.DictWriter(out, fieldnames=first_row.keys())
+            w = csv.DictWriter(out, fieldnames=first_row.keys() if first_row else default_fields)
             w.writeheader()
             for r in rows:
                 d = dict(r)
-                # Format dates for CSV
                 for k, v in d.items():
                     if isinstance(v, (datetime, date)):
                         d[k] = v.isoformat()
                 w.writerow(d)
         else:
-            # If no rows, try to get headers from a table scan or provide defaults
-            w = csv.DictWriter(out, fieldnames=["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"])
+            w = csv.DictWriter(out, fieldnames=default_fields)
             w.writeheader()
             
         return Response(
@@ -2003,15 +2007,11 @@ def export(fmt):
         
         if rows:
             first_row = dict(rows[0])
-            headers = list(first_row.keys())
+            headers = list(first_row.keys()) if first_row else ["No Data"]
             ws.append(headers)
             for r in rows:
                 d = dict(r)
-                row_data = []
-                for h in headers:
-                    val = d.get(h)
-                    # openpyxl handles datetime, but we ensure it's not some weird wrapper
-                    row_data.append(val)
+                row_data = [d.get(h) for h in headers]
                 ws.append(row_data)
         else:
             ws.append(["No data found for selected filters"])
@@ -2019,6 +2019,7 @@ def export(fmt):
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
+        logger.info(f"Sending excel file with {len(rows)} rows")
         return send_file(
             out, 
             download_name=f"leads_export_{int(time.time())}.xlsx", 
