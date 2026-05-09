@@ -527,6 +527,67 @@ HTML = """
         .nav-item svg { opacity: 0.6; transition: 0.2s; }
         .nav-item:hover svg, .nav-item.active svg { opacity: 1; filter: drop-shadow(0 0 5px currentColor); }
 
+        /* Export Buttons */
+        .export-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 14px 8px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            font-weight: 600;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+        .export-btn:active {
+            transform: translateY(0);
+        }
+        .export-csv {
+            border-color: rgba(16, 185, 129, 0.3);
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent);
+        }
+        .export-csv:hover {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+            border-color: var(--accent-emerald);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+        }
+        .export-csv svg { color: var(--accent-emerald); }
+        .export-csv:hover svg { filter: drop-shadow(0 0 6px var(--accent-emerald)); }
+
+        .export-excel {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent);
+        }
+        .export-excel:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.05));
+            border-color: var(--accent-blue);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+        }
+        .export-excel svg { color: var(--accent-blue); }
+        .export-excel:hover svg { filter: drop-shadow(0 0 6px var(--accent-blue)); }
+
+        .export-json {
+            border-color: rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), transparent);
+        }
+        .export-json:hover {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.05));
+            border-color: var(--accent-amber);
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
+        }
+        .export-json svg { color: var(--accent-amber); }
+        .export-json:hover svg { filter: drop-shadow(0 0 6px var(--accent-amber)); }
+
         /* Sidebar Footer */
         .system-footer { 
             margin-top: auto; padding: 16px; background: rgba(255,255,255,0.02); 
@@ -737,18 +798,18 @@ HTML = """
 
             <nav class="nav-group">
                 <p class="nav-label">Export Intelligence</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 4px;">
-                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('csv')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-emerald);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">CSV</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 4px;">
+                    <button class="export-btn export-csv" onclick="exportData('csv')" title="Export as CSV">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>CSV</span>
                     </button>
-                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('excel')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-blue);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><rect x="8" y="13" width="8" height="4"></rect></svg>
-                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">EXCEL</span>
+                    <button class="export-btn export-excel" onclick="exportData('excel')" title="Export as Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>Excel</span>
                     </button>
-                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('json')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-amber);"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">JSON</span>
+                    <button class="export-btn export-json" onclick="exportData('json')" title="Export as JSON">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>JSON</span>
                     </button>
                 </div>
             </nav>
@@ -1173,11 +1234,13 @@ HTML = """
         };
 
         window.exportData = function(fmt) {
-            const city = document.getElementById('t-city').value;
-            const cat = document.getElementById('t-cat').value;
-            const src = document.getElementById('t-source').value;
+            const search = document.getElementById('t-cat')?.value || "";
+            const city = document.getElementById('t-city')?.value || "";
+            const cat = search;
+            const src = document.getElementById('t-source')?.value || "";
             
             const url = new URL(window.location.origin + "/export/" + fmt);
+            if (search) url.searchParams.set('q', search);
             if (city) url.searchParams.set('city', city);
             if (cat) url.searchParams.set('category', cat);
             if (src) url.searchParams.set('source', src);
@@ -1925,107 +1988,78 @@ def api_contacts():
 
 @app.route("/export/<fmt>")
 def export(fmt):
-    logger.info(f"Export requested: fmt={fmt}, args={request.args}")
     try:
         search_query = request.args.get("q", "")
         filter_city = request.args.get("city", "")
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
-        like_op = "LIKE" if USE_SQLITE else "ILIKE"
+        conn = get_db()
+        cur = conn.cursor()
+
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
-            search_pattern = f"%{search_query}%"
-            params.extend([search_pattern, search_pattern, search_pattern])
+            where_clauses.append("(name LIKE %s OR phone LIKE %s OR email LIKE %s)")
+            params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
         if filter_city:
-            where_clauses.append(f"city {like_op} %s")
-            params.append(filter_city)
+            where_clauses.append("city LIKE %s")
+            params.append(f"%{filter_city}%")
         if filter_category:
-            where_clauses.append(f"category {like_op} %s")
-            params.append(filter_category)
+            where_clauses.append("category LIKE %s")
+            params.append(f"%{filter_category}%")
         if filter_source:
-            where_clauses.append(f"source {like_op} %s")
-            params.append(filter_source)
+            where_clauses.append("source LIKE %s")
+            params.append(f"%{filter_source}%")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        if USE_SQLITE:
-            where_sql = where_sql.replace("%s", "?")
 
-        conn = get_db()
-        cur = conn.cursor()
-        query = f"SELECT * FROM contacts WHERE {where_sql}"
-        logger.info(f"Export query: {query}, params: {params}")
-        cur.execute(query, params)
-        rows = cur.fetchall()
-        logger.info(f"Export fetched {len(rows)} rows")
+        cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
+        rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
     except Exception as e:
         logger.error(f"Export error: {e}")
         return jsonify({"error": str(e)}), 500
 
+    if not rows:
+        rows = []
+
     if fmt == "csv":
         import csv
         out = io.StringIO()
-        default_fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"]
+        fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"]
         if rows:
-            # Convert first row to dict safely
-            first_row = dict(rows[0])
-            w = csv.DictWriter(out, fieldnames=first_row.keys() if first_row else default_fields)
-            w.writeheader()
-            for r in rows:
-                d = dict(r)
-                for k, v in d.items():
-                    if isinstance(v, (datetime, date)):
-                        d[k] = v.isoformat()
-                w.writerow(d)
-        else:
-            w = csv.DictWriter(out, fieldnames=default_fields)
-            w.writeheader()
-            
-        return Response(
-            out.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": f"attachment;filename=leads_export_{int(time.time())}.csv"},
-        )
+            fields = list(rows[0].keys())
+        w = csv.DictWriter(out, fieldnames=fields)
+        w.writeheader()
+        for r in rows:
+            row = {}
+            for k, v in r.items():
+                if isinstance(v, (datetime, date)):
+                    row[k] = v.isoformat()
+                else:
+                    row[k] = v
+            w.writerow(row)
+        return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment;filename=leads_export_{int(time.time())}.csv"})
 
     if fmt == "json":
-        # jsonify will now use CustomJSONEncoder thanks to app.json.cls
-        return jsonify({
-            "status": "success",
-            "count": len(rows),
-            "timestamp": datetime.now().isoformat(),
-            "data": [dict(r) for r in rows]
-        })
+        return jsonify({"status": "success", "count": len(rows), "timestamp": datetime.now().isoformat(), "data": rows})
 
     if fmt == "excel":
         wb = Workbook()
         ws = wb.active
         ws.title = "Intelligence Data"
-        
         if rows:
-            first_row = dict(rows[0])
-            headers = list(first_row.keys()) if first_row else ["No Data"]
-            ws.append(headers)
+            ws.append(list(rows[0].keys()))
             for r in rows:
-                d = dict(r)
-                row_data = [d.get(h) for h in headers]
-                ws.append(row_data)
+                ws.append([r.get(k, "") for k in rows[0].keys()])
         else:
             ws.append(["No data found for selected filters"])
-            
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
-        logger.info(f"Sending excel file with {len(rows)} rows")
-        return send_file(
-            out, 
-            download_name=f"leads_export_{int(time.time())}.xlsx", 
-            as_attachment=True,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        return send_file(out, download_name=f"leads_export_{int(time.time())}.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return "Invalid format", 400
 
 
