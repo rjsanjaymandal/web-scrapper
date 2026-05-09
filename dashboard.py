@@ -2000,16 +2000,16 @@ def export(fmt):
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append("(name LIKE %s OR phone LIKE %s OR email LIKE %s)")
+            where_clauses.append("(name LIKE ? OR phone LIKE ? OR email LIKE ?)")
             params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
         if filter_city:
-            where_clauses.append("city LIKE %s")
+            where_clauses.append("city LIKE ?")
             params.append(f"%{filter_city}%")
         if filter_category:
-            where_clauses.append("category LIKE %s")
+            where_clauses.append("category LIKE ?")
             params.append(f"%{filter_category}%")
         if filter_source:
-            where_clauses.append("source LIKE %s")
+            where_clauses.append("source LIKE ?")
             params.append(f"%{filter_source}%")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
