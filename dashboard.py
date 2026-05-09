@@ -21,6 +21,7 @@ class CustomJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 app = Flask(__name__)
+app.json.cls = CustomJSONEncoder
 
 PROJ_DIR = Path(__file__).parent
 LOGS_DIR = PROJ_DIR / "logs"
@@ -732,13 +733,23 @@ HTML = """
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Dashboard
                 </a>
-                <div class="nav-item-group" style="padding: 10px 16px;">
-                    <p class="nav-label" style="padding: 0; margin-bottom: 8px; font-size: 9px; opacity: 0.5;">EXPORT TOOLS</p>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('csv')">CSV</button>
-                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('excel')">Excel</button>
-                        <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 10px;" onclick="exportData('json')">JSON</button>
-                    </div>
+            </nav>
+
+            <nav class="nav-group">
+                <p class="nav-label">Export Intelligence</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 4px;">
+                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('csv')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-emerald);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">CSV</span>
+                    </button>
+                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('excel')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-blue);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><rect x="8" y="13" width="8" height="4"></rect></svg>
+                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">EXCEL</span>
+                    </button>
+                    <button class="nav-item" style="padding: 10px 5px; flex-direction: column; gap: 6px; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-muted);" onclick="exportData('json')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:1; color:var(--accent-amber);"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                        <span style="font-size: 8px; font-weight: 800; letter-spacing: 1px; color: var(--text-secondary);">JSON</span>
+                    </button>
                 </div>
             </nav>
 
@@ -1959,28 +1970,61 @@ def export(fmt):
             w = csv.DictWriter(out, fieldnames=first_row.keys())
             w.writeheader()
             for r in rows:
-                w.writerow(dict(r))
+                d = dict(r)
+                # Format dates for CSV
+                for k, v in d.items():
+                    if isinstance(v, (datetime, date)):
+                        d[k] = v.isoformat()
+                w.writerow(d)
+        else:
+            # If no rows, try to get headers from a table scan or provide defaults
+            w = csv.DictWriter(out, fieldnames=["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"])
+            w.writeheader()
+            
         return Response(
             out.getvalue(),
             mimetype="text/csv",
-            headers={"Content-Disposition": "attachment;filename=contacts.csv"},
+            headers={"Content-Disposition": f"attachment;filename=leads_export_{int(time.time())}.csv"},
         )
+
     if fmt == "json":
-        return jsonify({"total": len(rows), "data": [dict(r) for r in rows]})
+        # jsonify will now use CustomJSONEncoder thanks to app.json.cls
+        return jsonify({
+            "status": "success",
+            "count": len(rows),
+            "timestamp": datetime.now().isoformat(),
+            "data": [dict(r) for r in rows]
+        })
+
     if fmt == "excel":
         wb = Workbook()
         ws = wb.active
-        ws.title = "Contacts"
+        ws.title = "Intelligence Data"
+        
         if rows:
-            # Convert first row to dict to get keys safely
             first_row = dict(rows[0])
-            ws.append(list(first_row.keys()))
+            headers = list(first_row.keys())
+            ws.append(headers)
             for r in rows:
-                ws.append(list(dict(r).values()))
+                d = dict(r)
+                row_data = []
+                for h in headers:
+                    val = d.get(h)
+                    # openpyxl handles datetime, but we ensure it's not some weird wrapper
+                    row_data.append(val)
+                ws.append(row_data)
+        else:
+            ws.append(["No data found for selected filters"])
+            
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
-        return send_file(out, download_name="contacts.xlsx", as_attachment=True)
+        return send_file(
+            out, 
+            download_name=f"leads_export_{int(time.time())}.xlsx", 
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     return "Invalid format", 400
 
 
