@@ -2003,6 +2003,7 @@ def index():
             "name": "name ASC",
             "city": "city ASC",
             "source": "source ASC",
+            "score": "quality_score DESC"
         }
         order_by = sort_map.get(sort_by, "scraped_at DESC")
 
@@ -2017,20 +2018,18 @@ def index():
             params.extend([search_pattern, search_pattern, search_pattern])
         if selected_city:
             where_clauses.append(f"city {like_op} %s")
-            params.append(selected_city)
+            params.append(f"%{selected_city}%")
         if selected_category:
             where_clauses.append(f"category {like_op} %s")
-            params.append(selected_category)
+            params.append(f"%{selected_category}%")
         if selected_source:
             where_clauses.append(f"source {like_op} %s")
-            params.append(selected_source)
+            params.append(f"%{selected_source}%")
         if selected_quality:
             where_clauses.append("(quality_tier = %s OR quality_tier IS NULL)")
             params.append(selected_quality)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        if USE_SQLITE:
-            where_sql = where_sql.replace("%s", "?")
 
         # Get total count (unfiltered)
         cur.execute("SELECT COUNT(*) as cnt FROM contacts")
@@ -2050,29 +2049,28 @@ def index():
         
         offset = (page - 1) * limit
 
-        placeholder = "?" if USE_SQLITE else "%s"
-        query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {placeholder} OFFSET {placeholder}"
         if USE_SQLITE:
-            query_sql = query_sql.replace("%s", "?")
-            
-        cur.execute(query_sql, params + [limit, offset])
+            query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?"
+            cur.execute(query_sql, params + [limit, offset])
+        else:
+            query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s"
+            cur.execute(query_sql, params + [limit, offset])
         contacts = cur.fetchall()
 
-        placeholder = "?" if USE_SQLITE else "%s"
         # Get unique values for filter dropdowns (CACHED)
         cities = get_cached_filter(
             "cities",
-            f"SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> {placeholder} ORDER BY city",
+            "SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> '' ORDER BY city",
             cur
         )
         categories = get_cached_filter(
             "categories",
-            f"SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> {placeholder} ORDER BY category",
+            "SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> '' ORDER BY category",
             cur
         )
         sources = get_cached_filter(
             "sources",
-            f"SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> {placeholder} ORDER BY source",
+            "SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> '' ORDER BY source",
             cur
         )
 
