@@ -103,10 +103,12 @@ class ScraperWatchdog(threading.Thread):
         try:
             conn = _connect_db()
             cur = conn.cursor()
-            placeholder = "?" if USE_SQLITE else "%s"
             
             # 1. Get current status
-            cur.execute(f"SELECT value, updated_at FROM system_status WHERE key = {placeholder}", ("scraper_status",))
+            if USE_SQLITE:
+                cur.execute("SELECT value, updated_at FROM system_status WHERE key = ?", ("scraper_status",))
+            else:
+                cur.execute("SELECT value, updated_at FROM system_status WHERE key = %s", ("scraper_status",))
             row = cur.fetchone()
             if not row: return
 
@@ -1860,20 +1862,20 @@ def index():
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
+            where_clauses.append("(name LIKE ? OR phone LIKE ? OR email LIKE ?)")
             search_pattern = f"%{search_query}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         if selected_city:
-            where_clauses.append(f"city {like_op} %s")
+            where_clauses.append("city LIKE ?")
             params.append(f"%{selected_city}%")
         if selected_category:
-            where_clauses.append(f"category {like_op} %s")
+            where_clauses.append("category LIKE ?")
             params.append(f"%{selected_category}%")
         if selected_source:
-            where_clauses.append(f"source {like_op} %s")
+            where_clauses.append("source LIKE ?")
             params.append(f"%{selected_source}%")
         if selected_quality:
-            where_clauses.append("(quality_tier = %s OR quality_tier IS NULL)")
+            where_clauses.append("(quality_tier = ? OR quality_tier IS NULL)")
             params.append(selected_quality)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -1898,10 +1900,9 @@ def index():
 
         if USE_SQLITE:
             query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?"
-            cur.execute(query_sql, params + [limit, offset])
         else:
             query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s"
-            cur.execute(query_sql, params + [limit, offset])
+        cur.execute(query_sql, params + [limit, offset])
         contacts = cur.fetchall()
 
         # Get unique values for filter dropdowns (CACHED)
@@ -2035,11 +2036,10 @@ def get_status():
         try:
             conn = get_db()
             cur = conn.cursor()
-            placeholder = "?" if USE_SQLITE else "%s"
-            cur.execute(
-                f"SELECT value FROM system_status WHERE key = {placeholder}",
-                ("scraper_status",),
-            )
+            if USE_SQLITE:
+                cur.execute("SELECT value FROM system_status WHERE key = ?", ("scraper_status",))
+            else:
+                cur.execute("SELECT value FROM system_status WHERE key = %s", ("scraper_status",))
             row = cur.fetchone()
             cur.close()
             conn.close()
@@ -2088,17 +2088,24 @@ def api_deep_clean():
                     cleaned = ProcessingHandler.process_contact(contact)
                     
                     if not cleaned.get('phone_clean') and not (cleaned.get('email') and cleaned.get('email_valid')):
-                        placeholder = "?" if USE_SQLITE else "%s"
-                        cur.execute(f"DELETE FROM contacts WHERE id = {placeholder}", (contact_id,))
+                        if USE_SQLITE:
+                            cur.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+                        else:
+                            cur.execute("DELETE FROM contacts WHERE id = %s", (contact_id,))
                         deleted += 1
                         continue
                         
                     if cleaned.get('phone') != row['phone'] or cleaned.get('email') != row['email']:
-                        placeholder = "?" if USE_SQLITE else "%s"
-                        cur.execute(
-                            f"UPDATE contacts SET phone = {placeholder}, phone_clean = {placeholder}, email = {placeholder}, email_valid = {placeholder} WHERE id = {placeholder}",
-                            (cleaned.get('phone'), cleaned.get('phone_clean'), cleaned.get('email'), cleaned.get('email_valid'), contact_id)
-                        )
+                        if USE_SQLITE:
+                            cur.execute(
+                                "UPDATE contacts SET phone = ?, phone_clean = ?, email = ?, email_valid = ? WHERE id = ?",
+                                (cleaned.get('phone'), cleaned.get('phone_clean'), cleaned.get('email'), cleaned.get('email_valid'), contact_id)
+                            )
+                        else:
+                            cur.execute(
+                                "UPDATE contacts SET phone = %s, phone_clean = %s, email = %s, email_valid = %s WHERE id = %s",
+                                (cleaned.get('phone'), cleaned.get('phone_clean'), cleaned.get('email'), cleaned.get('email_valid'), contact_id)
+                            )
                         updated += 1
                 
                 conn.commit()
@@ -2122,8 +2129,10 @@ def get_contact(contact_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        placeholder = "?" if USE_SQLITE else "%s"
-        cur.execute(f"SELECT * FROM contacts WHERE id = {placeholder}", (contact_id,))
+        if USE_SQLITE:
+            cur.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
+        else:
+            cur.execute("SELECT * FROM contacts WHERE id = %s", (contact_id,))
         contact = cur.fetchone()
         cur.close()
         conn.close()
@@ -2285,25 +2294,22 @@ def api_contacts():
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append(f"(name {like_op} %s OR phone {like_op} %s OR email {like_op} %s)")
+            where_clauses.append(f"(name {like_op} ? OR phone {like_op} ? OR email {like_op} ?)")
             search_pattern = f"%{search_query}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         if filter_city:
-            where_clauses.append(f"city {like_op} %s")
-            params.append(filter_city)
+            where_clauses.append(f"city {like_op} ?")
+            params.append(f"%{filter_city}%")
         if filter_category:
-            where_clauses.append(f"category {like_op} %s")
-            params.append(filter_category)
+            where_clauses.append(f"category {like_op} ?")
+            params.append(f"%{filter_category}%")
         if filter_source:
-            where_clauses.append(f"source {like_op} %s")
-            params.append(filter_source)
+            where_clauses.append(f"source {like_op} ?")
+            params.append(f"%{filter_source}%")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        if USE_SQLITE:
-            where_sql = where_sql.replace("%s", "?")
         
-        placeholder = "?" if USE_SQLITE else "%s"
-        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {placeholder} OFFSET {placeholder}"
+        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT ? OFFSET ?"
         count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
 
         cur.execute(query, params + [limit, offset])
@@ -2328,27 +2334,28 @@ def api_contacts():
 @app.route("/export/<fmt>")
 def export(fmt):
     try:
+        conn = get_db()
+        cur = conn.cursor()
+        
         search_query = request.args.get("q", "")
         filter_city = request.args.get("city", "")
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
-        conn = get_db()
-        cur = conn.cursor()
-
+        like_op = "LIKE" if USE_SQLITE else "ILIKE"
         where_clauses = []
         params = []
         if search_query:
-            where_clauses.append("(name LIKE ? OR phone LIKE ? OR email LIKE ?)")
+            where_clauses.append(f"(name {like_op} ? OR phone {like_op} ? OR email {like_op} ?)")
             params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
         if filter_city:
-            where_clauses.append("city LIKE ?")
+            where_clauses.append(f"city {like_op} ?")
             params.append(f"%{filter_city}%")
         if filter_category:
-            where_clauses.append("category LIKE ?")
+            where_clauses.append(f"category {like_op} ?")
             params.append(f"%{filter_category}%")
         if filter_source:
-            where_clauses.append("source LIKE ?")
+            where_clauses.append(f"source {like_op} ?")
             params.append(f"%{filter_source}%")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -2482,15 +2489,24 @@ def cleanup_low_quality():
         for contact in contacts:
             try:
                 processed = ProcessingHandler.process_contact(dict(contact))
-                placeholder = "?" if USE_SQLITE else "%s"
-                cur.execute(f"""
-                    UPDATE contacts 
-                    SET phone_clean = {placeholder}, 
-                        email_valid = {placeholder}, 
-                        quality_score = {placeholder}, 
-                        quality_tier = {placeholder}
-                    WHERE id = {placeholder}
-                """, (processed.get("phone_clean"), processed.get("email_valid", False), processed.get("quality_score", 0), processed.get("quality_tier", "low"), contact["id"]))
+                if USE_SQLITE:
+                    cur.execute("""
+                        UPDATE contacts 
+                        SET phone_clean = ?, 
+                            email_valid = ?, 
+                            quality_score = ?, 
+                            quality_tier = ?
+                        WHERE id = ?
+                    """, (processed.get("phone_clean"), processed.get("email_valid", False), processed.get("quality_score", 0), processed.get("quality_tier", "low"), contact["id"]))
+                else:
+                    cur.execute("""
+                        UPDATE contacts 
+                        SET phone_clean = %s, 
+                            email_valid = %s, 
+                            quality_score = %s, 
+                            quality_tier = %s
+                        WHERE id = %s
+                    """, (processed.get("phone_clean"), processed.get("email_valid", False), processed.get("quality_score", 0), processed.get("quality_tier", "low"), contact["id"]))
                 updated += 1
                 
                 # Periodically commit and update status for very large sets
@@ -2537,11 +2553,17 @@ def stream_stats():
                 cur = conn.cursor()
                 cur.execute("SELECT COUNT(*) as cnt FROM contacts")
                 total = cur.fetchone()["cnt"]
-                placeholder = "?" if USE_SQLITE else "%s"
-                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> {placeholder}", ("",))
-                with_phone = cur.fetchone()["cnt"]
-                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> {placeholder}", ("",))
-                with_email = cur.fetchone()["cnt"]
+                if USE_SQLITE:
+                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> ?", ("",))
+                    with_phone = cur.fetchone()["cnt"]
+                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> ?", ("",))
+                    with_email = cur.fetchone()["cnt"]
+                else:
+                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ("",))
+                    with_phone = cur.fetchone()["cnt"]
+                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ("",))
+                    with_email = cur.fetchone()["cnt"]
+
                 status_data = {}
                 if redis_client:
                     try:
