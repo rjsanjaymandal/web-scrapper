@@ -3059,11 +3059,22 @@ def export(fmt):
         ws = wb.active
         ws.title = "Intelligence Data"
         if rows:
-            ws.append(list(rows[0].keys()))
+            headers = list(rows[0].keys())
+            ws.append(headers)
             for r in rows:
-                ws.append([r.get(k, "") or "" for k in rows[0].keys()])
+                clean_row = []
+                for k in headers:
+                    v = r.get(k, "")
+                    if isinstance(v, (datetime, date)):
+                        clean_row.append(v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v.strftime('%Y-%m-%d'))
+                    elif v is None:
+                        clean_row.append("")
+                    else:
+                        clean_row.append(str(v) if not isinstance(v, (int, float, str)) else v)
+                ws.append(clean_row)
         else:
             ws.append(["No data found for selected filters"])
+        
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
