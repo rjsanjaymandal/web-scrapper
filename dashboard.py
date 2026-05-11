@@ -3064,9 +3064,8 @@ def export(fmt):
             rows = rows[:20000]
             
         try:
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Intelligence Data"
+            wb = Workbook(write_only=True)
+            ws = wb.create_sheet("Intelligence Data")
             
             if rows:
                 headers = list(rows[0].keys())
