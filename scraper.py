@@ -869,6 +869,10 @@ class ContactScraper:
 
             # Use Unified Processing Handler
             listing = ProcessingHandler.process_contact(listing)
+            
+            # Discard if the processing handler returned None (e.g. no phone/email)
+            if listing is None:
+                continue
 
             # Final safety check against DB (especially if cleaning changed the phone)
             is_dup = await self.is_duplicate(
@@ -880,21 +884,16 @@ class ContactScraper:
 
             processed_listings.append(listing)
             
-            # The 2026 Stealth Break has been removed for polite API scraping mode
-            # to allow bulk processing to complete without 1-2 minute delays per 5 leads.
-
-        # FINAL QUALITY GATE: Only keep contacts with at least one valid method (Phone or Email)
-        final_listings = ProcessingHandler.filter_valid(processed_listings)
-
-        skipped_junk = len(processed_listings) - len(final_listings)
+        # Quality logs
+        total_attempted = len(listings)
+        total_saved = len(processed_listings)
+        skipped_junk = total_attempted - total_saved - self.stats.get("duplicates_skipped", 0)
+        
         if skipped_junk > 0:
-            msg = f"[QUALITY] Filter: Dropped {skipped_junk} contacts with invalid/missing phone and email"
-            logger.info(msg)
-            # Log to activity log if possible (via logger name prefix that tasks.py might pick up, 
-            # or simply via standard logging which we've verified works in Railway logs)
+            logger.info(f"[QUALITY] Filter: Discarded {skipped_junk} contacts missing required phone/email info.")
             self.stats["skipped_junk"] = self.stats.get("skipped_junk", 0) + skipped_junk
 
-        return final_listings
+        return processed_listings
 
     def _format_amfi_listing(self, record: Dict, city: str) -> Dict:
         if not record or not isinstance(record, dict):

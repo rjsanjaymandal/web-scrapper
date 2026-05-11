@@ -382,8 +382,10 @@ def init_tables():
             "city": "VARCHAR(500)",
             "area": "VARCHAR(500)",
             "state": "VARCHAR(500)",
-            "source": "VARCHAR(255)",
+            "source": "VARCHAR(500)",
             "source_url": "TEXT",
+            "email": "VARCHAR(500)",
+            "address": "TEXT",
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN DEFAULT FALSE",
             "enriched": "BOOLEAN DEFAULT FALSE",
@@ -391,8 +393,8 @@ def init_tables():
             "license_no": "VARCHAR(500)",
             "membership_no": "VARCHAR(500)",
             "quality_score": "INTEGER DEFAULT 0",
-            "quality_tier": "VARCHAR(20) DEFAULT 'low'",
-            "blockchain_ca": "VARCHAR(255)",
+            "quality_tier": "VARCHAR(500) DEFAULT 'low'",
+            "blockchain_ca": "VARCHAR(500)",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         }
 
@@ -3055,30 +3057,55 @@ def export(fmt):
         })
 
     if fmt in ("excel", "xlsx"):
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Intelligence Data"
-        if rows:
-            headers = list(rows[0].keys())
-            ws.append(headers)
-            for r in rows:
-                clean_row = []
-                for k in headers:
-                    v = r.get(k, "")
-                    if isinstance(v, (datetime, date)):
-                        clean_row.append(v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v.strftime('%Y-%m-%d'))
-                    elif v is None:
-                        clean_row.append("")
-                    else:
-                        clean_row.append(str(v) if not isinstance(v, (int, float, str)) else v)
-                ws.append(clean_row)
-        else:
-            ws.append(["No data found for selected filters"])
-        
-        out = io.BytesIO()
-        wb.save(out)
-        out.seek(0)
-        return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        logger.info("Starting Excel generation process...")
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Intelligence Data"
+            
+            if rows:
+                headers = list(rows[0].keys())
+                ws.append(headers)
+                logger.info(f"Excel: Added headers: {headers}")
+                
+                row_count = 0
+                for r in rows:
+                    clean_row = []
+                    for k in headers:
+                        v = r.get(k, "")
+                        if isinstance(v, (datetime, date)):
+                            clean_row.append(v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v.strftime('%Y-%m-%d'))
+                        elif v is None:
+                            clean_row.append("")
+                        else:
+                            # Ensure everything is string or basic type for openpyxl
+                            if not isinstance(v, (int, float, str, bool)):
+                                clean_row.append(str(v))
+                            else:
+                                clean_row.append(v)
+                    ws.append(clean_row)
+                    row_count += 1
+                logger.info(f"Excel: Appended {row_count} rows.")
+            else:
+                ws.append(["No data found for selected filters"])
+                logger.warning("Excel: No data to export, added empty message.")
+            
+            out = io.BytesIO()
+            wb.save(out)
+            out.seek(0)
+            logger.info("Excel: Workbook saved to buffer successfully.")
+            
+            return send_file(
+                out, 
+                download_name=f"{filename_prefix}_{total_rows}rows.xlsx", 
+                as_attachment=True, 
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as excel_err:
+            logger.error(f"CRITICAL EXCEL ERROR: {excel_err}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"Excel Export Failed: {str(excel_err)}", 500
 
     if fmt == "pdf":
         def clean_pdf_text(text):

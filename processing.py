@@ -238,7 +238,7 @@ class ProcessingHandler:
         # Fields that are VARCHAR(500): name, category, city, area, state, email, arn, license_no, membership_no, source, quality_tier
         # Fields that are VARCHAR(50): phone, phone_clean
         
-        for field in ['name', 'address', 'area', 'city', 'category', 'arn', 'license_no', 'membership_no', 'source', 'quality_tier']:
+        for field in ['name', 'address', 'area', 'city', 'category', 'arn', 'license_no', 'membership_no', 'source', 'quality_tier', 'state', 'blockchain_ca']:
             val = contact.get(field)
             if val:
                 # Remove extra whitespace and noise
@@ -272,7 +272,15 @@ class ProcessingHandler:
         contact['quality_score'] = cls.calculate_quality_score(contact)
         contact['quality_tier'] = cls.get_quality_tier(contact['quality_score'])
         
-        # 5. Metadata
+        # 6. ENFORCED FILTER: Must have phone or email
+        # User requirement: "dont save untill unless any one contact ether number or mail you find of that contact"
+        has_contact = bool(contact.get('phone_clean') or (contact.get('email') and contact.get('email_valid')))
+        
+        if not has_contact:
+            logger.debug(f"Skipping contact {contact.get('name')} - No phone or email found.")
+            return None
+
+        # 7. Metadata
         contact['enriched'] = True
         contact['processed_at'] = datetime.now().isoformat()
         

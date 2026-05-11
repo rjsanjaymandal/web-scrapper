@@ -44,34 +44,36 @@ class BulkWriter:
         count = len(self.local_buffer)
         logger.info(f"💾 Flushing {count} records to Postgres...")
         
+        from processing import ProcessingHandler
+        
         # Prepare records for asyncpg executemany
         records = []
-        for rec in self.local_buffer:
-            # REQUIREMENT: Must have name AND (phone OR email)
-            if not rec.get("name"):
-                continue
-            if not (rec.get("phone") or rec.get("phone_clean") or rec.get("email")):
+        for raw_rec in self.local_buffer:
+            # Re-process with Unified Handler to ensure quality and phone/email presence
+            rec = ProcessingHandler.process_contact(raw_rec)
+            
+            if not rec:
                 continue
                 
             records.append((
-                rec.get("name", "")[:255],
+                rec.get("name", "")[:500],
                 rec.get("phone", "")[:50],
-                rec.get("email", "")[:255],
+                rec.get("email", "")[:500],
                 rec.get("address", ""),
-                rec.get("category", "")[:255],
-                rec.get("city", "")[:255],
-                rec.get("area", "")[:255],
-                rec.get("state", "")[:255],
-                rec.get("source", "")[:255],
+                rec.get("category", "")[:500],
+                rec.get("city", "")[:500],
+                rec.get("area", "")[:500],
+                rec.get("state", "")[:500],
+                rec.get("source", "")[:500],
                 rec.get("detail_url", "") or rec.get("source_url", ""),
                 rec.get("phone_clean", "")[:50],
                 rec.get("email_valid", False),
                 True,  # enriched
-                rec.get("arn", "")[:255],
-                rec.get("license_no", "")[:255],
-                rec.get("membership_no", "")[:255],
+                rec.get("arn", "")[:500],
+                rec.get("license_no", "")[:500],
+                rec.get("membership_no", "")[:500],
                 rec.get("quality_score", 0),
-                rec.get("quality_tier", "low"),
+                rec.get("quality_tier", "low")[:500],
             ))
 
         if not records:
