@@ -2719,7 +2719,7 @@ def api_deep_clean():
                     
                     cleaned = ProcessingHandler.process_contact(contact)
                     
-                    if not cleaned.get('phone_clean') and not (cleaned.get('email') and cleaned.get('email_valid')):
+                    if cleaned is None:
                         if USE_SQLITE:
                             cur.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
                         else:
