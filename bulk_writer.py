@@ -47,7 +47,10 @@ class BulkWriter:
         # Prepare records for asyncpg executemany
         records = []
         for rec in self.local_buffer:
+            # REQUIREMENT: Must have name AND (phone OR email)
             if not rec.get("name"):
+                continue
+            if not (rec.get("phone") or rec.get("phone_clean") or rec.get("email")):
                 continue
                 
             records.append((

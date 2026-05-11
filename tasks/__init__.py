@@ -521,7 +521,9 @@ def direct_gov_scrape_batch():
                     for contact in results:
                         try:
                             cleaned = ProcessingHandler.process_contact(contact)
-                            if cleaned and cleaned.get("name"):
+                            # REQUIREMENT: Must have name AND (phone OR email)
+                            has_contact = bool(cleaned.get("phone") or cleaned.get("phone_clean") or cleaned.get("email"))
+                            if cleaned and cleaned.get("name") and has_contact:
                                 processed.append(cleaned)
                         except Exception:
                             continue

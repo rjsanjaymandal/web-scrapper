@@ -1485,6 +1485,14 @@ class ContactScraper:
             processed = ProcessingHandler.process_contact(listing)
             if not processed:
                 continue
+            
+            # REQUIREMENT: Only save if we have either phone or email contact info
+            has_phone = bool(processed.get("phone") or processed.get("phone_clean"))
+            has_email = bool(processed.get("email"))
+            if not (has_phone or has_email):
+                logger.debug(f"[FILTER] Dropping {processed.get('name')} - No contact info found")
+                continue
+
             if ProcessingHandler.filter_valid([processed]) or self._is_official_registry_record(processed, source):
                 prepared.append(processed)
 
