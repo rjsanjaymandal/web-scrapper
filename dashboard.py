@@ -15,6 +15,14 @@ from pathlib import Path
 import sqlite3
 from fpdf import FPDF
 
+# Task Imports for status and orchestration
+try:
+    from tasks import set_status, auto_pilot_task, scrape_category_task, fast_scrape_task, direct_gov_scrape_batch
+except ImportError:
+    # Fallback for local dev without Celery context
+    def set_status(*args, **kwargs): pass
+    auto_pilot_task = scrape_category_task = fast_scrape_task = direct_gov_scrape_batch = None
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (datetime, date)):
@@ -194,10 +202,10 @@ def build_contact_filters(
 
     if search_query:
         where_clauses.append(
-            f"(name {like_op} {ph} OR phone {like_op} {ph} OR email {like_op} {ph} OR category {like_op} {ph} OR source {like_op} {ph})"
+            f"(name {like_op} {ph} OR phone {like_op} {ph} OR email {like_op} {ph} OR category {like_op} {ph} OR source {like_op} {ph} OR city {like_op} {ph} OR address {like_op} {ph} OR arn {like_op} {ph} OR license_no {like_op} {ph} OR membership_no {like_op} {ph})"
         )
         search_pattern = f"%{search_query}%"
-        params.extend([search_pattern] * 5)
+        params.extend([search_pattern] * 10)
     if city:
         where_clauses.append(f"city {like_op} {ph}")
         params.append(f"%{city}%")
@@ -333,9 +341,9 @@ def init_tables():
                 phone_clean VARCHAR(50),
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
-                arn VARCHAR(50),
-                license_no VARCHAR(100),
-                membership_no VARCHAR(100),
+                arn VARCHAR(255),
+                license_no VARCHAR(255),
+                membership_no VARCHAR(255),
                 quality_score INTEGER DEFAULT 0,
                 quality_tier VARCHAR(20) DEFAULT 'low',
                 blockchain_ca VARCHAR(255),
@@ -373,9 +381,9 @@ def init_tables():
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN DEFAULT FALSE",
             "enriched": "BOOLEAN DEFAULT FALSE",
-            "arn": "VARCHAR(50)",
-            "license_no": "VARCHAR(100)",
-            "membership_no": "VARCHAR(100)",
+            "arn": "VARCHAR(255)",
+            "license_no": "VARCHAR(255)",
+            "membership_no": "VARCHAR(255)",
             "quality_score": "INTEGER DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
             "blockchain_ca": "VARCHAR(255)",
@@ -789,6 +797,8 @@ HTML = """
 
         .btn-outline { background: rgba(255,255,255,0.03); border: 1px solid var(--border-muted); color: var(--text-primary); }
         .btn-outline:hover { background: rgba(255,255,255,0.06); border-color: var(--text-secondary); color: #fff; }
+        .btn-danger { background: transparent; border: 1px solid var(--accent-red); color: var(--accent-red); }
+        .btn-danger:hover { background: var(--accent-red); color: #fff; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
         .btn-sm { padding: 8px 16px; font-size: 11px; }
 
         /* HUD Table */
@@ -1459,6 +1469,15 @@ HTML = """
             .filter-row { grid-template-columns: 1fr; }
             .main-view { padding: 20px; }
         }
+        .spinner-sm {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: var(--accent-emerald);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -1486,19 +1505,19 @@ HTML = """
             <nav class="nav-group">
                 <p class="nav-label">Export Intelligence</p>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px;">
-                    <button class="export-btn export-csv" onclick="exportData('csv')" title="Export as CSV">
+                    <button class="export-btn export-csv" onclick="exportData('csv', this)" title="Export as CSV">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>CSV</span>
                     </button>
-                    <button class="export-btn export-excel" onclick="exportData('excel')" title="Export as Excel">
+                    <button class="export-btn export-excel" onclick="exportData('xlsx', this)" title="Export as Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>Excel</span>
                     </button>
-                    <button class="export-btn export-json" onclick="exportData('json')" title="Export as JSON">
+                    <button class="export-btn export-json" onclick="exportData('json', this)" title="Export as JSON">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>JSON</span>
                     </button>
-                    <button class="export-btn" onclick="exportData('pdf')" title="Export as PDF" style="border-color: rgba(239, 68, 68, 0.3); background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);">
+                    <button class="export-btn" onclick="exportData('pdf', this)" title="Export as PDF" style="border-color: rgba(239, 68, 68, 0.3); background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                         <span style="color:#ef4444">PDF</span>
                     </button>
@@ -1648,8 +1667,11 @@ HTML = """
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         Start Collection
                     </button>
-                    <button class="btn btn-outline" id="auto-btn" onclick="startCollection(true)" title="Run CA-first official registry scrape">
-                        Auto Scrape
+                    <button class="btn btn-outline" id="auto-btn" onclick="startCollection(true)" title="Run continuous autonomous scrape">
+                        AutoPilot
+                    </button>
+                    <button class="btn btn-danger" id="stop-btn" onclick="stopScraping()" style="display:none; border-color:var(--accent-red); color:var(--accent-red);">
+                        Stop
                     </button>
                 </div>
             </div>
@@ -1835,9 +1857,14 @@ HTML = """
         };
         
         window.goToPage = function(p) {
+            console.log("Pagination: Go to page", p, "of", window.totalPages);
             if (p < 1 || p > window.totalPages) return;
             const url = new URL(window.location.href);
             url.searchParams.set('page', p);
+            // Ensure limit is persisted if it's set globally
+            if (window.pageSize && !url.searchParams.has('limit')) {
+                url.searchParams.set('limit', window.pageSize);
+            }
             window.loadLeads(url.toString(), true);
         };
 
@@ -1867,7 +1894,11 @@ HTML = """
             document.getElementById('t-cat').value = '';
             document.getElementById('t-source').value = '';
             document.getElementById('t-sort').value = 'date';
-            window.applyFilters();
+            
+            const url = new URL(window.location.origin + window.location.pathname);
+            url.searchParams.set('page', 1);
+            if (window.pageSize) url.searchParams.set('limit', window.pageSize);
+            window.loadLeads(url.toString(), true);
         };
 
         window.copyLead = function(text) {
@@ -2042,6 +2073,12 @@ window.updatePaginationUI = function(data) {
             const autoBtn = document.getElementById('auto-btn');
             const shouldAuto = !!autoMode || (!city && !q && !source);
             
+            if (shouldAuto) {
+                if (autoBtn) autoBtn.style.display = 'none';
+                const stopBtn = document.getElementById('stop-btn');
+                if (stopBtn) stopBtn.style.display = 'inline-flex';
+            }
+
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<span class="pulse">COLLECTING...</span>';
@@ -2073,27 +2110,43 @@ window.updatePaginationUI = function(data) {
             window.applyFilters();
         };
 
-        window.exportData = function(fmt) {
+        window.exportData = function(fmt, btn) {
             const q = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
             const src = document.getElementById('t-source')?.value || "";
             
+            if (btn) {
+                const originalHTML = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<div class="spinner-sm"></div>';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                }, 5000);
+            }
+            
             const baseUrl = window.location.origin;
             let url = baseUrl + "/export/" + fmt;
-            const params = new URLSearchParams(window.location.search);
-            params.delete('page');
-            params.delete('limit');
-            params.delete('format');
-            if (city) params.set('city', city); else params.delete('city');
-            if (q) params.set('q', q); else params.delete('q');
-            if (src) params.set('source', src); else params.delete('source');
+            const params = new URLSearchParams();
+            if (city) params.set('city', city);
+            if (q) params.set('q', q);
+            if (src) params.set('source', src);
             
             const queryString = params.toString();
-            if (queryString) url += '?' + queryString;
-            
-            console.log('Export URL:', url);
-            
+            if (queryString) url += "?" + queryString;
             window.location.assign(url);
+        };
+
+        window.stopScraping = async function() {
+            try {
+                const res = await fetch('/api/trigger/stop', { method: 'POST' });
+                const data = await res.json();
+                window.showNotif(data.message);
+                document.getElementById('stop-btn').style.display = 'none';
+                document.getElementById('auto-btn').style.display = 'inline-flex';
+            } catch (e) {
+                window.showNotif('Failed to send stop signal');
+            }
         };
 
         window.cleanup = async function() {
@@ -2771,7 +2824,6 @@ def get_log(name):
 def trigger_scrape():
     """Trigger scraping tasks. Supports single (POST JSON) or batch (default)."""
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
-    from tasks import fast_scrape_task, scrape_category_task, direct_gov_scrape_batch, set_status
     
     data = {}
     if request.method == "POST":
@@ -2789,7 +2841,20 @@ def trigger_scrape():
     if not use_business:
         use_business = request.args.get("business", "false").lower() == "true"
 
-    if auto or not (city or category or source):
+    if auto:
+        if redis_client:
+            redis_client.set("scraper:auto_pilot:active", "1")
+        
+        set_status(
+            "AutoPilot Activated: System will now run continuously...",
+            True,
+            {"source": "AUTOPILOT", "mode": "CONTINUOUS"},
+        )
+        task_result = auto_pilot_task.delay()
+        msg = "AutoPilot Activated: Continuous scraping cycle started across all cities/categories."
+        logger.info("Dashboard activated Continuous AutoPilot")
+    elif not city and not category and not source:
+        # Fallback for manual button click without params but not 'auto'
         set_status(
             "Queued auto scrape: CA-first official registries...",
             True,
@@ -2819,11 +2884,20 @@ def trigger_scrape():
     
     return jsonify({"message": msg, "task_id": getattr(task_result, "id", None)})
 
+@app.route("/api/trigger/stop", methods=["POST", "GET"])
+def stop_scrape():
+    """Stop continuous AutoPilot"""
+    if redis_client:
+        redis_client.set("scraper:auto_pilot:active", "0")
+    
+    set_status("AutoPilot: STOP signal sent. Current task will finish then stop.", False)
+    return jsonify({"success": True, "message": "Stop signal sent to AutoPilot."})
+
+
 @app.route("/api/trigger/fast-scrape", methods=["POST"])
 def trigger_fast_scrape():
     """Trigger fast parallel scraping with higher concurrency"""
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
-    from tasks import fast_scrape_task, set_status
     try:
         max_concurrent = request.args.get("concurrency", 5, type=int)
         set_status(
@@ -2885,8 +2959,8 @@ def api_contacts():
 def export(fmt):
     logger.info(f"Export requested: format={fmt}, args={dict(request.args)}")
     
-    if fmt not in ("csv", "excel", "json", "pdf"):
-        return "Invalid format. Use csv, excel, or json.", 400
+    if fmt not in ("csv", "excel", "json", "pdf", "xlsx"):
+        return "Invalid format. Use csv, excel, xlsx, json, or pdf.", 400
     
     try:
         conn = get_db()
@@ -2958,7 +3032,7 @@ def export(fmt):
             "data": rows
         })
 
-    if fmt == "excel":
+    if fmt in ("excel", "xlsx"):
         wb = Workbook()
         ws = wb.active
         ws.title = "Intelligence Data"
@@ -2974,6 +3048,14 @@ def export(fmt):
         return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     if fmt == "pdf":
+        def clean_pdf_text(text):
+            if not text: return ""
+            # Handle non-Latin-1 characters by replacing them with a placeholder
+            try:
+                return str(text).encode('latin-1', 'replace').decode('latin-1')
+            except Exception:
+                return ""
+
         class PDF(FPDF):
             def header(self):
                 self.set_font('helvetica', 'B', 15)
@@ -3003,17 +3085,30 @@ def export(fmt):
         # Table Data
         pdf.set_font('helvetica', '', 8)
         for r in rows[:1000]: # Limit to 1000 rows for PDF to avoid huge files/timeout
-            pdf.cell(col_widths[0], 6, str(r.get("name") or "")[:35], 1)
-            pdf.cell(col_widths[1], 6, str(r.get("phone") or "")[:20], 1)
-            pdf.cell(col_widths[2], 6, str(r.get("email") or "")[:35], 1)
-            pdf.cell(col_widths[3], 6, str(r.get("city") or "")[:20], 1)
-            pdf.cell(col_widths[4], 6, str(r.get("category") or "")[:25], 1)
-            pdf.cell(col_widths[5], 6, str(r.get("source") or "")[:20], 1)
+            pdf.cell(col_widths[0], 6, clean_pdf_text(r.get("name"))[:35], 1)
+            pdf.cell(col_widths[1], 6, clean_pdf_text(r.get("phone"))[:20], 1)
+            pdf.cell(col_widths[2], 6, clean_pdf_text(r.get("email"))[:35], 1)
+            pdf.cell(col_widths[3], 6, clean_pdf_text(r.get("city"))[:20], 1)
+            pdf.cell(col_widths[4], 6, clean_pdf_text(r.get("category"))[:25], 1)
+            pdf.cell(col_widths[5], 6, clean_pdf_text(r.get("source"))[:20], 1)
             pdf.ln()
             
-        pdf_data = pdf.output()
+        # Handle different FPDF versions (classic vs fpdf2)
+        try:
+            # fpdf2 returns bytearray by default
+            pdf_data = pdf.output()
+            if not isinstance(pdf_data, (bytes, bytearray)):
+                # Classic fpdf might return a string or nothing if dest isn't 'S'
+                pdf_data = pdf.output(dest='S')
+        except Exception:
+            # Fallback for older versions
+            pdf_data = pdf.output(dest='S')
+
+        if isinstance(pdf_data, str):
+            pdf_data = pdf_data.encode('latin-1', 'replace')
+            
         out = io.BytesIO(pdf_data)
-        return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.pdf", as_attachment=True, mimetype="application/pdf")
+        return send_file(out, download_name=f"{filename_prefix}_{len(rows[:1000])}rows.pdf", as_attachment=True, mimetype="application/pdf")
 
     return "Invalid format", 400
 

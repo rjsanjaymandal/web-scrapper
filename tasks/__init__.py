@@ -1,5 +1,7 @@
 from celery import Celery
 import asyncio
+from celery import Celery
+import asyncio
 import logging
 import os
 import sys
@@ -7,6 +9,8 @@ import json
 import redis
 from datetime import datetime
 from pathlib import Path
+import random
+import time
 
 # Fix for Railway/Docker: Ensure the current directory is in the Python path
 sys.path.append(os.getcwd())
@@ -547,3 +551,93 @@ def direct_gov_scrape_batch():
         set_status(f"Error: {e}", False)
         logger.error(f"Direct gov batch failed: {e}")
         return {"status": "failed", "error": str(e)}
+
+
+@celery_app.task(name="tasks.auto_pilot_task", time_limit=3600, soft_time_limit=3300)
+def auto_pilot_task():
+    """
+    Continuous AutoPilot: Cycles through all city/category combinations.
+    If it finishes a job, it queues itself again to keep the system running.
+    """
+    if redis_client:
+        active = redis_client.get("scraper:auto_pilot:active")
+        if active and active.decode('utf-8') == "0":
+            set_status("AutoPilot: Received STOP signal. Shutting down...", False)
+            return {"status": "stopped"}
+    
+    set_status("AutoPilot: Scanning for next available job...", True, {"source": "AUTOPILOT"})
+    
+    try:
+        from scraper import load_config
+        from scrape_state import claim_scrape_job, finish_scrape_job
+        config = load_config()
+        
+        cities = list(config.cities)
+        categories = list(config.categories)
+        random.shuffle(cities)
+        random.shuffle(categories)
+        
+        # Sources to try in order of quality
+        sources = ["Official", "YELLOWPAGES", "JUSTDIAL"]
+        
+        found_job = False
+        for city in cities:
+            for cat in categories:
+                for src in sources:
+                    # Map src to internal source names or None for default
+                    target_src = None if src == "Official" else src
+                    
+                    claimed, reason, token = claim_scrape_job(city, cat, target_src)
+                    if claimed:
+                        set_status(f"AutoPilot: Starting {cat} in {city} via {src}", True)
+                        
+                        # Execute the scrape
+                        try:
+                            # Check if already running or recently done (redundancy check)
+                            if redis_client:
+                                last_run = redis_client.get(f"scraper:last_run:{city}:{cat}")
+                                if last_run:
+                                    # If run within last hour, skip
+                                    if time.time() - float(last_run) < 3600:
+                                        continue
+
+                            # Use gov batch for Official CA/CS targets, else use general scraper
+                            if src == "Official" and any(k in cat.lower() for k in ["accountant", "secretary", "agent", "advisor"]):
+                                result = direct_gov_scrape_batch()
+                                count = result.get("saved", 0)
+                            else:
+                                result = scrape_category_task(city=city, category=cat, source=target_src)
+                                count = result.get("count", 0)
+                            
+                            if redis_client:
+                                redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
+
+                            found_job = True
+                            set_status(f"AutoPilot: Finished {cat} in {city}. Found {count} leads.", True)
+                            break # Move to next city/cat cycle
+                        except Exception as e:
+                            logger.error(f"AutoPilot job failed: {e}")
+                            if "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                                set_status("AutoPilot: Proxy traffic exhausted. Waiting 1 hour before retry...", False)
+                                auto_pilot_task.apply_async(countdown=3600)
+                                return {"status": "waiting", "reason": "traffic_exhausted"}
+                            continue
+                if found_job: break
+            if found_job: break
+            
+        if not found_job:
+            set_status("AutoPilot: No new jobs found. All targets recently scraped.", False)
+            # Still re-queue to check again later (maybe some TTLs expired)
+    
+    except Exception as e:
+        logger.error(f"AutoPilot core error: {e}")
+        set_status(f"AutoPilot Error: {e}", False)
+        
+    # Self-Perpetuation: Always re-queue after 30 seconds unless explicitly stopped
+    if redis_client:
+        active = redis_client.get("scraper:auto_pilot:active")
+        if not active or active.decode('utf-8') == "1":
+            auto_pilot_task.apply_async(countdown=30)
+            logger.info("AutoPilot: Re-queued next cycle in 30 seconds.")
+            
+    return {"status": "cycle_complete", "job_found": found_job}

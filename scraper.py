@@ -562,6 +562,7 @@ class ContactScraper:
 
             logger.info("Connected to PostgreSQL successfully")
             await self._create_pg_tables()
+            await self._migrate_columns()
 
         except Exception as e:
             logger.error(f"❌ PostgreSQL connection failed: {e}")
@@ -587,18 +588,18 @@ class ContactScraper:
                     phone VARCHAR(50),
                     email VARCHAR(255),
                     address TEXT,
-                    category VARCHAR(100),
-                    city VARCHAR(100),
-                    area VARCHAR(100),
-                    state VARCHAR(100),
-                    source VARCHAR(100),
+                    category VARCHAR(255),
+                    city VARCHAR(255),
+                    area VARCHAR(255),
+                    state VARCHAR(255),
+                    source VARCHAR(255),
                     source_url TEXT,
                     phone_clean VARCHAR(50),
                     email_valid BOOLEAN,
                     enriched BOOLEAN,
-                    arn VARCHAR(50),
-                    license_no VARCHAR(100),
-                    membership_no VARCHAR(100),
+                    arn VARCHAR(255),
+                    license_no VARCHAR(255),
+                    membership_no VARCHAR(255),
                     quality_score INT DEFAULT 0,
                     quality_tier VARCHAR(20) DEFAULT 'low',
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -614,18 +615,18 @@ class ContactScraper:
             "phone": "VARCHAR(50)",
             "email": "VARCHAR(255)",
             "address": "TEXT",
-            "category": "VARCHAR(100)",
-            "city": "VARCHAR(100)",
-            "area": "VARCHAR(100)",
-            "state": "VARCHAR(100)",
-            "source": "VARCHAR(100)",
+            "category": "VARCHAR(255)",
+            "city": "VARCHAR(255)",
+            "area": "VARCHAR(255)",
+            "state": "VARCHAR(255)",
+            "source": "VARCHAR(255)",
             "source_url": "TEXT",
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN",
             "enriched": "BOOLEAN",
-            "arn": "VARCHAR(50)",
-            "license_no": "VARCHAR(100)",
-            "membership_no": "VARCHAR(100)",
+            "arn": "VARCHAR(255)",
+            "license_no": "VARCHAR(255)",
+            "membership_no": "VARCHAR(255)",
             "quality_score": "INT DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -653,6 +654,32 @@ class ContactScraper:
             except Exception as e:
                 # If it already exists or there's a lock, we can ignore it as long as the index is there
                 logger.debug(f"Index creation notice: {e}")
+
+    async def _migrate_columns(self):
+        """Ensures existing columns have enough space for long scraped values."""
+        if hasattr(self, "use_sqlite") and self.use_sqlite:
+            return
+            
+        columns_to_expand = {
+            "category": 255,
+            "city": 255,
+            "area": 255,
+            "state": 255,
+            "source": 255,
+            "arn": 255,
+            "license_no": 255,
+            "membership_no": 255,
+            "name": 255,
+            "email": 255,
+        }
+        
+        async with self.pool.acquire() as conn:
+            for col, size in columns_to_expand.items():
+                try:
+                    await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE VARCHAR({size})")
+                    logger.info(f"Migration: Ensured {col} is VARCHAR({size})")
+                except Exception as e:
+                    logger.debug(f"Migration check skip for {col}: {e}")
 
         try:
             await self.pool.execute(
