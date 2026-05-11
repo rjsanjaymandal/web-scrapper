@@ -1843,22 +1843,22 @@ HTML = """
 
         window.applyFilters = function() {
             const city = document.getElementById('t-city').value;
-            const cat = document.getElementById('t-cat').value;
+            const q = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             const sort = document.getElementById('t-sort')?.value || 'date';
             
             const url = new URL(window.location.origin + window.location.pathname);
             if (city) url.searchParams.set('city', city);
-            if (cat) url.searchParams.set('category', cat);
+            if (q) url.searchParams.set('q', q);
             if (source) url.searchParams.set('source', source);
             if (sort) url.searchParams.set('sort', sort);
             url.searchParams.set('page', 1);
             window.loadLeads(url.toString(), true);
         };
 
-        window.setFilter = function(city, cat) {
+        window.setFilter = function(city, q) {
             document.getElementById('t-city').value = city;
-            document.getElementById('t-cat').value = cat;
+            document.getElementById('t-cat').value = q;
             window.applyFilters();
         };
 
@@ -1892,7 +1892,7 @@ HTML = """
                 const data = await res.json();
                 
                 window.currentPage = data.page;
-                window.totalPages = data.total_pages;
+                window.totalPages = data.total_pages; if (data.limit) window.pageSize = data.limit;
                 window.currentFilters = url;
                 
                 window.renderLeads(data.contacts);
@@ -2011,8 +2011,12 @@ window.updatePaginationUI = function(data) {
             var infoEl = document.querySelector('.pagination-info');
             if (infoEl) {
                 var totalText = data.filtered_total !== undefined ? data.filtered_total.toLocaleString() : (data.total_pages * data.contacts.length);
+                var startRange = (data.page - 1) * (data.limit || window.pageSize) + 1;
+                var endRange = Math.min(startRange + data.contacts.length - 1, data.filtered_total || 0);
+                if (data.contacts.length === 0) { startRange = 0; endRange = 0; }
+                
                 infoEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' +
-                    '<span><span>' + data.contacts.length + '</span> of ' + totalText + ' leads</span>' +
+                    '<span><span>' + startRange + '-' + endRange + '</span> of ' + totalText + ' leads</span>' +
                     '<span style="color:var(--border-muted);">|</span>' +
                     '<span>Page <span>' + data.page + '</span> of <span>' + data.total_pages + '</span></span>';
             }
@@ -2032,11 +2036,11 @@ window.updatePaginationUI = function(data) {
 
         window.startCollection = async function(autoMode) {
             const city = document.getElementById('t-city').value;
-            const cat = document.getElementById('t-cat').value;
+            const q = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             const btn = document.getElementById('start-btn');
             const autoBtn = document.getElementById('auto-btn');
-            const shouldAuto = !!autoMode || (!city && !cat && !source);
+            const shouldAuto = !!autoMode || (!city && !q && !source);
             
             if (btn) {
                 btn.disabled = true;
@@ -2048,7 +2052,7 @@ window.updatePaginationUI = function(data) {
                 const res = await fetch('/api/trigger/scrape', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({city, category: cat, source, auto: shouldAuto})
+                    body: JSON.stringify({city, category: q, source, auto: shouldAuto})
                 });
                 const data = await res.json();
                 window.showNotif(data.message);
@@ -2062,15 +2066,15 @@ window.updatePaginationUI = function(data) {
             }
         };
 
-        window.setTemplate = function(city, cat, src) {
+        window.setTemplate = function(city, q, src) {
             document.getElementById('t-city').value = city;
-            document.getElementById('t-cat').value = cat;
+            document.getElementById('t-cat').value = q;
             document.getElementById('t-source').value = src;
             window.applyFilters();
         };
 
         window.exportData = function(fmt) {
-            const category = document.getElementById('t-cat')?.value || "";
+            const q = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
             const src = document.getElementById('t-source')?.value || "";
             
@@ -2081,7 +2085,7 @@ window.updatePaginationUI = function(data) {
             params.delete('limit');
             params.delete('format');
             if (city) params.set('city', city); else params.delete('city');
-            if (category) params.set('category', category); else params.delete('category');
+            if (q) params.set('q', q); else params.delete('q');
             if (src) params.set('source', src); else params.delete('source');
             
             const queryString = params.toString();
@@ -2536,7 +2540,7 @@ def index():
             })
         return jsonify({
             "contacts": leads_list,
-            "page": page,
+            "page": page, "limit": limit,
             "total_pages": total_pages,
             "filtered_total": filtered_total,
             "stats": {
@@ -2867,7 +2871,7 @@ def api_contacts():
         return jsonify(
             {
                 "total": total,
-                "page": page,
+                "page": page, "limit": limit,
                 "limit": limit,
                 "total_pages": (total + limit - 1) // limit if total else 1,
                 "data": [dict(c) for c in contacts],
