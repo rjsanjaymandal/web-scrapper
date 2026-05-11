@@ -2529,7 +2529,6 @@ window.updatePaginationUI = function(data) {
                     showNotif(data.error, 4000, true);
                 } else {
                     showNotif(data.message);
-                    updateScraperStatus('Government sites batch started...', true);
                 }
             } catch(e) {
                 showNotif('Failed to start gov batch', 3000, true);
