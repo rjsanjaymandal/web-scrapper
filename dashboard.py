@@ -3057,7 +3057,12 @@ def export(fmt):
         })
 
     if fmt in ("excel", "xlsx"):
-        logger.info("Starting Excel generation process...")
+        logger.info(f"Starting Excel generation for {len(rows)} records...")
+        # Safety cap for memory-limited environments (Railway 512MB)
+        if len(rows) > 20000:
+            logger.warning(f"Export size ({len(rows)}) exceeds memory safety limit. Capping to 20,000 most recent.")
+            rows = rows[:20000]
+            
         try:
             wb = Workbook()
             ws = wb.active
