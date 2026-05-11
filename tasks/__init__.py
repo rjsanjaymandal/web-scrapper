@@ -391,7 +391,7 @@ def direct_scrape_task(source: str = None, city: str = None, category: str = Non
             for contact in results:
                 try:
                     cleaned = handler.process_contact(contact)
-                    if cleaned.get('phone_clean') or cleaned.get('email_valid'):
+                    if cleaned and cleaned.get('name'):
                         processed.append(cleaned)
                 except Exception as proc_err:
                     logger.warning(f"Processing error: {proc_err}")
@@ -448,66 +448,97 @@ def direct_gov_scrape_batch():
         return {"status": "failed", "error": str(e)}
     
     try:
-        config_cities = ["Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Pune", 
-                        "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"]
+        try:
+            from scraper import load_config
+            loaded_config = load_config()
+            configured_cities = list(getattr(loaded_config, "cities", []) or [])
+        except Exception:
+            configured_cities = []
+
+        ca_priority_cities = [
+            "Delhi",
+            "Mumbai",
+            "Bangalore",
+            "Chennai",
+            "Hyderabad",
+            "Pune",
+            "Kolkata",
+            "Ahmedabad",
+            "Jaipur",
+            "Lucknow",
+        ]
+        for c in configured_cities:
+            if c not in ca_priority_cities:
+                ca_priority_cities.append(c)
+        ca_priority_cities = ca_priority_cities[:12]
         
         gov_sources = [
-            ("SEBI", SEBIDirectScraper, "Investment Advisors"),
-            ("ICAI", ICAIDirectScraper, "Chartered Accountants"),
-            ("NSE", NSEDirectScraper, "Stock Brokers"),
-            ("MCA", MCADirectScraper, "Company Secretaries"),
-            ("AMFI", AMFIDirectScraper, "Mutual Fund Agents"),
+            ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities),
+            ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:6]),
+            ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
+            ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
+            ("MCA", MCADirectScraper, "Company Secretaries", [None]),
         ]
         
         fetcher = DirectPoliteFetcher()
         total_results = 0
         total_saved = 0
         
-        for source_name, scraper_class, category in gov_sources:
-            set_status(f"Scraping {source_name}...", True, {"source": source_name})
-            
+        from processing import ProcessingHandler
+        from scraper import ContactScraper, load_config
+
+        for source_name, scraper_class, category, cities_to_try in gov_sources:
             scraper = scraper_class(fetcher)
-            
-            try:
-                results = scraper.scrape(city=None, category=category)
-                total_results += len(results)
-                
-                if results:
-                    set_status(f"{source_name}: Found {len(results)} records...", True, {"source": source_name})
-                    
-                    # Process and save results
-                    from processing import ProcessingHandler
-                    handler = ProcessingHandler()
+
+            for target_city in cities_to_try:
+                status_city = target_city or "all India"
+                set_status(
+                    f"Scraping {source_name}: {category} ({status_city})...",
+                    True,
+                    {"source": source_name, "city": target_city, "category": category},
+                )
+
+                try:
+                    results = scraper.scrape(city=target_city, category=category)
+                    total_results += len(results)
+                    if not results:
+                        continue
+
+                    set_status(
+                        f"{source_name}: Found {len(results)} records...",
+                        True,
+                        {"source": source_name, "city": target_city, "category": category},
+                    )
+
                     processed = []
-                    
                     for contact in results:
                         try:
-                            cleaned = handler.process_contact(contact)
-                            if cleaned.get('phone_clean') or cleaned.get('email_valid'):
+                            cleaned = ProcessingHandler.process_contact(contact)
+                            if cleaned and cleaned.get("name"):
                                 processed.append(cleaned)
-                        except:
+                        except Exception:
                             continue
-                    
-                    if processed:
-                        try:
-                            from scraper import ContactScraper, load_config
-                            async def save_batch():
-                                db = ContactScraper(load_config())
-                                await db.init_db()
-                                try:
-                                    count = await db.save_contacts(processed)
-                                    return count
-                                finally:
-                                    await db.close()
-                            
-                            saved = asyncio.run(save_batch())
-                            total_saved += saved
-                        except Exception as db_err:
-                            logger.warning(f"DB save error for {source_name}: {db_err}")
-                            
-            except Exception as src_err:
-                logger.error(f"Source {source_name} failed: {src_err}")
-                continue
+
+                    if not processed:
+                        continue
+
+                    try:
+                        async def save_batch():
+                            db = ContactScraper(load_config())
+                            await db.init_db()
+                            try:
+                                return await db.save_contacts(processed)
+                            finally:
+                                await db.close()
+
+                        saved = asyncio.run(save_batch())
+                        total_saved += saved
+                    except Exception as db_err:
+                        logger.warning(f"DB save error for {source_name}: {db_err}")
+
+                except Exception as src_err:
+                    logger.error(f"Source {source_name} failed: {src_err}")
+                    continue
         
         set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
         return {"status": "completed", "extracted": total_results, "saved": total_saved}

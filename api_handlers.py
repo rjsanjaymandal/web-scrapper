@@ -7,10 +7,41 @@ import logging
 import re
 import json
 from typing import List, Dict, Optional, Callable, Awaitable
+from urllib.parse import urlencode
 from polite_http_scraper import PoliteHTTPScraper
 
 from scrapers.base import BaseScraper
 logger = logging.getLogger(__name__)
+
+CA_CITY_STATE_MAP = {
+    "delhi": "Delhi",
+    "new delhi": "Delhi",
+    "mumbai": "Maharashtra",
+    "pune": "Maharashtra",
+    "nagpur": "Maharashtra",
+    "thane": "Maharashtra",
+    "bangalore": "Karnataka",
+    "bengaluru": "Karnataka",
+    "chennai": "Tamil Nadu",
+    "coimbatore": "Tamil Nadu",
+    "hyderabad": "Telangana",
+    "kolkata": "West Bengal",
+    "ahmedabad": "Gujarat",
+    "surat": "Gujarat",
+    "vadodara": "Gujarat",
+    "jaipur": "Rajasthan",
+    "lucknow": "Uttar Pradesh",
+    "kanpur": "Uttar Pradesh",
+    "noida": "Uttar Pradesh",
+    "ghaziabad": "Uttar Pradesh",
+    "patna": "Bihar",
+    "indore": "Madhya Pradesh",
+    "bhopal": "Madhya Pradesh",
+    "kochi": "Kerala",
+    "chandigarh": "Chandigarh",
+}
+
+CA_CONNECT_SERVICES = ["Audit", "Direct Taxes", "Goods and Services Tax"]
 
 class OfficialAPIHandlers:
     """Specialized handlers for each regulatory body"""
@@ -96,29 +127,40 @@ class OfficialAPIHandlers:
             "X-Requested-With": "XMLHttpRequest"
         }
         
-        params = {
-            "strOpt": "ALL",
-            "city": city.title(),
-            "search": "",
-            "page": 1,
-            "pageSize": 100
-        }
-        
-        response = await engine.fetch(url, method="GET", params=params, headers=custom_headers, is_json_api=True)
-        if not response or response.status != 200:
-            logger.warning(f"AMFI API returned status {response.status if response else 'None'}")
-            return []
-            
-        try:
-            data = await response.json()
-            leads = []
-            # AMFI API usually returns a list of objects in a 'data' or 'list' field
+        page_size = 500
+        max_pages = 25
+        page = 1
+        leads = []
+
+        while page <= max_pages:
+            params = {
+                "strOpt": "ALL",
+                "city": city.title(),
+                "search": "",
+                "page": page,
+                "pageSize": page_size
+            }
+
+            response = await engine.fetch(url, method="GET", params=params, headers=custom_headers, is_json_api=True)
+            if not response or response.status != 200:
+                logger.warning(f"AMFI API returned status {response.status if response else 'None'} on page {page}")
+                break
+
+            try:
+                data = await response.json()
+            except Exception as e:
+                logger.error(f"Failed to parse AMFI JSON response page {page}: {e}")
+                break
+
             items = []
             if isinstance(data, dict):
                 items = data.get("data") or data.get("list") or []
             elif isinstance(data, list):
                 items = data
-            
+
+            if not items:
+                break
+
             for item in items:
                 leads.append({
                     "name": item.get("ARNHolderName") or item.get("name") or item.get("distributor_name"),
@@ -130,16 +172,34 @@ class OfficialAPIHandlers:
                     "source": "AMFI",
                     "category": "Mutual Fund"
                 })
+
+            total_pages = None
+            if isinstance(data, dict):
+                meta = data.get("meta") or {}
+                total_pages = (
+                    meta.get("pageCount")
+                    or meta.get("totalPages")
+                    or meta.get("total_pages")
+                    or data.get("totalPages")
+                )
+            if total_pages and page >= int(total_pages):
+                break
+            if len(items) < page_size and not total_pages:
+                break
+            page += 1
+
+        if leads:
             return leads
-        except Exception as e:
-            logger.error(f"Failed to parse AMFI JSON response: {e}")
-            # Fallback to HTML if API failed
+
+        try:
             html_url = "https://www.amfiindia.com/locate-distributor"
             resp = await engine.fetch(html_url)
             if resp:
                 html = await resp.text()
                 return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund")
-            return []
+        except Exception as e:
+            logger.error(f"Failed AMFI HTML fallback: {e}")
+        return []
 
     @staticmethod
     async def handle_irdai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
@@ -293,6 +353,79 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_icai(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch Chartered Accountants from ICAI"""
+        state = CA_CITY_STATE_MAP.get((city or "").strip().lower())
+        if state:
+            from bs4 import BeautifulSoup
+
+            leads = []
+            seen = set()
+            for service in CA_CONNECT_SERVICES:
+                query = urlencode({"services": service, "state": state, "city": city})
+                url = f"https://caconnect.icai.org/search?{query}"
+                resp = await engine.fetch(
+                    url,
+                    headers={"Referer": "https://caconnect.icai.org/search-your-ca"},
+                )
+                if not resp or resp.status != 200:
+                    continue
+
+                html = await resp.text()
+                soup = BeautifulSoup(html, "lxml")
+                for card in soup.select(".searchBox.scr"):
+                    name_el = card.select_one("p b")
+                    name = name_el.get_text(" ", strip=True) if name_el else ""
+                    name = re.sub(r"\s+", " ", name).strip()
+                    if not name:
+                        continue
+
+                    address_el = card.select_one(".state")
+                    address = address_el.get_text(" ", strip=True) if address_el else ""
+                    address = re.sub(r"\s+", " ", address).strip()
+
+                    city_el = card.select_one(".pcity")
+                    listed_city = city
+                    if city_el:
+                        listed_city = re.sub(
+                            r"^Professional City:\s*",
+                            "",
+                            city_el.get_text(" ", strip=True),
+                            flags=re.I,
+                        ).strip() or city
+
+                    href_el = card.select_one("a[href*='Profile']")
+                    source_url = href_el.get("href") if href_el else url
+                    profile_id = None
+                    if source_url:
+                        profile_match = re.search(r"/(?:member|firm)Profile/(\d+)/", source_url)
+                        if profile_match:
+                            profile_id = profile_match.group(1)
+
+                    key = profile_id or f"{name}|{address}|{listed_city}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    services = [
+                        btn.get_text(" ", strip=True)
+                        for btn in card.select(".services_area .boxCe")
+                        if btn.get_text(" ", strip=True)
+                    ]
+
+                    leads.append({
+                        "name": name[:200],
+                        "address": address[:300] if address else None,
+                        "city": listed_city,
+                        "state": state,
+                        "source": "ICAI",
+                        "source_url": source_url,
+                        "membership_no": f"CAConnect-{profile_id}" if profile_id else None,
+                        "category": "Chartered Accountant",
+                        "area": ", ".join(services[:4]) if services else service,
+                    })
+
+            if leads:
+                return leads
+
         url = "https://www.icai.org/traceamember.html"
         resp = await engine.fetch(url)
         if not resp: return []

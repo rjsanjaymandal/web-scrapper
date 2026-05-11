@@ -10,6 +10,7 @@ import random
 import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+from urllib.parse import urlencode
 
 try:
     import requests
@@ -41,6 +42,57 @@ class DirectScraperConfig:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     ]
+
+    CA_PRIORITY_CITIES = [
+        "Delhi",
+        "Mumbai",
+        "Bangalore",
+        "Chennai",
+        "Hyderabad",
+        "Pune",
+        "Kolkata",
+        "Ahmedabad",
+        "Jaipur",
+        "Lucknow",
+    ]
+
+    CA_CONNECT_SERVICES = [
+        "Audit",
+        "Direct Taxes",
+        "Goods and Services Tax",
+    ]
+
+    CITY_STATE_MAP = {
+        "delhi": "Delhi",
+        "new delhi": "Delhi",
+        "mumbai": "Maharashtra",
+        "pune": "Maharashtra",
+        "nagpur": "Maharashtra",
+        "nashik": "Maharashtra",
+        "thane": "Maharashtra",
+        "bangalore": "Karnataka",
+        "bengaluru": "Karnataka",
+        "mysore": "Karnataka",
+        "chennai": "Tamil Nadu",
+        "coimbatore": "Tamil Nadu",
+        "hyderabad": "Telangana",
+        "warangal": "Telangana",
+        "kolkata": "West Bengal",
+        "ahmedabad": "Gujarat",
+        "surat": "Gujarat",
+        "vadodara": "Gujarat",
+        "jaipur": "Rajasthan",
+        "jodhpur": "Rajasthan",
+        "lucknow": "Uttar Pradesh",
+        "kanpur": "Uttar Pradesh",
+        "noida": "Uttar Pradesh",
+        "ghaziabad": "Uttar Pradesh",
+        "patna": "Bihar",
+        "indore": "Madhya Pradesh",
+        "bhopal": "Madhya Pradesh",
+        "kochi": "Kerala",
+        "chandigarh": "Chandigarh",
+    }
     
     # Government sites are more forgiving
     GOVERNMENT_DOMAINS = [
@@ -70,9 +122,10 @@ class DirectPoliteFetcher:
         self.config = config or DirectScraperConfig()
         self.session = requests.Session()
         self._last_request_time = 0
+        self._session_ua = random.choice(self.config.USER_AGENTS)
         
     def _get_random_ua(self) -> str:
-        return random.choice(self.config.USER_AGENTS)
+        return self._session_ua
     
     def _get_headers(self, referer: str = "https://www.google.com/") -> Dict:
         return {
@@ -197,6 +250,7 @@ class SEBIDirectScraper:
                                     "source": self.SOURCE,
                                     "source_url": self.BASE_URL,
                                     "registration_no": reg_no,
+                                    "license_no": reg_no,
                                 })
                         except Exception as e:
                             continue
@@ -250,18 +304,24 @@ class ICAIDirectScraper:
     
     SOURCE = "ICAI"
     BASE_URL = "https://www.icai.org/traceamember.html"
+    CA_CONNECT_SEARCH_URL = "https://caconnect.icai.org/search"
     
     def __init__(self, fetcher: DirectPoliteFetcher = None):
         self.fetcher = fetcher or DirectPoliteFetcher()
     
     def scrape(self, city: str = None, category: str = "Chartered Accountants") -> List[Dict]:
         """Scrape ICAI member directory directly"""
+        caconnect_results = self._scrape_caconnect(city, category)
+        if caconnect_results:
+            logger.info(f"ICAI CA Connect: Extracted {len(caconnect_results)} records")
+            return caconnect_results
+
         results = []
         
         logger.info(f"🔍 Scraping ICAI for city={city}")
         
         # ICAI uses multiple pages based on city
-        cities_to_try = [city] if city else ["New Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Pune"]
+        cities_to_try = [city] if city else self.fetcher.config.CA_PRIORITY_CITIES
         
         for c in cities_to_try:
             try:
@@ -276,7 +336,10 @@ class ICAIDirectScraper:
                 soup = BeautifulSoup(html, 'html.parser')
                 
                 # Look for member cards/listings
-                cards = soup.find_all(['div', 'tr'], class_=lambda x: x and ('member' in x.lower() or 'member' in str(x)))
+                cards = soup.find_all(
+                    ['div', 'tr'],
+                    class_=lambda x: x and 'member' in (" ".join(x) if isinstance(x, list) else str(x)).lower()
+                )
                 
                 for card in cards:
                     try:
@@ -294,10 +357,11 @@ class ICAIDirectScraper:
                                 "email": email_match.group(0) if email_match else None,
                                 "phone": phone_match.group(0) if phone_match else None,
                                 "city": c,
-                                "category": category,
-                                "source": self.SOURCE,
-                                "source_url": search_url,
-                            })
+                                    "category": category,
+                                    "source": self.SOURCE,
+                                    "source_url": search_url,
+                                    "membership_no": None,
+                                })
                     except:
                         continue
                         
@@ -306,6 +370,102 @@ class ICAIDirectScraper:
                 continue
         
         logger.info(f"ICAI: Extracted {len(results)} records")
+        return results
+
+    def _state_for_city(self, city: str) -> str:
+        if not city:
+            return ""
+        return self.fetcher.config.CITY_STATE_MAP.get(city.strip().lower(), "")
+
+    def _services_for_category(self, category: str) -> List[str]:
+        category_text = (category or "").lower()
+        if "gst" in category_text:
+            return ["Goods and Services Tax"]
+        if "tax" in category_text:
+            return ["Direct Taxes", "Goods and Services Tax"]
+        if "audit" in category_text:
+            return ["Audit"]
+        return list(self.fetcher.config.CA_CONNECT_SERVICES)
+
+    def _scrape_caconnect(self, city: str = None, category: str = None) -> List[Dict]:
+        cities_to_try = [city] if city else self.fetcher.config.CA_PRIORITY_CITIES
+        services_to_try = self._services_for_category(category)
+        results = []
+        seen = set()
+
+        for target_city in cities_to_try:
+            state = self._state_for_city(target_city)
+            if not state:
+                logger.info(f"ICAI CA Connect: skipping {target_city}, no state mapping")
+                continue
+
+            for service in services_to_try:
+                query = urlencode({
+                    "services": service,
+                    "state": state,
+                    "city": target_city,
+                })
+                search_url = f"{self.CA_CONNECT_SEARCH_URL}?{query}"
+                html, status = self.fetcher.fetch(search_url, "https://caconnect.icai.org/search-your-ca")
+                if not html or status != 200:
+                    continue
+
+                soup = BeautifulSoup(html, "html.parser")
+                cards = soup.select(".searchBox.scr")
+                logger.info(
+                    f"ICAI CA Connect: {target_city}/{service} returned {len(cards)} public cards"
+                )
+
+                for card in cards:
+                    name_el = card.select_one("p b")
+                    name = name_el.get_text(" ", strip=True) if name_el else ""
+                    name = re.sub(r"\s+", " ", name).strip()
+                    if not name:
+                        continue
+
+                    address_el = card.select_one(".state")
+                    address = address_el.get_text(" ", strip=True) if address_el else ""
+                    address = re.sub(r"\s+", " ", address).strip()
+
+                    city_el = card.select_one(".pcity")
+                    listed_city = ""
+                    if city_el:
+                        listed_city = city_el.get_text(" ", strip=True)
+                        listed_city = re.sub(r"^Professional City:\s*", "", listed_city, flags=re.I).strip()
+
+                    href_el = card.select_one("a[href*='Profile']")
+                    source_url = href_el.get("href") if href_el else search_url
+                    profile_id = None
+                    if source_url:
+                        profile_match = re.search(r"/(?:member|firm)Profile/(\d+)/", source_url)
+                        if profile_match:
+                            profile_id = profile_match.group(1)
+
+                    services = [
+                        btn.get_text(" ", strip=True)
+                        for btn in card.select(".services_area .boxCe")
+                        if btn.get_text(" ", strip=True)
+                    ]
+
+                    key = profile_id or f"{name}|{address}|{listed_city or target_city}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    results.append({
+                        "name": name[:200],
+                        "phone": None,
+                        "email": None,
+                        "address": address[:300] if address else None,
+                        "city": listed_city or target_city,
+                        "state": state,
+                        "category": "Chartered Accountants",
+                        "source": self.SOURCE,
+                        "source_url": source_url,
+                        "membership_no": f"CAConnect-{profile_id}" if profile_id else None,
+                        "area": ", ".join(services[:4]) if services else service,
+                    })
+
         return results
 
 
@@ -469,6 +629,7 @@ class NSEDirectScraper:
                                     "source": self.SOURCE,
                                     "source_url": self.BASE_URL,
                                     "registration_no": broker_code,
+                                    "license_no": broker_code,
                                 })
                         except:
                             continue

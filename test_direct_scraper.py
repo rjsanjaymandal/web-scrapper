@@ -126,18 +126,18 @@ def test_fetcher_only():
         html, status = fetcher.fetch("https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRegistrants=yes")
         
         if html:
-            print(f"✓ SEBI fetch successful (status: {status}, size: {len(html)} bytes)")
+            print(f"[OK] SEBI fetch successful (status: {status}, size: {len(html)} bytes)")
         else:
-            print(f"✗ SEBI fetch failed (status: {status})")
+            print(f"[FAIL] SEBI fetch failed (status: {status})")
         
         # Test fetching NSE
         print("\nFetching NSE website...")
         html, status = fetcher.fetch("https://www.nseindia.com/members/content/member_directory.htm")
         
         if html:
-            print(f"✓ NSE fetch successful (status: {status}, size: {len(html)} bytes)")
+            print(f"[OK] NSE fetch successful (status: {status}, size: {len(html)} bytes)")
         else:
-            print(f"✗ NSE fetch failed (status: {status})")
+            print(f"[FAIL] NSE fetch failed (status: {status})")
         
         return True
         
@@ -173,16 +173,16 @@ def main():
     print("="*60)
     
     for name, passed in results.items():
-        status = "✓ PASSED" if passed else "✗ FAILED"
+        status = "[OK] PASSED" if passed else "[FAIL] FAILED"
         print(f"  {name}: {status}")
     
     passed_count = sum(1 for v in results.values() if v)
     print(f"\nTotal: {passed_count}/{len(results)} tests passed")
     
     if passed_count > 0:
-        print("\n✓ Direct scraping is working! Government sites accessible without proxy.")
+        print("\n[OK] Direct scraping is working! Government sites accessible without proxy.")
     else:
-        print("\n✗ Direct scraping failed. Check network connectivity.")
+        print("\n[FAIL] Direct scraping failed. Check network connectivity.")
 
 
 if __name__ == "__main__":

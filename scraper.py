@@ -895,7 +895,12 @@ class ContactScraper:
 
         user_agent = StealthManager.get_random_ua()
         headers = StealthManager.get_modern_headers(user_agent)
-        proxy = self.proxy_manager.get_proxy_string()
+        use_proxy_for_fast = os.environ.get("SCRAPER_USE_PROXY", "false").lower() == "true"
+        proxy = self.proxy_manager.get_proxy_string() if use_proxy_for_fast else None
+        if proxy:
+            logger.info("Fast extraction proxy enabled by SCRAPER_USE_PROXY.")
+        else:
+            logger.info("Fast extraction using direct HTTP with polite backoff.")
 
         # Disable trust_env if proxy is used to prevent 127.0.0.1 loops
         async with aiohttp.ClientSession(
@@ -1314,31 +1319,152 @@ class ContactScraper:
                  listings = scraper.extract_raw_fallback(html_content, city, category)
         return listings
 
+    OFFICIAL_REGISTRY_SOURCES = {
+        "AMFI",
+        "IRDAI",
+        "ICAI",
+        "ICSI",
+        "SEBI",
+        "IBBI",
+        "NSE",
+        "BSE",
+        "GST",
+        "RBI",
+        "MCA",
+        "BAR_COUNCIL",
+    }
+
+    def _is_official_registry_record(self, listing: Dict, source: str) -> bool:
+        source_name = (source or listing.get("source") or "").upper()
+        if source_name not in self.OFFICIAL_REGISTRY_SOURCES:
+            return False
+        name = str(listing.get("name") or "").strip()
+        if len(name) < 3:
+            return False
+        return bool(
+            listing.get("phone_clean")
+            or (listing.get("email") and listing.get("email_valid"))
+            or listing.get("arn")
+            or listing.get("license_no")
+            or listing.get("membership_no")
+            or listing.get("address")
+        )
+
+    def _storage_dedupe_key(self, listing: Dict, source: str):
+        if listing.get("phone_clean"):
+            return ("phone", listing["phone_clean"])
+        if listing.get("email"):
+            return ("email", str(listing["email"]).lower())
+        for field in ("arn", "license_no", "membership_no"):
+            value = listing.get(field)
+            if value:
+                return (field, (source or listing.get("source") or "").upper(), str(value).strip().upper())
+        if self._is_official_registry_record(listing, source):
+            name = self._normalize_key(listing.get("name"))
+            address = self._normalize_key(listing.get("address"))
+            if name and address:
+                return ("registry", (source or listing.get("source") or "").upper(), name, address)
+        return None
+
+    def _registry_exists_sqlite(self, cursor, listing: Dict, source: str) -> bool:
+        clauses = []
+        params = [source]
+        for field in ("arn", "license_no", "membership_no"):
+            value = listing.get(field)
+            if value:
+                clauses.append(f"{field} = ?")
+                params.append(value)
+        if listing.get("name") and listing.get("address"):
+            clauses.append("(LOWER(name) = LOWER(?) AND LOWER(address) = LOWER(?))")
+            params.extend([listing.get("name"), listing.get("address")])
+        if not clauses:
+            return False
+        cursor.execute(
+            f"SELECT id FROM contacts WHERE source = ? AND ({' OR '.join(clauses)}) LIMIT 1",
+            params,
+        )
+        return cursor.fetchone() is not None
+
+    async def _registry_exists_pg(self, conn, listing: Dict, source: str) -> bool:
+        clauses = []
+        params = [source]
+        idx = 2
+        for field in ("arn", "license_no", "membership_no"):
+            value = listing.get(field)
+            if value:
+                clauses.append(f"{field} = ${idx}")
+                params.append(value)
+                idx += 1
+        if listing.get("name") and listing.get("address"):
+            clauses.append(f"(LOWER(name) = LOWER(${idx}) AND LOWER(address) = LOWER(${idx + 1}))")
+            params.extend([listing.get("name"), listing.get("address")])
+        if not clauses:
+            return False
+        row = await conn.fetchval(
+            f"SELECT id FROM contacts WHERE source = $1 AND ({' OR '.join(clauses)}) LIMIT 1",
+            *params,
+        )
+        return row is not None
+
     async def save_to_db(
         self, listings: List[Dict], category: str, city: str, source: str, url: str
     ):
         if not listings:
-            return
+            return 0
 
         # Normalize category to prevent duplicates like "Mutual Fund Agent" vs "mutual fund agent"
         category = category.strip().title() if category else "General"
 
-        # Use Unified Processing Handler to ensure only valid data is stored
-        valid_listings = ProcessingHandler.filter_valid(listings)
+        prepared = []
+        for raw_listing in listings:
+            if not raw_listing:
+                continue
+            listing = dict(raw_listing)
+            if listing.get("registration_no") and not listing.get("license_no"):
+                listing["license_no"] = listing.get("registration_no")
+            listing.setdefault("source", source)
+            listing.setdefault("category", category)
+            if city:
+                listing.setdefault("city", city)
+            processed = ProcessingHandler.process_contact(listing)
+            if not processed:
+                continue
+            if ProcessingHandler.filter_valid([processed]) or self._is_official_registry_record(processed, source):
+                prepared.append(processed)
+
+        seen = set()
+        valid_listings = []
+        for listing in prepared:
+            key = self._storage_dedupe_key(listing, source)
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            valid_listings.append(listing)
 
         skipped = len(listings) - len(valid_listings)
         if skipped > 0:
             logger.info(
-                f"[STORAGE] Skipped {skipped} listings with invalid data during DB save"
+                f"[STORAGE] Skipped {skipped} invalid or duplicate listings during DB save"
             )
 
         if not valid_listings:
-            return
+            return 0
+
+        valid_listings = await self._filter_duplicates_bulk(valid_listings)
+        if not valid_listings:
+            return 0
 
         if hasattr(self, "use_sqlite") and self.use_sqlite:
             cursor = self.sqlite_conn.cursor()
+            inserted = 0
             for l in valid_listings:
-                # SQLite UPSERT (requires 3.24.0+)
+                if (
+                    not l.get("phone_clean")
+                    and not l.get("email")
+                    and self._registry_exists_sqlite(cursor, l, source)
+                ):
+                    continue
                 cursor.execute(
                     """
                     INSERT INTO contacts (
@@ -1347,22 +1473,19 @@ class ContactScraper:
                         arn, license_no, membership_no, quality_score, quality_tier, scraped_at
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(phone_clean) WHERE phone_clean IS NOT NULL
-                    DO UPDATE SET
-                        scraped_at = CURRENT_TIMESTAMP,
-                        source = CASE WHEN excluded.quality_score > contacts.quality_score THEN excluded.source ELSE contacts.source END
+                    ON CONFLICT DO NOTHING
                 """,
                     (
                         l.get("name"),
                         l.get("phone"),
                         l.get("email"),
                         l.get("address"),
-                        category,
-                        city,
+                        l.get("category") or category,
+                        l.get("city") or city,
                         l.get("area"),
                         l.get("state"),
-                        source,
-                        url,
+                        l.get("source") or source,
+                        l.get("source_url") or url,
                         l.get("phone_clean"),
                         l.get("email_valid", False),
                         l.get("enriched", False),
@@ -1373,39 +1496,23 @@ class ContactScraper:
                         l.get("quality_tier", "low"),
                     ),
                 )
+                if cursor.rowcount > 0:
+                    inserted += 1
             self.sqlite_conn.commit()
-            logger.info(f"Saved {len(valid_listings)} records to SQLite")
-            return
+            logger.info(f"Saved {inserted} records to SQLite")
+            return inserted
 
-        records = []
-        for listing in valid_listings:
-            r = (
-                listing.get("name"),
-                listing.get("phone"),
-                listing.get("email"),
-                listing.get("address"),
-                category,
-                city,
-                listing.get("area"),
-                listing.get("state"),
-                source,
-                url,
-                listing.get("phone_clean"),
-                listing.get("email_valid", False),
-                listing.get("enriched", False),
-                listing.get("arn"),
-                listing.get("license_no"),
-                listing.get("membership_no"),
-                listing.get("quality_score", 0),
-                listing.get("quality_tier", "low"),
-            )
-            records.append(r)
-
+        inserted = 0
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # UPSERT logic: If phone_clean or email exists, update the timestamp and source if newer
-                # We use the clean phone as preferred unique key
-                await conn.executemany(
+                for listing in valid_listings:
+                    if (
+                        not listing.get("phone_clean")
+                        and not listing.get("email")
+                        and await self._registry_exists_pg(conn, listing, source)
+                    ):
+                        continue
+                    status = await conn.execute(
                     """
                     INSERT INTO contacts (
                         name, phone, email, address, category, city, area, state, 
@@ -1413,15 +1520,48 @@ class ContactScraper:
                         arn, license_no, membership_no, quality_score, quality_tier
                     )
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-                    ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
-                    DO UPDATE SET
-                        scraped_at = NOW(),
-                        source = CASE WHEN EXCLUDED.quality_score > contacts.quality_score THEN EXCLUDED.source ELSE contacts.source END
+                    ON CONFLICT DO NOTHING
                 """,
-                    records,
-                )
+                        listing.get("name"),
+                        listing.get("phone"),
+                        listing.get("email"),
+                        listing.get("address"),
+                        listing.get("category") or category,
+                        listing.get("city") or city,
+                        listing.get("area"),
+                        listing.get("state"),
+                        listing.get("source") or source,
+                        listing.get("source_url") or url,
+                        listing.get("phone_clean"),
+                        listing.get("email_valid", False),
+                        listing.get("enriched", False),
+                        listing.get("arn"),
+                        listing.get("license_no"),
+                        listing.get("membership_no"),
+                        listing.get("quality_score", 0),
+                        listing.get("quality_tier", "low"),
+                    )
+                    if status.endswith(" 1"):
+                        inserted += 1
 
-        logger.info(f"Saved {len(listings)} records to database")
+        logger.info(f"Saved {inserted} records to database")
+        return inserted
+
+    async def save_contacts(self, contacts: List[Dict]) -> int:
+        """Compatibility wrapper for direct scraper tasks."""
+        grouped = {}
+        for contact in contacts:
+            if not contact:
+                continue
+            source = (contact.get("source") or "DIRECT").upper()
+            category = contact.get("category") or "General"
+            city = contact.get("city") or "Multiple"
+            grouped.setdefault((source, category, city), []).append(contact)
+
+        total_saved = 0
+        for (source, category, city), batch in grouped.items():
+            total_saved += await self.save_to_db(batch, category, city, source, "Direct Gov")
+        return total_saved
 
     async def export_to_csv(self, source: Optional[str] = None):
         os.makedirs(self.config.csv_output_dir, exist_ok=True)

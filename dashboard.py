@@ -168,10 +168,49 @@ def get_cached_filter(key, query, cur):
         if (now - ts) < FILTER_CACHE_TTL:
             return val
     
-    cur.execute(query, ("",))
+    cur.execute(query)
     data = [r[next(iter(r.keys()))] for r in cur.fetchall()]
     FILTER_CACHE[key] = (data, now)
     return data
+
+
+def db_placeholder():
+    return "?" if USE_SQLITE else "%s"
+
+
+def build_contact_filters(
+    search_query="",
+    city="",
+    category="",
+    source="",
+    quality="",
+):
+    """Build a contacts WHERE clause using the active database placeholder style."""
+    ph = db_placeholder()
+    like_op = "LIKE" if USE_SQLITE else "ILIKE"
+    where_clauses = []
+    params = []
+
+    if search_query:
+        where_clauses.append(
+            f"(name {like_op} {ph} OR phone {like_op} {ph} OR email {like_op} {ph} OR category {like_op} {ph} OR source {like_op} {ph})"
+        )
+        search_pattern = f"%{search_query}%"
+        params.extend([search_pattern] * 5)
+    if city:
+        where_clauses.append(f"city {like_op} {ph}")
+        params.append(f"%{city}%")
+    if category:
+        where_clauses.append(f"category {like_op} {ph}")
+        params.append(f"%{category}%")
+    if source:
+        where_clauses.append(f"source {like_op} {ph}")
+        params.append(f"%{source}%")
+    if quality:
+        where_clauses.append(f"(quality_tier = {ph} OR quality_tier IS NULL)")
+        params.append(quality)
+
+    return " AND ".join(where_clauses) if where_clauses else "1=1", params
 
 
 def get_db_url():
@@ -1585,13 +1624,10 @@ HTML = """
                     <label>Source</label>
                     <select id="t-source">
                         <option value="">All Sources</option>
-                        <option value="BAR_COUNCIL" {% if selected_source == 'BAR_COUNCIL' %}selected{% endif %}>Bar Council</option>
-                        <option value="ICAI" {% if selected_source == 'ICAI' %}selected{% endif %}>ICAI</option>
-                        <option value="SEBI" {% if selected_source == 'SEBI' %}selected{% endif %}>SEBI</option>
-                        <option value="SITEMAP" {% if selected_source == 'SITEMAP' %}selected{% endif %}>Sitemap</option>
-                        <option value="YELLOWPAGES" {% if selected_source == 'YELLOWPAGES' %}selected{% endif %}>YellowPages</option>
-                        <option value="JUSTDIAL" {% if selected_source == 'JUSTDIAL' %}selected{% endif %}>JustDial</option>
-                        <option value="GMB" {% if selected_source == 'GMB' %}selected{% endif %}>Google Maps</option>
+                        {% set source_options = sources if sources else ['AMFI', 'IRDAI', 'ICAI', 'SEBI', 'BAR_COUNCIL', 'SITEMAP', 'YELLOWPAGES', 'JUSTDIAL', 'GMB'] %}
+                        {% for src in source_options %}
+                        <option value="{{src}}" {% if selected_source == src %}selected{% endif %}>{{ src|replace('_', ' ')|title }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="input-group">
@@ -1606,6 +1642,9 @@ HTML = """
                     <button class="btn btn-primary" id="start-btn" onclick="startCollection()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         Start Collection
+                    </button>
+                    <button class="btn btn-outline" id="auto-btn" onclick="startCollection(true)" title="Run CA-first official registry scrape">
+                        Auto Scrape
                     </button>
                 </div>
             </div>
@@ -1698,7 +1737,7 @@ HTML = """
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                         </div>
                                     </td>
-                                    <td style="color:var(--text-muted); font-size:11px;">{{ loop.index + (page - 1) * 50 }}</td>
+                                    <td style="color:var(--text-muted); font-size:11px;">{{ loop.index + (page - 1) * limit }}</td>
                                     <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
                                     <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
                                     <td class="mono" style="color:var(--accent-blue); font-size:11px;">{{c.email or '---'}}</td>
@@ -1713,7 +1752,7 @@ HTML = """
                                     </td>
                                     <td>
                                         <div style="display:flex; gap:4px;">
-                                            <button class="action-btn" title="Copy" onclick="copyLead('{{c.phone or c.email}}')">
+                                            <button class="action-btn" title="Copy" data-copy="{{ (c.phone or c.email or '')|e }}" onclick="copyLead(this.dataset.copy)">
                                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                             </button>
                                         </div>
@@ -1784,6 +1823,7 @@ HTML = """
 
         window.currentPage = parseInt("{{page}}") || 1;
         window.totalPages = parseInt("{{total_pages}}") || 1;
+        window.pageSize = parseInt("{{limit}}") || 50;
 
         window.changePage = function(delta) {
             window.goToPage(window.currentPage + delta);
@@ -1865,6 +1905,25 @@ HTML = """
             }
         };
 
+        window.escapeHtml = function(value) {
+            if (value === null || value === undefined || value === '') return '---';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
+        window.escapeJsAttr = function(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        };
+
         window.updateStats = function(stats) {
             if (!stats) return;
             const totalEl = document.getElementById('stat-total');
@@ -1886,17 +1945,18 @@ HTML = """
 
             tbody.innerHTML = leads.map(function(c, i) {
                 const scoreColor = c.quality_score > 70 ? 'var(--accent-emerald)' : (c.quality_score > 40 ? 'var(--accent-blue)' : 'var(--accent-red)');
-                const rowNum = (window.currentPage - 1) * 50 + i + 1;
-                const copyText = c.phone || c.email;
+                const rowNum = (window.currentPage - 1) * window.pageSize + i + 1;
+                const copyText = c.phone || c.email || '';
+                const safeCopy = window.escapeJsAttr(copyText);
                 return '<tr class="lead-row">' +
                     '<td><div class="row-checkbox" onclick="toggleRow(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg></div></td>' +
                     '<td style="color:var(--text-muted); font-size:11px;">' + rowNum + '</td>' +
-                    '<td style="font-weight:700; font-family:\'Outfit\',sans-serif; color:#fff;">' + c.name + '</td>' +
-                    '<td class="mono" style="font-size:12px;">' + c.phone + '</td>' +
-                    '<td class="mono" style="color:var(--accent-blue); font-size:11px;">' + c.email + '</td>' +
-                    '<td style="font-size:12px; font-weight:500;">' + c.category + '</td>' +
-                    '<td style="font-size:12px; color:var(--text-secondary);">' + c.city + '</td>' +
-                    '<td><span class="badge badge-src">' + c.source + '</span></td>' +
+                    '<td style="font-weight:700; font-family:\\'Outfit\\',sans-serif; color:#fff;">' + window.escapeHtml(c.name) + '</td>' +
+                    '<td class="mono" style="font-size:12px;">' + window.escapeHtml(c.phone) + '</td>' +
+                    '<td class="mono" style="color:var(--accent-blue); font-size:11px;">' + window.escapeHtml(c.email) + '</td>' +
+                    '<td style="font-size:12px; font-weight:500;">' + window.escapeHtml(c.category) + '</td>' +
+                    '<td style="font-size:12px; color:var(--text-secondary);">' + window.escapeHtml(c.city) + '</td>' +
+                    '<td><span class="badge badge-src">' + window.escapeHtml(c.source) + '</span></td>' +
                     '<td>' +
                         '<div class="score-wrapper">' +
                             '<div class="score-bar"><div class="score-fill" style="width:' + c.quality_score + '%; background:' + scoreColor + ';"></div></div>' +
@@ -1905,7 +1965,7 @@ HTML = """
                     '</td>' +
                     '<td>' +
                         '<div style="display:flex; gap:4px;">' +
-                            '<button class="action-btn" title="Copy" onclick="copyLead(\'' + copyText + '\')">' +
+                            '<button class="action-btn" title="Copy" data-copy="' + safeCopy + '" onclick="copyLead(this.dataset.copy)">' +
                                 '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
                             '</button>' +
                         '</div>' +
@@ -1965,29 +2025,35 @@ window.updatePaginationUI = function(data) {
             history.replaceState({page: window.currentPage, url: window.location.href}, '', window.location.href);
         }
 
-        window.startCollection = async function() {
+        window.startCollection = async function(autoMode) {
             const city = document.getElementById('t-city').value;
             const cat = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             const btn = document.getElementById('start-btn');
+            const autoBtn = document.getElementById('auto-btn');
+            const shouldAuto = !!autoMode || (!city && !cat && !source);
             
-            if(!city || !cat) return window.showNotif('Please enter location and search term', 2000);
-            
-            btn.disabled = true;
-            btn.innerHTML = '<span class="pulse">COLLECTING...</span>';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="pulse">COLLECTING...</span>';
+            }
+            if (autoBtn) autoBtn.disabled = true;
             
             try {
                 const res = await fetch('/api/trigger/scrape', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({city, category: cat, source})
+                    body: JSON.stringify({city, category: cat, source, auto: shouldAuto})
                 });
                 const data = await res.json();
                 window.showNotif(data.message);
             } catch (e) {
                 window.showNotif('Failed to trigger collection');
-                btn.disabled = false;
-                btn.innerText = 'Start Collection';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = 'Start Collection';
+                }
+                if (autoBtn) autoBtn.disabled = false;
             }
         };
 
@@ -1999,25 +2065,26 @@ window.updatePaginationUI = function(data) {
         };
 
         window.exportData = function(fmt) {
-            const search = document.getElementById('t-cat')?.value || "";
+            const category = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
-            const cat = search;
             const src = document.getElementById('t-source')?.value || "";
             
             const baseUrl = window.location.origin;
             let url = baseUrl + "/export/" + fmt;
-            const params = new URLSearchParams();
-            if (search) params.set('q', search);
-            if (city) params.set('city', city);
-            if (cat) params.set('category', cat);
-            if (src) params.set('source', src);
+            const params = new URLSearchParams(window.location.search);
+            params.delete('page');
+            params.delete('limit');
+            params.delete('format');
+            if (city) params.set('city', city); else params.delete('city');
+            if (category) params.set('category', category); else params.delete('category');
+            if (src) params.set('source', src); else params.delete('source');
             
             const queryString = params.toString();
             if (queryString) url += '?' + queryString;
             
             console.log('Export URL:', url);
             
-            window.location.href = url;
+            window.location.assign(url);
         };
 
         window.cleanup = async function() {
@@ -2076,6 +2143,8 @@ window.updatePaginationUI = function(data) {
                     startBtn.disabled = true;
                     startBtn.innerHTML = '<span class="pulse">COLLECTING...</span>';
                 }
+                const autoBtn = document.getElementById('auto-btn');
+                if (autoBtn) autoBtn.disabled = true;
             } else {
                 if(statusEl) { statusEl.innerText = 'ONLINE'; statusEl.style.color = 'var(--text-secondary)'; }
                 if(progWrap) progWrap.style.display = 'none';
@@ -2083,6 +2152,8 @@ window.updatePaginationUI = function(data) {
                     startBtn.disabled = false;
                     startBtn.innerText = 'Start Collection';
                 }
+                const autoBtn = document.getElementById('auto-btn');
+                if (autoBtn) autoBtn.disabled = false;
             }
 
             // Activity logs hidden per user request
@@ -2232,7 +2303,7 @@ window.updatePaginationUI = function(data) {
             } catch(e) { console.log('Chart error:', e); }
         }
 
-        if (document.getElementById('sourceChart')) {
+        window.openMaintenance = async function() {
             if (!confirm("Run system-wide category normalization? This will fix duplicate charts by merging similar categories.")) return;
             
             showNotif("Starting database maintenance...");
@@ -2248,7 +2319,7 @@ window.updatePaginationUI = function(data) {
             } catch(e) {
                 showNotif("Maintenance failed: " + e);
             }
-        }
+        };
 
         if (document.getElementById('sourceChart')) {
             initCharts();
@@ -2310,6 +2381,7 @@ window.updatePaginationUI = function(data) {
         window.toggleRow = function(el) {
             el.classList.toggle('checked');
         };
+    </script>
 </body>
 </html>
 """
@@ -2326,6 +2398,7 @@ def index():
 
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", page_size, type=int)
+        limit = max(1, min(limit, 500))
 
         search_query = request.args.get("q", "")
         selected_city = request.args.get("city", "")
@@ -2347,29 +2420,13 @@ def index():
         }
         order_by = sort_map.get(sort_by, "scraped_at DESC")
 
-        like_op = "LIKE" if USE_SQLITE else "ILIKE"
-        
-        # Build WHERE clause for filters
-        where_clauses = []
-        params = []
-        if search_query:
-            where_clauses.append("(name LIKE ? OR phone LIKE ? OR email LIKE ?)")
-            search_pattern = f"%{search_query}%"
-            params.extend([search_pattern, search_pattern, search_pattern])
-        if selected_city:
-            where_clauses.append("city LIKE ?")
-            params.append(f"%{selected_city}%")
-        if selected_category:
-            where_clauses.append("category LIKE ?")
-            params.append(f"%{selected_category}%")
-        if selected_source:
-            where_clauses.append("source LIKE ?")
-            params.append(f"%{selected_source}%")
-        if selected_quality:
-            where_clauses.append("(quality_tier = ? OR quality_tier IS NULL)")
-            params.append(selected_quality)
-
-        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        where_sql, params = build_contact_filters(
+            search_query,
+            selected_city,
+            selected_category,
+            selected_source,
+            selected_quality,
+        )
 
         # Get total count (unfiltered)
         cur.execute("SELECT COUNT(*) as cnt FROM contacts")
@@ -2389,10 +2446,8 @@ def index():
         
         offset = (page - 1) * limit
 
-        if USE_SQLITE:
-            query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?"
-        else:
-            query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT %s OFFSET %s"
+        ph = db_placeholder()
+        query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {ph} OFFSET {ph}"
         cur.execute(query_sql, params + [limit, offset])
         contacts = cur.fetchall()
 
@@ -2707,7 +2762,7 @@ def get_log(name):
 def trigger_scrape():
     """Trigger scraping tasks. Supports single (POST JSON) or batch (default)."""
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
-    from tasks import fast_scrape_task, scrape_category_task, set_status
+    from tasks import fast_scrape_task, scrape_category_task, direct_gov_scrape_batch, set_status
     
     data = {}
     if request.method == "POST":
@@ -2720,11 +2775,21 @@ def trigger_scrape():
     category = data.get("category") or request.args.get("category")
     source = data.get("source") or request.args.get("source")
     use_business = data.get("use_business", False)
+    auto = bool(data.get("auto")) or request.args.get("auto", "false").lower() == "true"
     
     if not use_business:
         use_business = request.args.get("business", "false").lower() == "true"
 
-    if city and category:
+    if auto or not (city or category or source):
+        set_status(
+            "Queued auto scrape: CA-first official registries...",
+            True,
+            {"source": "AUTO", "category": "Chartered Accountants"},
+        )
+        task_result = direct_gov_scrape_batch.delay()
+        msg = "Auto scrape queued: Chartered Accountants first, then official registries."
+        logger.info("Dashboard triggered CA-first auto government scrape")
+    elif city and category:
         log_msg = f"Dashboard triggered manual scrape: {category} in {city} (Source: {source or 'Auto'})"
         set_status(
             f"Queued: {category} in {city}...",
@@ -2781,26 +2846,11 @@ def api_contacts():
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
-        like_op = "LIKE" if USE_SQLITE else "ILIKE"
-        where_clauses = []
-        params = []
-        if search_query:
-            where_clauses.append(f"(name {like_op} ? OR phone {like_op} ? OR email {like_op} ?)")
-            search_pattern = f"%{search_query}%"
-            params.extend([search_pattern, search_pattern, search_pattern])
-        if filter_city:
-            where_clauses.append(f"city {like_op} ?")
-            params.append(f"%{filter_city}%")
-        if filter_category:
-            where_clauses.append(f"category {like_op} ?")
-            params.append(f"%{filter_category}%")
-        if filter_source:
-            where_clauses.append(f"source {like_op} ?")
-            params.append(f"%{filter_source}%")
-
-        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        
-        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT ? OFFSET ?"
+        where_sql, params = build_contact_filters(
+            search_query, filter_city, filter_category, filter_source
+        )
+        ph = db_placeholder()
+        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {ph} OFFSET {ph}"
         count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
 
         cur.execute(query, params + [limit, offset])
@@ -2814,7 +2864,7 @@ def api_contacts():
                 "total": total,
                 "page": page,
                 "limit": limit,
-                "total_pages": (total + limit - 1) // limit,
+                "total_pages": (total + limit - 1) // limit if total else 1,
                 "data": [dict(c) for c in contacts],
             }
         )
@@ -2838,27 +2888,12 @@ def export(fmt):
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
 
-        like_op = "LIKE" if USE_SQLITE else "ILIKE"
-        
-        where_clauses = []
-        params = []
-        if search_query:
-            where_clauses.append(f"(name {like_op} ? OR phone {like_op} ? OR email {like_op} ?)")
-            params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
-        if filter_city:
-            where_clauses.append(f"city {like_op} ?")
-            params.append(f"%{filter_city}%")
-        if filter_category:
-            where_clauses.append(f"category {like_op} ?")
-            params.append(f"%{filter_category}%")
-        if filter_source:
-            where_clauses.append(f"source {like_op} ?")
-            params.append(f"%{filter_source}%")
-
-        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        where_sql, params = build_contact_filters(
+            search_query, filter_city, filter_category, filter_source
+        )
         logger.info(f"Export query: WHERE {where_sql} with params {params}")
 
-        cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
+        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC", params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
