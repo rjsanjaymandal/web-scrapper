@@ -39,7 +39,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
 def start_health_server():
     # Use 8081 for worker health to avoid collision with web dashboard on 8080
-    port = int(os.environ.get("HEALTH_PORT", "8081"))
+    # We use a hardcoded 8081 here to ensure no environment variables can override it to 8080
+    port = 8081
     try:
         server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
         logger.info(f"Background Health Server started on port {port}")
@@ -47,7 +48,8 @@ def start_health_server():
     except Exception as e:
         logger.warning(f"Health server could not start: {e}")
 
-if not os.environ.get('CELERY_HEALTH_SERVER_STARTED'):
+# Only start health server if this is explicitly a worker process
+if 'worker' in sys.argv and not os.environ.get('CELERY_HEALTH_SERVER_STARTED'):
     os.environ['CELERY_HEALTH_SERVER_STARTED'] = '1'
     threading.Thread(target=start_health_server, daemon=True).start()
 
