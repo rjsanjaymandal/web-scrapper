@@ -233,17 +233,32 @@ class ProcessingHandler:
             contact['email'] = None
             contact['email_valid'] = False
         
-        # 3. Normalize Strings
-        for field in ['name', 'address', 'area', 'city', 'category']:
+        # 3. Normalize Strings and Enforce Column Limits
+        # Fields that are TEXT in DB (no limit): address, source_url
+        # Fields that are VARCHAR(500): name, category, city, area, state, email, arn, license_no, membership_no, source, quality_tier
+        # Fields that are VARCHAR(50): phone, phone_clean
+        
+        for field in ['name', 'address', 'area', 'city', 'category', 'arn', 'license_no', 'membership_no', 'source', 'quality_tier']:
             val = contact.get(field)
             if val:
                 # Remove extra whitespace and noise
                 val = re.sub(r'\s+', ' ', str(val)).strip()
+                
                 if field == 'name':
                     val = val.title()
                 elif field == 'category':
                     val = cls.normalize_category(val)
+                
+                # Truncation fail-safe (only for VARCHAR fields)
+                if field not in ['address', 'source_url']:
+                    val = val[:500]
+                
                 contact[field] = val
+        
+        # Phone truncation fail-safe
+        if contact.get('phone'): contact['phone'] = str(contact['phone'])[:50]
+        if contact.get('phone_clean'): contact['phone_clean'] = str(contact['phone_clean'])[:50]
+        if contact.get('email'): contact['email'] = str(contact['email'])[:500]
         
         # 4. Extract Blockchain Contract Addresses (CAs)
         # We check address, name, and any detail text for CAs

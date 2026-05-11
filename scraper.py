@@ -564,7 +564,8 @@ class ContactScraper:
 
             logger.info("Connected to PostgreSQL successfully")
             await self._create_pg_tables()
-            await self._migrate_columns()
+            # Unified migration engine runs here
+            await self._ensure_column_widths()
 
         except Exception as e:
             logger.error(f"❌ PostgreSQL connection failed: {e}")
@@ -595,10 +596,19 @@ class ContactScraper:
                 for row in rows:
                     col = row['column_name']
                     max_len = row['character_maximum_length']
-                    if max_len and max_len < 500:
+                    
+                    # 1. Expand all standard string columns to 500
+                    if max_len and max_len < 500 and col not in ['phone', 'phone_clean']:
                         logger.info(f"Migrating column '{col}' from {max_len} to 500 characters...")
                         await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE VARCHAR(500)")
                 
+                # 2. Forcefully upgrade text-heavy fields to TEXT
+                for col in ["address", "source_url"]:
+                    try:
+                        await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE TEXT")
+                        logger.debug(f"Ensured {col} is TEXT")
+                    except Exception: pass
+
                 logger.info("Database schema migration complete.")
         except Exception as e:
             logger.error(f"Schema migration failed: {e}")
@@ -630,8 +640,6 @@ class ContactScraper:
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            # NEW: Run column expansion migration after creation
-            await self._ensure_column_widths()
         except Exception as e:
             logger.warning(
                 f"Table creation skipped or failed (possibly concurrent): {e}"
@@ -682,31 +690,6 @@ class ContactScraper:
                 # If it already exists or there's a lock, we can ignore it as long as the index is there
                 logger.debug(f"Index creation notice: {e}")
 
-    async def _migrate_columns(self):
-        """Ensures existing columns have enough space for long scraped values."""
-        if hasattr(self, "use_sqlite") and self.use_sqlite:
-            return
-            
-        columns_to_expand = {
-            "name": 500,
-            "category": 500,
-            "city": 500,
-            "area": 500,
-            "state": 500,
-            "source": 255,
-            "arn": 500,
-            "license_no": 500,
-            "membership_no": 500,
-            "email": 255,
-        }
-        
-        async with self.pool.acquire() as conn:
-            for col, size in columns_to_expand.items():
-                try:
-                    await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE VARCHAR({size})")
-                    logger.info(f"Migration: Ensured {col} is VARCHAR({size})")
-                except Exception as e:
-                    logger.debug(f"Migration check skip for {col}: {e}")
 
         try:
             await self.pool.execute(
