@@ -1859,12 +1859,27 @@ HTML = """
         window.goToPage = function(p) {
             console.log("Pagination: Go to page", p, "of", window.totalPages);
             if (p < 1 || p > window.totalPages) return;
-            const url = new URL(window.location.href);
+            
+            // Explicitly grab current filter values to ensure they persist during pagination
+            const city = document.getElementById('t-city')?.value || "";
+            const q = document.getElementById('t-cat')?.value || "";
+            const source = document.getElementById('t-source')?.value || "";
+            const sort = document.getElementById('t-sort')?.value || 'date';
+            const quality = document.getElementById('t-quality')?.value || "";
+            
+            const url = new URL(window.location.origin + window.location.pathname);
+            if (city) url.searchParams.set('city', city);
+            if (q) url.searchParams.set('q', q);
+            if (source) url.searchParams.set('source', source);
+            if (sort) url.searchParams.set('sort', sort);
+            if (quality) url.searchParams.set('quality', quality);
+            
             url.searchParams.set('page', p);
-            // Ensure limit is persisted if it's set globally
-            if (window.pageSize && !url.searchParams.has('limit')) {
+            // Persist the current page size
+            if (window.pageSize) {
                 url.searchParams.set('limit', window.pageSize);
             }
+            
             window.loadLeads(url.toString(), true);
         };
 
