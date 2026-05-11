@@ -449,113 +449,108 @@ def direct_gov_scrape_batch():
             MCADirectScraper,
             AMFIDirectScraper,
             NSEDirectScraper,
+            BCIDirectScraper,
+            RBIDirectScraper,
+            GSTDirectScraper,
+            ICSIDirectScraper,
+            IBBIDirectScraper,
         )
     except Exception as e:
         set_status(f"Error: {e}", False)
         return {"status": "failed", "error": str(e)}
     
     try:
-        try:
-            from scraper import load_config
-            loaded_config = load_config()
-            configured_cities = list(getattr(loaded_config, "cities", []) or [])
-        except Exception:
-            configured_cities = []
+        from scraper import load_config
+        loaded_config = load_config()
+        configured_cities = list(getattr(loaded_config, "cities", []) or [])
+    except Exception:
+        configured_cities = []
+    
+    ca_priority_cities = [
+        "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad",
+        "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow",
+    ]
+    for c in configured_cities:
+        if c not in ca_priority_cities:
+            ca_priority_cities.append(c)
+    ca_priority_cities = ca_priority_cities[:12]
+    
+    gov_sources = [
+        ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities),
+        ("ICSI", ICSIDirectScraper, "Company Secretaries", ca_priority_cities[:8]),
+        ("BCI", BCIDirectScraper, "Lawyers", ca_priority_cities[:8]),
+        ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
+        ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
+        ("MCA", MCADirectScraper, "Company Secretaries", [None]),
+        ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:6]),
+        ("RBI", RBIDirectScraper, "NBFC", [None]),
+        ("IBBI", IBBIDirectScraper, "Insolvency Professionals", [None]),
+        ("GST", GSTDirectScraper, "GST Practitioner", ca_priority_cities[:6]),
+    ]
+    
+    fetcher = DirectPoliteFetcher()
+    total_results = 0
+    total_saved = 0
+    
+    from processing import ProcessingHandler
+    from scraper import ContactScraper
 
-        ca_priority_cities = [
-            "Delhi",
-            "Mumbai",
-            "Bangalore",
-            "Chennai",
-            "Hyderabad",
-            "Pune",
-            "Kolkata",
-            "Ahmedabad",
-            "Jaipur",
-            "Lucknow",
-        ]
-        for c in configured_cities:
-            if c not in ca_priority_cities:
-                ca_priority_cities.append(c)
-        ca_priority_cities = ca_priority_cities[:12]
+    for source_name, scraper_class, category, cities_to_try in gov_sources:
+        scraper = scraper_class(fetcher)
         
-        gov_sources = [
-            ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities),
-            ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:6]),
-            ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
-            ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
-            ("MCA", MCADirectScraper, "Company Secretaries", [None]),
-        ]
-        
-        fetcher = DirectPoliteFetcher()
-        total_results = 0
-        total_saved = 0
-        
-        from processing import ProcessingHandler
-        from scraper import ContactScraper, load_config
-
-        for source_name, scraper_class, category, cities_to_try in gov_sources:
-            scraper = scraper_class(fetcher)
-
-            for target_city in cities_to_try:
-                status_city = target_city or "all India"
+        for target_city in cities_to_try:
+            status_city = target_city or "all India"
+            set_status(
+                f"Scraping {source_name}: {category} ({status_city})...",
+                True,
+                {"source": source_name, "city": target_city, "category": category},
+            )
+            
+            try:
+                results = scraper.scrape(city=target_city, category=category)
+                total_results += len(results)
+                if not results:
+                    continue
+                
                 set_status(
-                    f"Scraping {source_name}: {category} ({status_city})...",
+                    f"{source_name}: Found {len(results)} records...",
                     True,
                     {"source": source_name, "city": target_city, "category": category},
                 )
-
-                try:
-                    results = scraper.scrape(city=target_city, category=category)
-                    total_results += len(results)
-                    if not results:
-                        continue
-
-                    set_status(
-                        f"{source_name}: Found {len(results)} records...",
-                        True,
-                        {"source": source_name, "city": target_city, "category": category},
-                    )
-
-                    processed = []
-                    for contact in results:
-                        try:
-                            cleaned = ProcessingHandler.process_contact(contact)
-                            # REQUIREMENT: Must have name AND (phone OR email)
-                            has_contact = bool(cleaned.get("phone") or cleaned.get("phone_clean") or cleaned.get("email"))
-                            if cleaned and cleaned.get("name") and has_contact:
-                                processed.append(cleaned)
-                        except Exception:
-                            continue
-
-                    if not processed:
-                        continue
-
+                
+                processed = []
+                for contact in results:
                     try:
-                        async def save_batch():
-                            db = ContactScraper(load_config())
-                            await db.init_db()
-                            try:
-                                return await db.save_contacts(processed)
-                            finally:
-                                await db.close()
-
-                        saved = asyncio.run(save_batch())
-                        total_saved += saved
-                    except Exception as db_err:
-                        logger.warning(f"DB save error for {source_name}: {db_err}")
-
-                except Exception as src_err:
-                    logger.error(f"Source {source_name} failed: {src_err}")
+                        cleaned = ProcessingHandler.process_contact(contact)
+                        has_contact = bool(cleaned.get("phone") or cleaned.get("phone_clean") or cleaned.get("email"))
+                        if cleaned and cleaned.get("name") and has_contact:
+                            processed.append(cleaned)
+                    except Exception:
+                        continue
+                
+                if not processed:
                     continue
-        
-        set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
-        return {"status": "completed", "extracted": total_results, "saved": total_saved}
-        
-    except Exception as e:
-        set_status(f"Error: {e}", False)
-        logger.error(f"Direct gov batch failed: {e}")
-        return {"status": "failed", "error": str(e)}
+                
+                try:
+                    async def save_batch():
+                        db = ContactScraper(load_config())
+                        await db.init_db()
+                        try:
+                            return await db.save_contacts(processed)
+                        finally:
+                            await db.close()
+                    
+                    saved = asyncio.run(save_batch())
+                    total_saved += saved
+                except Exception as db_err:
+                    logger.warning(f"DB save error for {source_name}: {db_err}")
+            
+            except Exception as src_err:
+                logger.error(f"Source {source_name} failed: {src_err}")
+                continue
+    
+    set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
+    return {"status": "completed", "extracted": total_results, "saved": total_saved}
 
 
 @celery_app.task(name="tasks.auto_pilot_task", time_limit=3600, soft_time_limit=3300)

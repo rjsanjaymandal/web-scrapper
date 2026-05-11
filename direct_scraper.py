@@ -727,11 +727,429 @@ SCRAPERS = {
     "MCA": MCADirectScraper,
     "AMFI": AMFIDirectScraper,
     "NSE": NSEDirectScraper,
+    "BCI": BCIDirectScraper,
+    "RBI": RBIDirectScraper,
+    "GST": GSTDirectScraper,
+    "ICSI": ICSIDirectScraper,
+    "IBBI": IBBIDirectScraper,
 }
 
 def get_scraper(source: str) -> Optional[object]:
     """Get scraper class by source name"""
     return SCRAPERS.get(source.upper())
+
+
+class BCIDirectScraper:
+    """Direct scraper for Bar Council of India - Lawyers/Advocates"""
+    
+    SOURCE = "BAR_COUNCIL"
+    BASE_URL = "https://www.barcouncilofindia.org/advocates/"
+    SEARCH_URL = "https://www.barcouncilofindia.org/advocates/search-advocate/"
+    
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+    
+    def scrape(self, city: str = None, category: str = "Lawyers") -> List[Dict]:
+        """Scrape Bar Council data directly"""
+        results = []
+        
+        logger.info(f"🔍 Scraping Bar Council for city={city}")
+        
+        cities = [city] if city else [
+            "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", 
+            "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"
+        ]
+        
+        for c in cities:
+            try:
+                search_url = f"https://www.barcouncilofindia.org/advocates/search-advocate/?search={c}"
+                html, status = self.fetcher.fetch(search_url, "https://www.google.com/")
+                
+                if not html:
+                    continue
+                
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Look for advocate cards/listings
+                cards = soup.find_all(['div', 'li', 'article'], class_=lambda x: x and 'advocate' in str(x).lower())
+                
+                if not cards:
+                    # Fallback to table extraction
+                    tables = soup.find_all('table')
+                    for table in tables:
+                        for row in table.find_all('tr')[1:]:
+                            cols = row.find_all('td')
+                            if len(cols) >= 2:
+                                name = cols[0].get_text(strip=True)
+                                details = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                                
+                                if name and len(name) > 3 and "Name" not in name:
+                                    email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', details)
+                                    phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', details)
+                                    
+                                    results.append({
+                                        "name": name[:200],
+                                        "email": email_match.group(0) if email_match else None,
+                                        "phone": phone_match.group(0) if phone_match else None,
+                                        "address": details[:300],
+                                        "city": c,
+                                        "category": category,
+                                        "source": self.SOURCE,
+                                        "source_url": search_url,
+                                    })
+                else:
+                    for card in cards:
+                        name_elem = card.find(['h3', 'h4', 'strong'])
+                        name = name_elem.get_text(strip=True) if name_elem else ""
+                        
+                        if name and len(name) > 3:
+                            text = card.get_text()
+                            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
+                            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
+                            
+                            results.append({
+                                "name": name[:200],
+                                "email": email_match.group(0) if email_match else None,
+                                "phone": phone_match.group(0) if phone_match else None,
+                                "city": c,
+                                "category": category,
+                                "source": self.SOURCE,
+                                "source_url": search_url,
+                            })
+                            
+            except Exception as e:
+                logger.warning(f"Bar Council city {c} error: {e}")
+                continue
+        
+        logger.info(f"Bar Council: Extracted {len(results)} records")
+        return results
+
+
+class RBIDirectScraper:
+    """Direct scraper for RBI - NBFCs, Banks, Regulated Entities"""
+    
+    SOURCE = "RBI"
+    BASE_URL = "https://www.rbi.org.in/Scripts/BS_NBFCList.aspx"
+    SEARCH_URL = "https://www.rbi.org.in/Scripts/WahherView.aspx?Id=1"
+    
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+    
+    def scrape(self, city: str = None, category: str = "NBFC") -> List[Dict]:
+        """Scrape RBI data directly"""
+        results = []
+        
+        logger.info(f"🔍 Scraping RBI for city={city}")
+        
+        try:
+            html, status = self.fetcher.fetch(self.BASE_URL, "https://www.google.com/")
+            
+            if not html:
+                logger.warning(f"RBI fetch failed with status {status}")
+                return results
+            
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Look for data tables
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                rows = table.find_all('tr')[1:]  # Skip header
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 3:
+                        try:
+                            company_name = cols[0].get_text(strip=True)
+                            category_type = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                            contact = cols[2].get_text(strip=True) if len(cols) > 2 else ""
+                            
+                            if company_name and len(company_name) > 3 and "Company" not in company_name:
+                                email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', contact)
+                                phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', contact)
+                                
+                                results.append({
+                                    "name": company_name[:200],
+                                    "email": email_match.group(0) if email_match else None,
+                                    "phone": phone_match.group(0) if phone_match else None,
+                                    "address": contact[:300],
+                                    "city": city,
+                                    "category": category_type or category,
+                                    "source": self.SOURCE,
+                                    "source_url": self.BASE_URL,
+                                })
+                        except:
+                            continue
+            
+            if not results:
+                # Fallback to text extraction
+                text = soup.get_text()
+                results = self._extract_from_text(text, city, category)
+                
+        except Exception as e:
+            logger.error(f"RBI scrape error: {e}")
+        
+        logger.info(f"RBI: Extracted {len(results)} records")
+        return results
+    
+    def _extract_from_text(self, text: str, city: str, category: str) -> List[Dict]:
+        results = []
+        
+        email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+        phone_pattern = re.compile(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)')
+        
+        for email in email_pattern.findall(text)[:30]:
+            results.append({
+                "name": "RBI Regulated Entity",
+                "email": email,
+                "phone": None,
+                "city": city,
+                "category": category,
+                "source": self.SOURCE,
+            })
+        
+        return results
+
+
+class GSTDirectScraper:
+    """Direct scraper for GST Practitioners"""
+    
+    SOURCE = "GST"
+    BASE_URL = "https://services.gst.gov.in/services/searchtp"
+    API_URL = "https://services.gst.gov.in/services/searchtp"
+    
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+    
+    def scrape(self, city: str = None, category: str = "GST Practitioner") -> List[Dict]:
+        """Scrape GST Portal data directly"""
+        results = []
+        
+        logger.info(f"🔍 Scraping GST for city={city}")
+        
+        cities = [city] if city else [
+            "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad",
+            "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"
+        ]
+        
+        for c in cities:
+            try:
+                search_url = f"https://services.gst.gov.in/services/searchtp?state={c}"
+                html, status = self.fetcher.fetch(search_url, "https://www.google.com/")
+                
+                if not html:
+                    continue
+                
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Look for practitioner cards
+                cards = soup.find_all(['div', 'tr'], class_=lambda x: x and ('practitioner' in str(x).lower() or 'gst' in str(x).lower()))
+                
+                if not cards:
+                    tables = soup.find_all('table')
+                    for table in tables:
+                        for row in table.find_all('tr')[1:]:
+                            cols = row.find_all('td')
+                            if len(cols) >= 2:
+                                name = cols[0].get_text(strip=True)
+                                details = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                                
+                                if name and len(name) > 3 and "Name" not in name:
+                                    email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', details)
+                                    phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', details)
+                                    
+                                    results.append({
+                                        "name": name[:200],
+                                        "email": email_match.group(0) if email_match else None,
+                                        "phone": phone_match.group(0) if phone_match else None,
+                                        "city": c,
+                                        "category": category,
+                                        "source": self.SOURCE,
+                                        "source_url": search_url,
+                                    })
+                else:
+                    for card in cards:
+                        name_elem = card.find(['h3', 'h4', 'strong'])
+                        name = name_elem.get_text(strip=True) if name_elem else ""
+                        
+                        if name and len(name) > 3:
+                            text = card.get_text()
+                            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
+                            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
+                            
+                            results.append({
+                                "name": name[:200],
+                                "email": email_match.group(0) if email_match else None,
+                                "phone": phone_match.group(0) if phone_match else None,
+                                "city": c,
+                                "category": category,
+                                "source": self.SOURCE,
+                                "source_url": search_url,
+                            })
+                            
+            except Exception as e:
+                logger.warning(f"GST city {c} error: {e}")
+                continue
+        
+        logger.info(f"GST: Extracted {len(results)} records")
+        return results
+
+
+class ICSIDirectScraper:
+    """Direct scraper for ICSI - Company Secretaries"""
+    
+    SOURCE = "ICSI"
+    BASE_URL = "https://www.icsi.edu/member/icsi-member-directory/"
+    SEARCH_URL = "https://www.icsi.edu/member/search-member/"
+    
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+    
+    def scrape(self, city: str = None, category: str = "Company Secretaries") -> List[Dict]:
+        """Scrape ICSI member directory directly"""
+        results = []
+        
+        logger.info(f"🔍 Scraping ICSI for city={city}")
+        
+        cities = [city] if city else [
+            "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad",
+            "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"
+        ]
+        
+        for c in cities:
+            try:
+                search_url = f"https://www.icsi.edu/member/search-member/?search={c}"
+                html, status = self.fetcher.fetch(search_url, "https://www.google.com/")
+                
+                if not html:
+                    continue
+                
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Look for member cards
+                cards = soup.find_all(['div', 'tr'], class_=lambda x: x and 'member' in str(x).lower())
+                
+                if not cards:
+                    tables = soup.find_all('table')
+                    for table in tables:
+                        for row in table.find_all('tr')[1:]:
+                            cols = row.find_all('td')
+                            if len(cols) >= 2:
+                                name = cols[0].get_text(strip=True)
+                                details = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                                
+                                if name and len(name) > 3 and "Name" not in name:
+                                    email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', details)
+                                    phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', details)
+                                    
+                                    results.append({
+                                        "name": name[:200],
+                                        "email": email_match.group(0) if email_match else None,
+                                        "phone": phone_match.group(0) if phone_match else None,
+                                        "city": c,
+                                        "category": category,
+                                        "source": self.SOURCE,
+                                        "source_url": search_url,
+                                        "membership_no": None,
+                                    })
+                else:
+                    for card in cards:
+                        name_elem = card.find(['h3', 'h4', 'strong'])
+                        name = name_elem.get_text(strip=True) if name_elem else ""
+                        
+                        if name and len(name) > 3:
+                            text = card.get_text()
+                            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
+                            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
+                            
+                            results.append({
+                                "name": name[:200],
+                                "email": email_match.group(0) if email_match else None,
+                                "phone": phone_match.group(0) if phone_match else None,
+                                "city": c,
+                                "category": category,
+                                "source": self.SOURCE,
+                                "source_url": search_url,
+                            })
+                            
+            except Exception as e:
+                logger.warning(f"ICSI city {c} error: {e}")
+                continue
+        
+        logger.info(f"ICSI: Extracted {len(results)} records")
+        return results
+
+
+class IBBIDirectScraper:
+    """Direct scraper for IBBI - Insolvency Professionals"""
+    
+    SOURCE = "IBBI"
+    BASE_URL = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
+    SEARCH_URL = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
+    
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+    
+    def scrape(self, city: str = None, category: str = "Insolvency Professionals") -> List[Dict]:
+        """Scrape IBBI data directly"""
+        results = []
+        
+        logger.info(f"🔍 Scraping IBBI for city={city}")
+        
+        try:
+            html, status = self.fetcher.fetch(self.BASE_URL, "https://www.google.com/")
+            
+            if not html:
+                logger.warning(f"IBBI fetch failed with status {status}")
+                return results
+            
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Look for professional listings
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                for row in table.find_all('tr')[1:]:
+                    cols = row.find_all('td')
+                    if len(cols) >= 3:
+                        name = cols[0].get_text(strip=True)
+                        details = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                        reg_no = cols[2].get_text(strip=True) if len(cols) > 2 else ""
+                        
+                        if name and len(name) > 3 and "Name" not in name:
+                            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', details)
+                            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', details)
+                            
+                            results.append({
+                                "name": name[:200],
+                                "email": email_match.group(0) if email_match else None,
+                                "phone": phone_match.group(0) if phone_match else None,
+                                "address": details[:300],
+                                "city": city,
+                                "category": category,
+                                "source": self.SOURCE,
+                                "source_url": self.BASE_URL,
+                                "registration_no": reg_no,
+                            })
+            
+            if not results:
+                # Fallback to text extraction
+                text = soup.get_text()
+                email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+                for email in email_pattern.findall(text)[:20]:
+                    results.append({
+                        "name": "IBBI Insolvency Professional",
+                        "email": email,
+                        "phone": None,
+                        "city": city,
+                        "category": category,
+                        "source": self.SOURCE,
+                    })
+                
+        except Exception as e:
+            logger.error(f"IBBI scrape error: {e}")
+        
+        logger.info(f"IBBI: Extracted {len(results)} records")
+        return results
 
 
 if __name__ == "__main__":
