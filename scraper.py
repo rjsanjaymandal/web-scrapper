@@ -1077,6 +1077,8 @@ class ContactScraper:
                         logger.warning(f"No results for {source} in {city} via fast engine.")
                         
                 except Exception as e:
+                    if "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                        raise
                     logger.error(f"Fast extraction failed for {source}: {e}")
                     
         return total_extracted

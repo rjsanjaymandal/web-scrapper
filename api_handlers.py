@@ -500,8 +500,7 @@ class OfficialAPIHandlers:
             html = await resp.text()
             return await scraper.extract_listings(None, city, category, html)
         return []
-
-    @classmethod
+    @classmethod
     async def dispatch(
         cls,
         source: str,
@@ -518,7 +517,10 @@ class OfficialAPIHandlers:
         try:
             return await handler(engine, city)
         except Exception as e:
+            if "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                raise
             logger.error(f"Error in API handler for {source}: {e}")
-            # Don't re-raise, return empty to allow other scrapers to continue
+            # Don't re-raise for other errors to allow other scrapers to continue
             
         return []
+

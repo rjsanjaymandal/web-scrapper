@@ -176,6 +176,11 @@ class PoliteHTTPScraper:
                         except Exception as fallback_err:
                             logger.error(f"Direct fallback failed for {url}: {fallback_err}")
                     
+                    if "TRAFFIC_EXHAUSTED" in error_msg or status_code == 407:
+                        logger.error(f"🛑 PROXY TRAFFIC EXHAUSTED (407) for {self.proxy}. Please top up your data plan at DataImpulse.")
+                        # We raise a specific exception that can be caught by the orchestrator
+                        raise Exception("PROXY_TRAFFIC_EXHAUSTED")
+
                     if "502" in error_msg or status_code == 502:
                         logger.warning(f"Gateway error on {url} (Proxy issue). Retrying...")
                     

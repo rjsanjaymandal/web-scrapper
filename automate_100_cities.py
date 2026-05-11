@@ -40,7 +40,11 @@ async def run_enterprise_cycle():
             shuffled_cities = list(cities)
             random.shuffle(shuffled_cities)
             
+            proxy_exhausted = False
             for city in shuffled_cities:
+                if proxy_exhausted:
+                    break
+                    
                 shuffled_cats = list(categories)
                 random.shuffle(shuffled_cats)
                 
@@ -56,15 +60,21 @@ async def run_enterprise_cycle():
                         finish_scrape_job(city, cat, token=token, count=count, success=True)
                         total_leads += count
                     except Exception as task_error:
+                        error_msg = str(task_error)
                         finish_scrape_job(
                             city,
                             cat,
                             token=token,
                             count=0,
                             success=False,
-                            error=str(task_error),
+                            error=error_msg,
                         )
                         logger.error(f"Task failed for {cat} in {city}: {task_error}")
+                        
+                        if "PROXY_TRAFFIC_EXHAUSTED" in error_msg:
+                            logger.critical("🛑 PROXY TRAFFIC EXHAUSTED. Terminating current city loop.")
+                            proxy_exhausted = True
+                            break # Break the category loop
                         continue
                     
                     # 2026 Verification: Log current DB state to confirm storage is working
@@ -75,9 +85,9 @@ async def run_enterprise_cycle():
                         logger.warning(f"Could not fetch DB stats: {de}")
                     
                     # Politeness: Small jittered sleep between tasks (5-15s)
-                    # This prevents slamming multiple targets in a tight sequence
                     task_delay = random.uniform(5.0, 15.0)
                     await asyncio.sleep(task_delay)
+
 
             duration = datetime.now() - start_time
             logger.info("=" * 50)

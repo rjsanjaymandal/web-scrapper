@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, date
 from openpyxl import Workbook
 from pathlib import Path
 import sqlite3
+from fpdf import FPDF
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -1484,7 +1485,7 @@ HTML = """
 
             <nav class="nav-group">
                 <p class="nav-label">Export Intelligence</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 4px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px;">
                     <button class="export-btn export-csv" onclick="exportData('csv')" title="Export as CSV">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>CSV</span>
@@ -1496,6 +1497,10 @@ HTML = """
                     <button class="export-btn export-json" onclick="exportData('json')" title="Export as JSON">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>JSON</span>
+                    </button>
+                    <button class="export-btn" onclick="exportData('pdf')" title="Export as PDF" style="border-color: rgba(239, 68, 68, 0.3); background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        <span style="color:#ef4444">PDF</span>
                     </button>
                 </div>
             </nav>
@@ -2876,7 +2881,7 @@ def api_contacts():
 def export(fmt):
     logger.info(f"Export requested: format={fmt}, args={dict(request.args)}")
     
-    if fmt not in ("csv", "excel", "json"):
+    if fmt not in ("csv", "excel", "json", "pdf"):
         return "Invalid format. Use csv, excel, or json.", 400
     
     try:
@@ -2963,6 +2968,49 @@ def export(fmt):
         wb.save(out)
         out.seek(0)
         return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    if fmt == "pdf":
+        class PDF(FPDF):
+            def header(self):
+                self.set_font('helvetica', 'B', 15)
+                self.cell(0, 10, 'Maysan Labs Intelligence Export', border=False, align='C')
+                self.ln(10)
+                self.set_font('helvetica', 'I', 8)
+                self.cell(0, 5, f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', align='C')
+                self.ln(10)
+
+            def footer(self):
+                self.set_y(-15)
+                self.set_font('helvetica', 'I', 8)
+                self.cell(0, 10, f'Page {self.page_no()}', align='C')
+
+        pdf = PDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        pdf.set_font('helvetica', 'B', 9)
+        
+        # Table Header
+        cols = ["Name", "Phone", "Email", "City", "Category", "Source"]
+        col_widths = [60, 40, 60, 35, 45, 35]
+        
+        for i, col in enumerate(cols):
+            pdf.cell(col_widths[i], 7, col, 1)
+        pdf.ln()
+        
+        # Table Data
+        pdf.set_font('helvetica', '', 8)
+        for r in rows[:1000]: # Limit to 1000 rows for PDF to avoid huge files/timeout
+            pdf.cell(col_widths[0], 6, str(r.get("name") or "")[:35], 1)
+            pdf.cell(col_widths[1], 6, str(r.get("phone") or "")[:20], 1)
+            pdf.cell(col_widths[2], 6, str(r.get("email") or "")[:35], 1)
+            pdf.cell(col_widths[3], 6, str(r.get("city") or "")[:20], 1)
+            pdf.cell(col_widths[4], 6, str(r.get("category") or "")[:25], 1)
+            pdf.cell(col_widths[5], 6, str(r.get("source") or "")[:20], 1)
+            pdf.ln()
+            
+        pdf_data = pdf.output()
+        out = io.BytesIO(pdf_data)
+        return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.pdf", as_attachment=True, mimetype="application/pdf")
+
     return "Invalid format", 400
 
 
