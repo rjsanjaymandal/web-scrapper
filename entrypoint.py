@@ -15,14 +15,12 @@ import threading
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, HTTPServer
-# Global diagnostic wrapper moved inside functions for faster initial bootstrap
+
 def log(msg):
-    # Use stderr to ensure logs appear immediately in Railway (stdout can be buffered)
     print(f"[BOOTSTRAP] {msg}", file=sys.stderr, flush=True)
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Respond to both / and /health for maximum compatibility
         if self.path in ['/', '/health']:
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
@@ -40,7 +38,6 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        # Silence default logging to keep bootstrap logs clean
         return
 
 def start_health_server(port_str):
@@ -74,7 +71,6 @@ def wait_for_db():
         start_time = time.time()
         timeout = 90
         
-        # Late import to speed up initial port binding
         import psycopg2
         
         while time.time() - start_time < timeout:
@@ -98,55 +94,52 @@ def wait_for_db():
         return False
     except Exception as e:
         log(f"[ERROR] Error in wait_for_db: {e}")
-        traceback.print_exc()
         return False
 
 def init_tables():
     log("Running eager database initialization...")
     try:
-        import dashboard
-        success = dashboard.init_tables()
-        if not success:
-            log("[ERROR] Database initialization failed via dashboard.init_tables()")
-            return False
-        os.environ["DASHBOARD_DB_BOOTSTRAPPED"] = "1"
-        log("[OK] Database tables ready!")
+        from dashboard import init_tables as run_init
+        run_init()
         return True
     except Exception as e:
-        log(f"[ERROR] Failed to import or run dashboard init: {e}")
+        log(f"[ERROR] Failed to initialize tables: {e}")
         traceback.print_exc()
         return False
 
-def wait_for_http(port, path="/health", timeout=30, process=None):
-    """Wait until the local dashboard answers HTTP, failing early if it exits."""
+def wait_for_http(port, path="/", timeout=30, process=None):
     url = f"http://127.0.0.1:{port}{path}"
+    log(f"Waiting for HTTP service at {url}...")
     start_time = time.time()
-    last_error = None
-
     while time.time() - start_time < timeout:
         if process and process.poll() is not None:
-            log(f"[ERROR] Dashboard process exited before becoming healthy (code={process.returncode}).")
+            log("[ERROR] Process exited while waiting for HTTP")
             return False
-
         try:
             with urlopen(url, timeout=2) as response:
-                if 200 <= response.status < 500:
-                    log(f"Dashboard answered {path} with HTTP {response.status}.")
+                if response.status == 200:
+                    log(f"Dashboard answered {path} with HTTP 200.")
                     return True
-        except Exception as e:
-            last_error = e
-
-        time.sleep(1)
-
-    log(f"[ERROR] Dashboard did not answer {url} within {timeout}s. Last error: {last_error}")
+        except Exception:
+            time.sleep(1)
+    log(f"[ERROR] Timeout waiting for HTTP at {url}")
     return False
 
-def main():
-    # Process detection logic
-    port = os.environ.get("PORT", "8080")
+def is_port_in_use(p):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', int(p))) == 0
 
+def kill_port_owner(p):
     try:
-        # Detect service type
+        cmd = f"fuser -k {p}/tcp"
+        subprocess.run(cmd, shell=True, capture_output=True)
+        log(f"Forcefully cleared port {p} via fuser.")
+    except Exception as e:
+        log(f"Port reaper warning: {e}")
+
+def main():
+    try:
+        port = os.environ.get("PORT", "8080")
         is_worker_flag = "--worker" in sys.argv
         env_process_type = os.environ.get("PROCESS_TYPE")
         railway_service = os.environ.get("RAILWAY_SERVICE_NAME", "").lower()
@@ -162,145 +155,48 @@ def main():
         else:
             process_type = "web"
         
-        log(f"Starting {process_type} process sequence (Detected: {process_type}, Service: {railway_service or 'N/A'})...")
+        log(f"Starting {process_type} process sequence...")
 
-        # Shared DB Check
         if not wait_for_db():
             sys.exit(1)
 
-        # Web-specific Init
         if process_type == "web":
-            log("Running eager database initialization for Web module...")
-            init_start = time.time()
-            # Use the global init_tables() helper which imports dashboard locally
             if not init_tables():
-                log("[ERROR] Database initialization failed. Process will exit.")
                 sys.exit(1)
-            init_duration = time.time() - init_start
-            log(f"[SUCCESS] Database tables ready in {init_duration:.2f}s!")
             
-            log(f"Finalizing environment for Web Service on port {port}...")
-            
-            # Diagnostic: Verify command existence before handoff
-            try:
-                subprocess.run(["gunicorn", "--version"], capture_output=True, check=True)
-            except Exception:
-                log("[ERROR] CRITICAL: 'gunicorn' command not found in PATH!")
-                sys.exit(1)
+            while is_port_in_use(port):
+                kill_port_owner(port)
+                time.sleep(1)
 
-            # Use execvp for web process to give it full control
-            cmd = [
-                "gunicorn",
-                "--bind", f"0.0.0.0:{port}",
-                "--workers", "1",
-                "--threads", "8",
-                "--timeout", "300",
-                "--access-logfile", "-",
-                "--error-logfile", "-",
-                "dashboard:app"
-            ]
-            log(f"[LAUNCH] Handoff to Gunicorn (0.0.0.0:{port})...")
+            cmd = ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--threads", "8", "--timeout", "300", "dashboard:app"]
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            # Start Health Server ONLY for worker process (since it doesn't bind a port otherwise)
-            log(f"Initializing Worker Health Server on port {port}...")
             start_health_server(port)
-            
-            log("[LAUNCH] Handoff to Celery Worker...")
-            # Run Celery as subprocess to keep the healthcheck thread alive
-            cmd = [
-                "celery",
-                "-A", "tasks",
-                "worker",
-                "--loglevel=info",
-                "--concurrency=1",
-                "--pool=solo",
-                "--max-tasks-per-child=5" # Guard against memory leaks
-            ]
-            
-            try:
-                # Use subprocess.run to block until worker exits
-                subprocess.run(cmd)
-            except KeyboardInterrupt:
-                log("Worker received interrupt, shutting down...")
-                sys.exit(0)
-            except Exception as e:
-                log(f"[ERROR] Worker crashed: {e}")
-                sys.exit(1)
+            cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
+            subprocess.run(cmd)
         
         elif process_type == "automator":
-            port = os.environ.get("PORT", "8080")
-            
-            # Run DB init before starting anything
-            log("Running database initialization for Automator+Dashboard...")
             if not init_tables():
-                log("[ERROR] Database initialization failed. Process will exit.")
                 sys.exit(1)
             
-            # Launch Gunicorn dashboard as a background subprocess
-            log(f"Starting Dashboard (Gunicorn) on port {port} in background (Handles healthchecks)...")
-            gunicorn_cmd = [
-                "gunicorn",
-                "--bind", f"0.0.0.0:{port}",
-                "--workers", "1",
-                "--threads", "4",
-                "--timeout", "300",
-                "--access-logfile", "-",
-                "--error-logfile", "-",
-                "dashboard:app"
-            ]
+            while is_port_in_use(port):
+                kill_port_owner(port)
+                time.sleep(1)
+
+            gunicorn_cmd = ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--threads", "4", "--timeout", "300", "dashboard:app"]
             dashboard_proc = subprocess.Popen(gunicorn_cmd)
-            log(f"[SUCCESS] Dashboard running (PID: {dashboard_proc.pid})")
-
-            if not wait_for_http(port, path="/", process=dashboard_proc):
+            
+            if not wait_for_http(port, process=dashboard_proc):
                 dashboard_proc.terminate()
-                try:
-                    dashboard_proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    dashboard_proc.kill()
                 sys.exit(1)
             
-            # Short settle time after the verified bind before scraper load begins.
-            time.sleep(1)
-            
-            log("[LAUNCH] Starting Enterprise Automator...")
             automator_script = os.path.join(os.path.dirname(__file__), "automate_100_cities.py")
-            automator_cmd = [sys.executable, automator_script]
-            exit_on_automator_failure = os.environ.get("AUTOMATOR_FAILURE_EXITS", "false").lower() == "true"
-            try:
-                result = subprocess.run(automator_cmd)
-                if result.returncode != 0:
-                    log(f"[ERROR] Automator exited with code {result.returncode}.")
-                    if exit_on_automator_failure:
-                        dashboard_proc.terminate()
-                        sys.exit(result.returncode)
-            except KeyboardInterrupt:
-                log("Automator received interrupt, shutting down...")
-                dashboard_proc.terminate()
-                sys.exit(0)
-            except Exception as e:
-                log(f"[ERROR] Automator crashed: {e}")
-                if exit_on_automator_failure:
-                    dashboard_proc.terminate()
-                    sys.exit(1)
-
-            # Keep dashboard alive after the automator run, even if scraping failed.
-            log("Automator cycle complete. Dashboard still running...")
-            try:
-                exit_code = dashboard_proc.wait()
-                log(f"[ERROR] Dashboard process exited with code {exit_code}.")
-                sys.exit(exit_code if exit_code else 1)
-            except KeyboardInterrupt:
-                dashboard_proc.terminate()
+            subprocess.run([sys.executable, automator_script])
+            dashboard_proc.wait()
         
-        else:
-            log(f"[ERROR] Unknown PROCESS_TYPE: {process_type}")
-            sys.exit(1)
-            
     except Exception as e:
-        log(f"[ERROR] CRITICAL FAILURE in main loop: {e}")
-        traceback.print_exc()
+        log(f"[ERROR] CRITICAL FAILURE: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

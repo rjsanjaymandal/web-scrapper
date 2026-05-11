@@ -128,15 +128,22 @@ class DirectPoliteFetcher:
         return self._session_ua
     
     def _get_headers(self, referer: str = "https://www.google.com/") -> Dict:
+        """Get high-stealth headers for government sites"""
+        ua = self._get_random_ua()
         return {
-            "User-Agent": self._get_random_ua(),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
             "Referer": referer,
+            "Cache-Control": "max-age=0",
         }
     
     def _respectful_delay(self):
@@ -550,17 +557,38 @@ class AMFIDirectScraper:
             
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Look for distributor/mutual fund listings
-            listings = soup.find_all(['div', 'tr'], class_=lambda x: x and ('distributor' in str(x).lower() or 'mutual' in str(x).lower()))
+            # AMFI Robust Extraction: Check tables first, then divs
+            listings = []
             
-            for listing in listings:
-                text = listing.get_text()
+            # Check for data tables
+            tables = soup.find_all('table')
+            for table in tables:
+                rows = table.find_all('tr')[1:]
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 2:
+                        name = cols[0].get_text(strip=True)
+                        contact = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                        if len(name) > 3:
+                            listings.append((name, contact))
+            
+            # Fallback to the class-based search
+            if not listings:
+                div_listings = soup.find_all(['div', 'tr'], class_=lambda x: x and ('distributor' in str(x).lower() or 'mutual' in str(x).lower()))
+                for l in div_listings:
+                    listings.append((None, l.get_text()))
+
+            for name_text, full_text in listings:
+                text = full_text or ""
                 
-                # Extract name
-                name_match = re.search(r'([A-Z][a-zA-Z\s]+(?:Pvt|Ltd|Inc)?)', text)
-                if name_match:
-                    name = name_match.group(1)[:200]
+                # Extract name if not found in table col
+                if not name_text:
+                    name_match = re.search(r'([A-Z][a-zA-Z\s]+(?:Pvt|Ltd|Inc)?)', text)
+                    name = name_match.group(1)[:200] if name_match else None
                 else:
+                    name = name_text[:200]
+
+                if not name or "Name" in name:
                     continue
                 
                 # Extract contact info
@@ -574,6 +602,7 @@ class AMFIDirectScraper:
                     "city": city,
                     "category": category,
                     "source": self.SOURCE,
+                    "source_url": self.BASE_URL
                 })
                 
         except Exception as e:
@@ -587,7 +616,7 @@ class NSEDirectScraper:
     """Direct scraper for NSE (National Stock Exchange)"""
     
     SOURCE = "NSE"
-    BASE_URL = "https://www.nseindia.com/members/content/member_directory.htm"
+    BASE_URL = "https://enit.nseindia.com/MemDirWeb/searchBrokers_Beta?step=searchBrokersList"
     
     def __init__(self, fetcher: DirectPoliteFetcher = None):
         self.fetcher = fetcher or DirectPoliteFetcher()

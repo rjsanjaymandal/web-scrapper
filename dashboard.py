@@ -15,12 +15,14 @@ from pathlib import Path
 import sqlite3
 from fpdf import FPDF
 
-# Task Imports for status and orchestration
+# Global status helper (will be overwritten by tasks import if available)
+def set_status(msg, is_running=True, stats=None):
+    pass
+
 try:
-    from tasks import set_status, auto_pilot_task, scrape_category_task, fast_scrape_task, direct_gov_scrape_batch
+    from tasks import set_status as tasks_set_status, auto_pilot_task, scrape_category_task, fast_scrape_task, direct_gov_scrape_batch
+    set_status = tasks_set_status
 except ImportError:
-    # Fallback for local dev without Celery context
-    def set_status(*args, **kwargs): pass
     auto_pilot_task = scrape_category_task = fast_scrape_task = direct_gov_scrape_batch = None
 
 class CustomJSONEncoder(json.JSONEncoder):
@@ -328,25 +330,25 @@ def init_tables():
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS contacts (
                 id {id_type},
-                name VARCHAR(255),
+                name VARCHAR(500),
                 phone VARCHAR(50),
-                email VARCHAR(255),
+                email VARCHAR(500),
                 address TEXT,
-                category VARCHAR(100),
-                city VARCHAR(100),
-                area VARCHAR(100),
-                state VARCHAR(100),
-                source VARCHAR(100),
+                category VARCHAR(500),
+                city VARCHAR(500),
+                area VARCHAR(500),
+                state VARCHAR(500),
+                source VARCHAR(500),
                 source_url TEXT,
                 phone_clean VARCHAR(50),
                 email_valid BOOLEAN,
                 enriched BOOLEAN,
-                arn VARCHAR(255),
-                license_no VARCHAR(255),
-                membership_no VARCHAR(255),
+                arn VARCHAR(500),
+                license_no VARCHAR(500),
+                membership_no VARCHAR(500),
                 quality_score INTEGER DEFAULT 0,
                 quality_tier VARCHAR(20) DEFAULT 'low',
-                blockchain_ca VARCHAR(255),
+                blockchain_ca VARCHAR(500),
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -373,17 +375,21 @@ def init_tables():
             )
         """)
 
-        # Individual column checks for existing tables
+        # Individual column checks and expansion for existing tables
         required_columns = {
-            "area": "VARCHAR(100)",
-            "state": "VARCHAR(100)",
+            "name": "VARCHAR(500)",
+            "category": "VARCHAR(500)",
+            "city": "VARCHAR(500)",
+            "area": "VARCHAR(500)",
+            "state": "VARCHAR(500)",
+            "source": "VARCHAR(255)",
             "source_url": "TEXT",
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN DEFAULT FALSE",
             "enriched": "BOOLEAN DEFAULT FALSE",
-            "arn": "VARCHAR(255)",
-            "license_no": "VARCHAR(255)",
-            "membership_no": "VARCHAR(255)",
+            "arn": "VARCHAR(500)",
+            "license_no": "VARCHAR(500)",
+            "membership_no": "VARCHAR(500)",
             "quality_score": "INTEGER DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
             "blockchain_ca": "VARCHAR(255)",
@@ -399,12 +405,13 @@ def init_tables():
                     if column_name not in existing:
                         cur.execute(f"ALTER TABLE contacts ADD COLUMN {column_name} {column_type}")
                 else:
-                    cur.execute(
-                        f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
-                    )
+                    # 1. Add column if missing
+                    cur.execute(f"ALTER TABLE contacts ADD COLUMN IF NOT EXISTS {column_name} {column_type}")
+                    # 2. Force expansion if it already exists (Postgres only)
+                    if not USE_SQLITE:
+                        cur.execute(f"ALTER TABLE contacts ALTER COLUMN {column_name} TYPE {column_type.split(' ')[0]}")
             except Exception as col_err:
-                # Ignore column errors
-                pass
+                logger.debug(f"Migration detail: {column_name} check/expand skipped: {col_err}")
 
         # Optimization: Only run heavy cleanup if the unique index is missing
         index_exists = False

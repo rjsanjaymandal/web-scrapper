@@ -11,9 +11,11 @@ import re
 import aiohttp
 import json
 from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Any
 # from playwright.async_api import async_playwright, Page, Browser, Playwright
 Page = dict # Mock type for disabled Playwright
-from typing import Optional, Dict, List, Any
+Browser = Any # Mock type for disabled Playwright
+Playwright = Any # Mock type for disabled Playwright
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup
 from raw_storage import storage
@@ -578,55 +580,80 @@ class ContactScraper:
             self._create_sqlite_tables()
             logger.info("SQLite fallback active.")
 
+    async def _ensure_column_widths(self):
+        """Proactively expand VARCHAR columns to 500 to prevent data loss in existing tables."""
+        logger.info("Running database schema migration check...")
+        try:
+            async with self.pool.acquire() as conn:
+                # Check current widths
+                rows = await conn.fetch("""
+                    SELECT column_name, character_maximum_length 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'contacts' AND data_type = 'character varying'
+                """)
+                
+                for row in rows:
+                    col = row['column_name']
+                    max_len = row['character_maximum_length']
+                    if max_len and max_len < 500:
+                        logger.info(f"Migrating column '{col}' from {max_len} to 500 characters...")
+                        await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE VARCHAR(500)")
+                
+                logger.info("Database schema migration complete.")
+        except Exception as e:
+            logger.error(f"Schema migration failed: {e}")
+
     async def _create_pg_tables(self):
         # We perform these checks one by one to avoid collision errors in multi-worker environments
         try:
             await self.pool.execute("""
                 CREATE TABLE IF NOT EXISTS contacts (
                     id SERIAL PRIMARY KEY,
-                    name VARCHAR(255),
+                    name VARCHAR(500),
                     phone VARCHAR(50),
-                    email VARCHAR(255),
+                    email VARCHAR(500),
                     address TEXT,
-                    category VARCHAR(255),
-                    city VARCHAR(255),
-                    area VARCHAR(255),
-                    state VARCHAR(255),
-                    source VARCHAR(255),
+                    category VARCHAR(500),
+                    city VARCHAR(500),
+                    area VARCHAR(500),
+                    state VARCHAR(500),
+                    source VARCHAR(500),
                     source_url TEXT,
                     phone_clean VARCHAR(50),
                     email_valid BOOLEAN,
                     enriched BOOLEAN,
-                    arn VARCHAR(255),
-                    license_no VARCHAR(255),
-                    membership_no VARCHAR(255),
+                    arn VARCHAR(500),
+                    license_no VARCHAR(500),
+                    membership_no VARCHAR(500),
                     quality_score INT DEFAULT 0,
                     quality_tier VARCHAR(20) DEFAULT 'low',
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # NEW: Run column expansion migration after creation
+            await self._ensure_column_widths()
         except Exception as e:
             logger.warning(
                 f"Table creation skipped or failed (possibly concurrent): {e}"
             )
 
         required_columns = {
-            "name": "VARCHAR(255)",
+            "name": "VARCHAR(500)",
             "phone": "VARCHAR(50)",
-            "email": "VARCHAR(255)",
+            "email": "VARCHAR(500)",
             "address": "TEXT",
-            "category": "VARCHAR(255)",
-            "city": "VARCHAR(255)",
-            "area": "VARCHAR(255)",
-            "state": "VARCHAR(255)",
-            "source": "VARCHAR(255)",
+            "category": "VARCHAR(500)",
+            "city": "VARCHAR(500)",
+            "area": "VARCHAR(500)",
+            "state": "VARCHAR(500)",
+            "source": "VARCHAR(500)",
             "source_url": "TEXT",
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN",
             "enriched": "BOOLEAN",
-            "arn": "VARCHAR(255)",
-            "license_no": "VARCHAR(255)",
-            "membership_no": "VARCHAR(255)",
+            "arn": "VARCHAR(500)",
+            "license_no": "VARCHAR(500)",
+            "membership_no": "VARCHAR(500)",
             "quality_score": "INT DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -661,15 +688,15 @@ class ContactScraper:
             return
             
         columns_to_expand = {
-            "category": 255,
-            "city": 255,
-            "area": 255,
-            "state": 255,
+            "name": 500,
+            "category": 500,
+            "city": 500,
+            "area": 500,
+            "state": 500,
             "source": 255,
-            "arn": 255,
-            "license_no": 255,
-            "membership_no": 255,
-            "name": 255,
+            "arn": 500,
+            "license_no": 500,
+            "membership_no": 500,
             "email": 255,
         }
         
@@ -1533,45 +1560,29 @@ class ContactScraper:
 
         inserted = 0
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                for listing in valid_listings:
-                    if (
-                        not listing.get("phone_clean")
-                        and not listing.get("email")
-                        and await self._registry_exists_pg(conn, listing, source)
-                    ):
-                        continue
-                    status = await conn.execute(
-                    """
-                    INSERT INTO contacts (
-                        name, phone, email, address, category, city, area, state, 
-                        source, source_url, phone_clean, email_valid, enriched, 
-                        arn, license_no, membership_no, quality_score, quality_tier
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-                    ON CONFLICT DO NOTHING
-                """,
-                        listing.get("name"),
-                        listing.get("phone"),
-                        listing.get("email"),
-                        listing.get("address"),
-                        listing.get("category") or category,
-                        listing.get("city") or city,
-                        listing.get("area"),
-                        listing.get("state"),
-                        listing.get("source") or source,
-                        listing.get("source_url") or url,
-                        listing.get("phone_clean"),
-                        listing.get("email_valid", False),
-                        listing.get("enriched", False),
-                        listing.get("arn"),
-                        listing.get("license_no"),
-                        listing.get("membership_no"),
-                        listing.get("quality_score", 0),
-                        listing.get("quality_tier", "low"),
-                    )
-                    if status.endswith(" 1"):
-                        inserted += 1
+            chunk_size = 25
+            for i in range(0, len(valid_listings), chunk_size):
+                chunk = valid_listings[i : i + chunk_size]
+                try:
+                    async with conn.transaction():
+                        for l in chunk:
+                            if not l.get("phone_clean") and not l.get("email") and await self._registry_exists_pg(conn, l, source): continue
+                            st = await conn.execute("""
+                                INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no, quality_score, quality_tier)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT DO NOTHING
+                            """, l.get("name"), l.get("phone"), l.get("email"), l.get("address"), l.get("category") or category, l.get("city") or city, l.get("area"), l.get("state"), l.get("source") or source, l.get("source_url") or url, l.get("phone_clean"), l.get("email_valid", False), l.get("enriched", False), l.get("arn"), l.get("license_no"), l.get("membership_no"), l.get("quality_score", 0), l.get("quality_tier", "low"))
+                            if st.endswith(" 1"): inserted += 1
+                except Exception as e:
+                    logger.warning(f"Sub-batch save failed ({e}), falling back to individual inserts")
+                    for l in chunk:
+                        try:
+                            st = await conn.execute("""
+                                INSERT INTO contacts (name, phone, email, address, category, city, area, state, source, source_url, phone_clean, email_valid, enriched, arn, license_no, membership_no, quality_score, quality_tier)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT DO NOTHING
+                            """, l.get("name"), l.get("phone"), l.get("email"), l.get("address"), l.get("category") or category, l.get("city") or city, l.get("area"), l.get("state"), l.get("source") or source, l.get("source_url") or url, l.get("phone_clean"), l.get("email_valid", False), l.get("enriched", False), l.get("arn"), l.get("license_no"), l.get("membership_no"), l.get("quality_score", 0), l.get("quality_tier", "low"))
+                            if st.endswith(" 1"): inserted += 1
+                        except Exception as rec_err: 
+                            logger.debug(f"Record-level save failure: {rec_err}")
 
         logger.info(f"Saved {inserted} records to database")
         return inserted
