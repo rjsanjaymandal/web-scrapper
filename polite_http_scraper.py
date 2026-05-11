@@ -1,4 +1,5 @@
 import aiohttp
+import os
 import asyncio
 import logging
 import random
@@ -36,7 +37,13 @@ class PoliteHTTPScraper:
         self.session: Optional[aiohttp.ClientSession] = None
         self.session_lock = asyncio.Lock()
         self.ua = StealthManager.get_persistent_ua()
-        self.proxy = proxy
+        
+        # Respect global proxy kill-switch
+        if os.environ.get("SCRAPER_USE_PROXY", "true").lower() == "false":
+            self.proxy = None
+        else:
+            self.proxy = proxy
+            
         self.base_headers = {}
 
     async def __aenter__(self):

@@ -420,6 +420,10 @@ class ProxyManager:
         self.current_index = 0
 
     def get_proxy(self) -> Optional[Dict]:
+        # Global Kill-Switch: If SCRAPER_USE_PROXY is explicitly false, never use proxies.
+        if os.environ.get("SCRAPER_USE_PROXY", "true").lower() == "false":
+            return None
+            
         if self.test_mode or not self.proxies:
             return None
         proxy = self.proxies[self.current_index]
