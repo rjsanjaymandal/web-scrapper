@@ -483,6 +483,25 @@ HTML = """
             --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
 
+        /* Light Theme */
+        [data-theme="light"] {
+            --bg-obsidian: #f8fafc;
+            --bg-sidebar: #ffffff;
+            --card-glass: rgba(255, 255, 255, 0.9);
+            --card-glass-hover: rgba(255, 255, 255, 1);
+            --accent-emerald: #059669;
+            --accent-blue: #2563eb;
+            --accent-amber: #d97706;
+            --accent-red: #dc2626;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border-muted: rgba(0,0,0,0.08);
+            --border-glow: rgba(16, 185, 129, 0.15);
+            --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
         
         body { 
@@ -737,6 +756,163 @@ HTML = """
             background: rgba(8, 9, 12, 0.5); border-radius: 18px; overflow: hidden; 
             border: 1px solid var(--border-muted); box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
         }
+        
+        /* Controls Card */
+        .controls-card {
+            background: var(--card-glass);
+            border-radius: 20px;
+            border: 1px solid var(--border-muted);
+            padding: 24px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        /* Search Bar */
+        .search-bar-wrapper {
+            display: flex;
+            align-items: center;
+            background: #08090c;
+            border: 1px solid var(--border-muted);
+            border-radius: 14px;
+            padding: 8px 16px;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+        .search-bar-wrapper:focus-within {
+            border-color: var(--accent-emerald);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+        .search-bar-wrapper svg {
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .search-bar-wrapper input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 14px;
+            padding: 10px 0;
+        }
+        .search-bar-wrapper input::placeholder {
+            color: var(--text-muted);
+        }
+        .search-btn {
+            background: var(--accent-emerald);
+            color: #064e3b;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .search-btn:hover {
+            background: #10c991;
+            transform: scale(1.02);
+        }
+        
+        /* Filter Row */
+        .filter-row {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr auto;
+            gap: 16px;
+            align-items: flex-end;
+        }
+        .filter-actions {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+        }
+        
+        /* Quick Filters */
+        .quick-filters {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .quick-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            font-weight: 700;
+            margin-right: 4px;
+        }
+        .quick-btn {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-muted);
+            color: var(--text-secondary);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-btn:hover {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+        }
+        .clear-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .clear-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: var(--accent-red);
+        }
+        
+        /* Table Section */
+        .table-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .table-header h3 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            font-weight: 700;
+        }
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .record-count {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        
+        /* Page Title */
+        .page-title p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+        
         table { width: 100%; border-collapse: separate; border-spacing: 0; }
         th { 
             background: rgba(15, 18, 25, 0.8); padding: 16px 20px; text-align: left; 
@@ -924,6 +1100,180 @@ HTML = """
             color: var(--accent-emerald);
         }
 
+        /* Theme Toggle Button */
+        .theme-toggle {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            border: 1px solid var(--border-muted);
+            background: var(--card-glass);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
+        }
+        .theme-toggle:hover {
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+            transform: rotate(15deg);
+        }
+        
+        /* Value Animation for Stats */
+        .stat-card .value.animate {
+            animation: valuePop 0.4s ease;
+        }
+        @keyframes valuePop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); color: var(--accent-emerald); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Row Checkbox */
+        .row-checkbox {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid var(--border-muted);
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .row-checkbox:hover {
+            border-color: var(--accent-emerald);
+        }
+        .row-checkbox.checked {
+            background: var(--accent-emerald);
+            border-color: var(--accent-emerald);
+        }
+        .row-checkbox.checked svg {
+            display: block;
+        }
+        .row-checkbox svg {
+            display: none;
+            width: 12px;
+            height: 12px;
+            color: #000;
+        }
+        .select-all-row {
+            background: rgba(16, 185, 129, 0.05) !important;
+        }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent-emerald);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Skeleton Loading */
+        .skeleton-row td { padding: 18px 20px; }
+        .skeleton-cell {
+            height: 16px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+        .skeleton-text { width: 60%; }
+        .skeleton-badge { width: 70px; height: 22px; border-radius: 8px; }
+        .skeleton-score { width: 80px; }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+        }
+        .tooltip::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border-muted);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .tooltip:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Better Table Row Hover */
+        .lead-row {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .lead-row:hover {
+            background: rgba(16, 185, 129, 0.04);
+            transform: translateX(2px);
+        }
+        .lead-row:hover td {
+            color: #fff;
+        }
+        .lead-row:hover td:first-child {
+            color: var(--accent-emerald);
+        }
+        
+        /* Keyboard Shortcut Hints */
+        .kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+        
+        /* Export Button Loading */
+        .export-btn.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .export-btn.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            margin: -8px 0 0 -8px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
         /* Stats Cards Enhancement */
         .stats-hud {
             display: grid;
@@ -958,6 +1308,18 @@ HTML = """
             transform: translateY(-4px);
             border-color: rgba(16, 185, 129, 0.2);
             box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        .stat-card .sub-text {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stat-card .sub-text svg {
+            width: 12px;
+            height: 12px;
         }
 
         /* Charts Enhancement */
@@ -1133,13 +1495,19 @@ HTML = """
                 <h2>Intelligence HUD</h2>
                 <p>Data Extraction Engine & Analytics Node</p>
             </div>
-            <div style="display:flex; align-items:center; gap:20px;">
-                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:10px 20px; border-radius:14px; font-size:12px; display:flex; align-items:center; gap:10px; backdrop-filter:blur(10px);">
-                    <span style="color:var(--text-muted); font-weight:700;">SYSTEM STATUS:</span> 
+            <div style="display:flex; align-items:center; gap:16px;">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+                    <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
+                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; display:flex; align-items:center; gap:8px; backdrop-filter:blur(10px);">
+                    <span style="color:var(--accent-emerald); font-weight:700;">●</span>
+                    <span style="color:var(--text-muted); font-weight:700;">STATUS:</span> 
                     <span id="live-status" style="font-weight:800; color:var(--text-secondary); letter-spacing:1px;">IDLE</span>
                 </div>
-                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:10px 20px; border-radius:14px; font-size:12px; backdrop-filter:blur(10px);">
-                    <span style="color:var(--text-muted); font-weight:700;">LAST UPDATED:</span> <span id="last-update" class="mono" style="color:var(--text-primary); margin-left:8px;">--:--:--</span>
+                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; backdrop-filter:blur(10px); display:flex; align-items:center; gap:8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span style="color:var(--text-muted); font-weight:700;">UPDATED:</span> <span id="last-update" class="mono" style="color:var(--text-primary);">--:--:--</span>
                 </div>
             </div>
         </div>
@@ -1152,21 +1520,37 @@ HTML = """
         </div>
 
         <div class="stats-hud">
-            <div class="stat-card">
+            <div class="stat-card tooltip" data-tip="Total scraped records">
                 <span class="label">Total Intelligence</span>
                 <span class="value mono" id="stat-total">{{s.total}}</span>
+                <span class="sub-text">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                    {{ s.filtered_total }} filtered
+                </span>
             </div>
-            <div class="stat-card emerald">
+            <div class="stat-card emerald tooltip" data-tip="Contacts with valid phone numbers">
                 <span class="label">Verified Contacts</span>
                 <span class="value mono" id="stat-phone">{{s.phone}}</span>
+                <span class="sub-text">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                    {{ s.with_phone_pct }}% coverage
+                </span>
             </div>
-            <div class="stat-card blue">
+            <div class="stat-card blue tooltip" data-tip="Contacts with valid email addresses">
                 <span class="label">Digital Identity</span>
                 <span class="value mono" id="stat-email">{{s.email}}</span>
+                <span class="sub-text">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    {{ s.with_email_pct }}% coverage
+                </span>
             </div>
-            <div class="stat-card amber">
-                <span class="label">Engine Precision</span>
-                <span class="value mono">98.4%</span>
+            <div class="stat-card amber tooltip" data-tip="Average quality score across all records">
+                <span class="label">Data Quality</span>
+                <span class="value mono">{{s.avg_quality}}%</span>
+                <span class="sub-text">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                    Avg score
+                </span>
             </div>
         </div>
 
@@ -1189,7 +1573,7 @@ HTML = """
             <div class="search-bar-wrapper">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" id="t-cat" placeholder="Search leads, categories, sources..." list="cats-list" value="{{selected_category or search_query}}">
-                <button class="search-btn" onclick="applyFilters()">Search</button>
+                <button class="search-btn" onclick="applyFilters()">Search<span class="kbd">Enter</span></button>
             </div>
 
             <div class="filter-row">
@@ -1274,7 +1658,7 @@ HTML = """
 
         <div class="chart-card" style="margin-top: -12px;">
             <p>Intelligence Growth Trend (Last 7 Days)</p>
-            <div class="chart-container" style="height: 120px;"><canvas id="trendChart"></canvas></div>
+            <div class="chart-container" style="height: 120px;"><canvas id="growthChart"></canvas></div>
         </div>
 
         <div class="content-grid">
@@ -1290,6 +1674,11 @@ HTML = """
                         <table>
                             <thead>
                                 <tr>
+                                    <th style="width:40px;">
+                                        <div class="row-checkbox" onclick="toggleSelectAll(this)" title="Select All">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </div>
+                                    </th>
                                     <th style="width:40px;">#</th>
                                     <th>Lead Name</th>
                                     <th>Phone</th>
@@ -1304,6 +1693,11 @@ HTML = """
                             <tbody id="leads-tbody">
                                 {% for c in contacts %}
                                 <tr class="lead-row">
+                                    <td>
+                                        <div class="row-checkbox" onclick="toggleRow(this)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </div>
+                                    </td>
                                     <td style="color:var(--text-muted); font-size:11px;">{{ loop.index + (page - 1) * 50 }}</td>
                                     <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
                                     <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
@@ -1366,11 +1760,24 @@ HTML = """
     <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
     <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>    <script>
         // CORE NAVIGATION FUNCTIONS (Defined early)
-        window.showNotif = function(msg, dur) {
+        window.showNotif = function(msg, dur, isError) {
             if (dur === undefined) dur = 3000;
             const n = document.getElementById('notif');
-            if (n) {
-                n.innerText = msg; n.style.display = 'block';
+            const t = document.getElementById('notif-text');
+            const errIcon = document.getElementById('notif-icon-error');
+            const sucIcon = document.getElementById('notif-icon-success');
+            if (n && t) {
+                t.innerText = msg;
+                n.style.display = 'flex';
+                if (isError) {
+                    n.classList.add('error');
+                    if (errIcon) errIcon.style.display = 'block';
+                    if (sucIcon) sucIcon.style.display = 'none';
+                } else {
+                    n.classList.remove('error');
+                    if (errIcon) errIcon.style.display = 'none';
+                    if (sucIcon) sucIcon.style.display = 'block';
+                }
                 setTimeout(function() { n.style.display = 'none'; }, dur);
             }
         };
@@ -1432,7 +1839,10 @@ HTML = """
 
         window.loadLeads = async function(url, pushState) {
             try {
-                window.showNotif('Loading...', 500);
+                const tbody = document.getElementById('leads-tbody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr class="skeleton-row"><td><div class="skeleton-cell skeleton-text"></div></td><td><div class="skeleton-cell skeleton-text"></div></td><td><div class="skeleton-cell skeleton-text"></div></td><td><div class="skeleton-cell skeleton-text"></div></td><td><div class="skeleton-cell skeleton-badge"></div></td><td><div class="skeleton-cell skeleton-text"></div></td><td><div class="skeleton-cell skeleton-badge"></div></td><td><div class="skeleton-cell skeleton-score"></div></td><td></td></tr>'.repeat(5);
+                }
                 const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
                 const data = await res.json();
                 
@@ -1442,17 +1852,27 @@ HTML = """
                 
                 window.renderLeads(data.contacts);
                 window.updatePaginationUI(data);
+                window.updateStats(data.stats);
                 
                 if (pushState) {
                     history.pushState({page: data.page, url: url}, '', url);
                 }
                 
-                // Scroll to top of table
-                document.querySelector('.glass-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.querySelector('.glass-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (e) {
                 console.error("AJAX Load Error:", e);
-                window.showNotif('Failed to load data', 3000);
+                window.showNotif('Failed to load data', 3000, true);
             }
+        };
+
+        window.updateStats = function(stats) {
+            if (!stats) return;
+            const totalEl = document.getElementById('stat-total');
+            const phoneEl = document.getElementById('stat-phone');
+            const emailEl = document.getElementById('stat-email');
+            if (totalEl && stats.total !== undefined) totalEl.innerText = stats.total.toLocaleString();
+            if (phoneEl && stats.phone !== undefined) phoneEl.innerText = stats.phone.toLocaleString();
+            if (emailEl && stats.email !== undefined) emailEl.innerText = stats.email.toLocaleString();
         };
 
         window.renderLeads = function(leads) {
@@ -1469,6 +1889,7 @@ HTML = """
                 const rowNum = (window.currentPage - 1) * 50 + i + 1;
                 const copyText = c.phone || c.email;
                 return '<tr class="lead-row">' +
+                    '<td><div class="row-checkbox" onclick="toggleRow(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg></div></td>' +
                     '<td style="color:var(--text-muted); font-size:11px;">' + rowNum + '</td>' +
                     '<td style="font-weight:700; font-family:\'Outfit\',sans-serif; color:#fff;">' + c.name + '</td>' +
                     '<td class="mono" style="font-size:12px;">' + c.phone + '</td>' +
@@ -1524,8 +1945,9 @@ window.updatePaginationUI = function(data) {
             // Update info
             var infoEl = document.querySelector('.pagination-info');
             if (infoEl) {
+                var totalText = data.filtered_total !== undefined ? data.filtered_total.toLocaleString() : (data.total_pages * data.contacts.length);
                 infoEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' +
-                    '<span>Showing <span>' + data.contacts.length + '</span> results</span>' +
+                    '<span><span>' + data.contacts.length + '</span> of ' + totalText + ' leads</span>' +
                     '<span style="color:var(--border-muted);">|</span>' +
                     '<span>Page <span>' + data.page + '</span> of <span>' + data.total_pages + '</span></span>';
             }
@@ -1582,13 +2004,20 @@ window.updatePaginationUI = function(data) {
             const cat = search;
             const src = document.getElementById('t-source')?.value || "";
             
-            const url = new URL(window.location.origin + "/export/" + fmt);
-            if (search) url.searchParams.set('q', search);
-            if (city) url.searchParams.set('city', city);
-            if (cat) url.searchParams.set('category', cat);
-            if (src) url.searchParams.set('source', src);
+            const baseUrl = window.location.origin;
+            let url = baseUrl + "/export/" + fmt;
+            const params = new URLSearchParams();
+            if (search) params.set('q', search);
+            if (city) params.set('city', city);
+            if (cat) params.set('category', cat);
+            if (src) params.set('source', src);
             
-            window.location.href = url.toString();
+            const queryString = params.toString();
+            if (queryString) url += '?' + queryString;
+            
+            console.log('Export URL:', url);
+            
+            window.location.href = url;
         };
 
         window.cleanup = async function() {
@@ -1613,9 +2042,24 @@ window.updatePaginationUI = function(data) {
         const evtSource = new EventSource("/api/stream/stats");
         evtSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            if (document.getElementById('stat-total')) document.getElementById('stat-total').innerText = data.total;
-            if (document.getElementById('stat-phone')) document.getElementById('stat-phone').innerText = data.with_phone;
-            if (document.getElementById('stat-email')) document.getElementById('stat-email').innerText = data.with_email;
+            if (document.getElementById('stat-total')) {
+                const el = document.getElementById('stat-total');
+                el.innerText = data.total;
+                el.classList.add('animate');
+                setTimeout(() => el.classList.remove('animate'), 400);
+            }
+            if (document.getElementById('stat-phone')) {
+                const el = document.getElementById('stat-phone');
+                el.innerText = data.with_phone;
+                el.classList.add('animate');
+                setTimeout(() => el.classList.remove('animate'), 400);
+            }
+            if (document.getElementById('stat-email')) {
+                const el = document.getElementById('stat-email');
+                el.innerText = data.with_email;
+                el.classList.add('animate');
+                setTimeout(() => el.classList.remove('animate'), 400);
+            }
             if (document.getElementById('last-update')) document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
             
             const status = data.scraper_status;
@@ -1650,7 +2094,11 @@ window.updatePaginationUI = function(data) {
                 } else {
                     badge.innerText = 'ONLINE'; badge.style.color = 'var(--text-secondary)';
                 }
-        // Chart.js initialization
+            }
+        };
+
+        // Live Feed SSE (combined with telemetry above)
+        
         let sourceChart, categoryChart, trendChart;
         async function initCharts() {
             const chartColors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -1723,6 +2171,30 @@ window.updatePaginationUI = function(data) {
                     }
                 });
             }
+            
+            const growthEl = document.getElementById('growthChart');
+            if (growthEl) {
+                window.growthChart = new Chart(growthEl, {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ 
+                        data: [], 
+                        borderColor: '#10b981', 
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }] },
+                    options: { 
+                        ...baseOpt, 
+                        plugins: { ...baseOpt.plugins, legend: { display: false } }, 
+                        scales: { 
+                            x: { ticks: fontOpt, grid: { display: false } }, 
+                            y: { ticks: fontOpt, grid: { color: 'rgba(255,255,255,0.03)' } }
+                        }
+                    }
+                });
+            }
 
             refreshCharts();
             setInterval(refreshCharts, 30000);
@@ -1751,53 +2223,16 @@ window.updatePaginationUI = function(data) {
                     trendChart.data.datasets[0].data = stats.trend.map(function(t) { return t.count; });
                     trendChart.update();
                 }
+                
+                if (window.growthChart) {
+                    window.growthChart.data.labels = stats.trend.map(function(t) { return t.date; });
+                    window.growthChart.data.datasets[0].data = stats.trend.map(function(t) { return t.count; });
+                    window.growthChart.update();
+                }
             } catch(e) { console.log('Chart error:', e); }
         }
 
-        // Live Feed SSE
-        const evtSource = new EventSource("/api/stream/stats");
-        evtSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            
-            // Update Stats
-            if (data.total) document.getElementById('stat-total').innerText = data.total.toLocaleString();
-            if (data.with_phone) document.getElementById('stat-phone').innerText = data.with_phone.toLocaleString();
-            if (data.with_email) document.getElementById('stat-email').innerText = data.with_email.toLocaleString();
-            
-            // Update Status
-            if (data.scraper_status) {
-                const s = data.scraper_status;
-                document.getElementById('live-status').innerText = s.running ? 'ACTIVE' : 'IDLE';
-                document.getElementById('live-status').style.color = s.running ? 'var(--accent-emerald)' : 'var(--text-secondary)';
-                if (s.running) {
-                    document.getElementById('prog-wrap').style.display = 'block';
-                    document.getElementById('prog-bar').style.width = '100%'; // Pulsing is done via CSS
-                } else {
-                    document.getElementById('prog-wrap').style.display = 'none';
-                }
-            }
-            
-            // Update Terminal Feed
-            if (data.activity_logs) {
-                const term = document.getElementById('terminal');
-                const currentContent = term.innerHTML;
-                let newLogs = '';
-                data.activity_logs.forEach(log => {
-                    const levelClass = log.level || 'INFO';
-                    newLogs += `<div class="log-entry">
-                        <span class="log-time">${log.time}</span>
-                        <span class="log-src">${log.source || 'SYS'}</span>
-                        <span class="log-msg ${levelClass}">${log.message}</span>
-                    </div>`;
-                });
-                term.innerHTML = newLogs;
-            }
-            
-            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
-            document.getElementById('last-update-sidebar').innerText = new Date().toLocaleTimeString();
-        };
-
-        async function openMaintenance() {
+        if (document.getElementById('sourceChart')) {
             if (!confirm("Run system-wide category normalization? This will fix duplicate charts by merging similar categories.")) return;
             
             showNotif("Starting database maintenance...");
@@ -1818,7 +2253,63 @@ window.updatePaginationUI = function(data) {
         if (document.getElementById('sourceChart')) {
             initCharts();
         }
-    </script>
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            
+            if (e.key === 'ArrowLeft' && !e.ctrlKey) {
+                e.preventDefault();
+                goToPage(currentPage - 1);
+            }
+            if (e.key === 'ArrowRight' && !e.ctrlKey) {
+                e.preventDefault();
+                goToPage(currentPage + 1);
+            }
+        });
+        
+        // Enter key on search inputs
+        document.getElementById('t-cat')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+        document.getElementById('t-city')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+        
+        // Theme Toggle
+        window.toggleTheme = function() {
+            const html = document.documentElement;
+            const isLight = html.getAttribute('data-theme') === 'light';
+            const newTheme = isLight ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            document.getElementById('theme-icon-sun').style.display = isLight ? 'block' : 'none';
+            document.getElementById('theme-icon-moon').style.display = isLight ? 'none' : 'block';
+        };
+        
+        // Restore theme from localStorage
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            if (savedTheme === 'light') {
+                document.getElementById('theme-icon-sun').style.display = 'none';
+                document.getElementById('theme-icon-moon').style.display = 'block';
+            }
+        }
+        
+        // Row Checkbox Selection
+        window.toggleSelectAll = function(el) {
+            const checked = !el.classList.contains('checked');
+            el.classList.toggle('checked', checked);
+            document.querySelectorAll('#leads-tbody .row-checkbox').forEach(cb => {
+                cb.classList.toggle('checked', checked);
+            });
+        };
+        
+        window.toggleRow = function(el) {
+            el.classList.toggle('checked');
+        };
 </body>
 </html>
 """
@@ -2333,6 +2824,11 @@ def api_contacts():
 
 @app.route("/export/<fmt>")
 def export(fmt):
+    logger.info(f"Export requested: format={fmt}, args={dict(request.args)}")
+    
+    if fmt not in ("csv", "excel", "json"):
+        return "Invalid format. Use csv, excel, or json.", 400
+    
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -2343,6 +2839,7 @@ def export(fmt):
         filter_source = request.args.get("source", "")
 
         like_op = "LIKE" if USE_SQLITE else "ILIKE"
+        
         where_clauses = []
         params = []
         if search_query:
@@ -2359,11 +2856,13 @@ def export(fmt):
             params.append(f"%{filter_source}%")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        logger.info(f"Export query: WHERE {where_sql} with params {params}")
 
         cur.execute(f"SELECT * FROM contacts WHERE {where_sql}", params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
+        logger.info(f"Export found {len(rows)} rows")
     except Exception as e:
         logger.error(f"Export error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2371,26 +2870,49 @@ def export(fmt):
     if not rows:
         rows = []
 
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    parts = [ts]
+    if filter_city: parts.append(filter_city.replace(' ', '_'))
+    if filter_category: parts.append(filter_category.replace(' ', '_'))
+    if search_query: parts.append(search_query.replace(' ', '_'))
+    filename_prefix = "_".join(parts)
+    total_rows = len(rows)
+
     if fmt == "csv":
         import csv
         out = io.StringIO()
         fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"]
         if rows:
             fields = list(rows[0].keys())
-        w = csv.DictWriter(out, fieldnames=fields)
+        w = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
         w.writeheader()
         for r in rows:
             row = {}
             for k, v in r.items():
                 if isinstance(v, (datetime, date)):
                     row[k] = v.isoformat()
+                elif v is None:
+                    row[k] = ""
                 else:
                     row[k] = v
             w.writerow(row)
-        return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment;filename=leads_export_{int(time.time())}.csv"})
+        csv_data = out.getvalue()
+        logger.info(f"CSV generated: {len(csv_data)} bytes")
+        return Response(csv_data, mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename_prefix}_{total_rows}rows.csv"})
 
     if fmt == "json":
-        return jsonify({"status": "success", "count": len(rows), "timestamp": datetime.now().isoformat(), "data": rows})
+        return jsonify({
+            "status": "success",
+            "count": total_rows,
+            "filters": {
+                "search": search_query,
+                "city": filter_city,
+                "category": filter_category,
+                "source": filter_source
+            },
+            "timestamp": datetime.now().isoformat(),
+            "data": rows
+        })
 
     if fmt == "excel":
         wb = Workbook()
@@ -2399,13 +2921,13 @@ def export(fmt):
         if rows:
             ws.append(list(rows[0].keys()))
             for r in rows:
-                ws.append([r.get(k, "") for k in rows[0].keys()])
+                ws.append([r.get(k, "") or "" for k in rows[0].keys()])
         else:
             ws.append(["No data found for selected filters"])
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
-        return send_file(out, download_name=f"leads_export_{int(time.time())}.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        return send_file(out, download_name=f"{filename_prefix}_{total_rows}rows.xlsx", as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return "Invalid format", 400
 
 
