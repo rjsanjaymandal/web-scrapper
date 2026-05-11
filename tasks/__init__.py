@@ -38,7 +38,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 def start_health_server():
-    port = int(os.environ.get("PORT", "8080"))
+    # Use 8081 for worker health to avoid collision with web dashboard on 8080
+    port = int(os.environ.get("HEALTH_PORT", "8081"))
     try:
         server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
         logger.info(f"Background Health Server started on port {port}")

@@ -4,9 +4,6 @@ import sys
 sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
 sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
 
-print("--- [DEBUG] ENTRYPOINT LOADED ---", file=sys.stderr, flush=True)
-print("--- [DEBUG] ENTRYPOINT LOADED (STDOUT) ---", flush=True)
-
 import time
 import subprocess
 import traceback
@@ -14,46 +11,9 @@ import socket
 import threading
 from urllib.parse import urlparse
 from urllib.request import urlopen
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 def log(msg):
     print(f"[BOOTSTRAP] {msg}", file=sys.stderr, flush=True)
-
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ['/', '/health']:
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/plain')
-            self.send_header('Connection', 'close')
-            self.end_headers()
-            self.wfile.write(b"OK")
-            log(f"[HEALTH] 200 OK -> {self.path}")
-        else:
-            self.send_response(404)
-            self.end_headers()
-            log(f"[HEALTH] 404 Not Found -> {self.path}")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        return
-
-def start_health_server(port_str):
-    def run_server():
-        try:
-            port = int(port_str)
-            log(f"Starting Health Server on 0.0.0.0:{port}...")
-            server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-            server.serve_forever()
-        except Exception as e:
-            log(f"[ERROR] HEALTH SERVER CRITICAL ERROR: {e}")
-            traceback.print_exc()
-
-    thread = threading.Thread(target=run_server, daemon=True)
-    thread.start()
-    log("Health Server thread spawned.")
 
 def wait_for_db():
     try:
@@ -131,22 +91,20 @@ def is_port_in_use(p):
 
 def kill_port_owner(p):
     try:
+        # Use a more targeted kill command
         cmd = f"fuser -k {p}/tcp"
         subprocess.run(cmd, shell=True, capture_output=True)
-        log(f"Forcefully cleared port {p} via fuser.")
+        log(f"Cleared port {p} via fuser.")
     except Exception as e:
         log(f"Port reaper warning: {e}")
 
 def main():
     try:
         port = os.environ.get("PORT", "8080")
-        is_worker_flag = "--worker" in sys.argv
         env_process_type = os.environ.get("PROCESS_TYPE")
         railway_service = os.environ.get("RAILWAY_SERVICE_NAME", "").lower()
 
-        if is_worker_flag:
-            process_type = "worker"
-        elif env_process_type:
+        if env_process_type:
             process_type = env_process_type.strip().lower()
         elif "worker" in railway_service:
             process_type = "worker"
@@ -164,7 +122,8 @@ def main():
             if not init_tables():
                 sys.exit(1)
             
-            while is_port_in_use(port):
+            # Brief check/clear for 8080
+            if is_port_in_use(port):
                 kill_port_owner(port)
                 time.sleep(1)
 
@@ -172,15 +131,15 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            start_health_server(port)
+            # Worker health is handled internally by tasks/__init__.py on port 8081
             cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
-            subprocess.run(cmd)
+            os.execvp(cmd[0], cmd)
         
         elif process_type == "automator":
             if not init_tables():
                 sys.exit(1)
             
-            while is_port_in_use(port):
+            if is_port_in_use(port):
                 kill_port_owner(port)
                 time.sleep(1)
 
