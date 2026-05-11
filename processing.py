@@ -249,16 +249,18 @@ class ProcessingHandler:
                 elif field == 'category':
                     val = cls.normalize_category(val)
                 
-                # Truncation fail-safe (only for VARCHAR fields)
-                if field not in ['address', 'source_url']:
-                    val = val[:500]
+                # Truncation fail-safe (only for remaining VARCHAR fields if any)
+                # But since these are now TEXT in DB, we can allow more data.
+                # We limit to 5000 as a sane application-level limit to prevent OOM.
+                val = val[:5000]
                 
                 contact[field] = val
         
-        # Phone truncation fail-safe
+        # Phone truncation fail-safe (Keep at 50 as these are still VARCHAR)
         if contact.get('phone'): contact['phone'] = str(contact['phone'])[:50]
         if contact.get('phone_clean'): contact['phone_clean'] = str(contact['phone_clean'])[:50]
-        if contact.get('email'): contact['email'] = str(contact['email'])[:500]
+        # Email can be long, allow 2000
+        if contact.get('email'): contact['email'] = str(contact['email'])[:2000]
         
         # 4. Extract Blockchain Contract Addresses (CAs)
         # We check address, name, and any detail text for CAs

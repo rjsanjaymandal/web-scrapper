@@ -601,13 +601,13 @@ class ContactScraper:
                     col = row['column_name']
                     max_len = row['character_maximum_length']
                     
-                    # 1. Expand all standard string columns to 500
-                    if max_len and max_len < 500 and col not in ['phone', 'phone_clean']:
-                        logger.info(f"Migrating column '{col}' from {max_len} to 500 characters...")
-                        await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE VARCHAR(500)")
+                    # 1. Expand all standard string columns to TEXT
+                    if max_len and col not in ['phone', 'phone_clean']:
+                        logger.info(f"Migrating column '{col}' to TEXT...")
+                        await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE TEXT")
                 
                 # 2. Forcefully upgrade text-heavy fields to TEXT
-                for col in ["address", "source_url"]:
+                for col in ["name", "email", "address", "category", "city", "area", "state", "source", "source_url", "arn", "license_no", "membership_no", "blockchain_ca"]:
                     try:
                         await conn.execute(f"ALTER TABLE contacts ALTER COLUMN {col} TYPE TEXT")
                         logger.debug(f"Ensured {col} is TEXT")
@@ -623,24 +623,25 @@ class ContactScraper:
             await self.pool.execute("""
                 CREATE TABLE IF NOT EXISTS contacts (
                     id SERIAL PRIMARY KEY,
-                    name VARCHAR(500),
+                    name TEXT,
                     phone VARCHAR(50),
-                    email VARCHAR(500),
+                    email TEXT,
                     address TEXT,
-                    category VARCHAR(500),
-                    city VARCHAR(500),
-                    area VARCHAR(500),
-                    state VARCHAR(500),
-                    source VARCHAR(500),
+                    category TEXT,
+                    city TEXT,
+                    area TEXT,
+                    state TEXT,
+                    source TEXT,
                     source_url TEXT,
                     phone_clean VARCHAR(50),
                     email_valid BOOLEAN,
                     enriched BOOLEAN,
-                    arn VARCHAR(500),
-                    license_no VARCHAR(500),
-                    membership_no VARCHAR(500),
+                    arn TEXT,
+                    license_no TEXT,
+                    membership_no TEXT,
                     quality_score INT DEFAULT 0,
                     quality_tier VARCHAR(20) DEFAULT 'low',
+                    blockchain_ca TEXT,
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -650,24 +651,25 @@ class ContactScraper:
             )
 
         required_columns = {
-            "name": "VARCHAR(500)",
+            "name": "TEXT",
             "phone": "VARCHAR(50)",
-            "email": "VARCHAR(500)",
+            "email": "TEXT",
             "address": "TEXT",
-            "category": "VARCHAR(500)",
-            "city": "VARCHAR(500)",
-            "area": "VARCHAR(500)",
-            "state": "VARCHAR(500)",
-            "source": "VARCHAR(500)",
+            "category": "TEXT",
+            "city": "TEXT",
+            "area": "TEXT",
+            "state": "TEXT",
+            "source": "TEXT",
             "source_url": "TEXT",
             "phone_clean": "VARCHAR(50)",
             "email_valid": "BOOLEAN",
             "enriched": "BOOLEAN",
-            "arn": "VARCHAR(500)",
-            "license_no": "VARCHAR(500)",
-            "membership_no": "VARCHAR(500)",
+            "arn": "TEXT",
+            "license_no": "TEXT",
+            "membership_no": "TEXT",
             "quality_score": "INT DEFAULT 0",
             "quality_tier": "VARCHAR(20) DEFAULT 'low'",
+            "blockchain_ca": "TEXT",
             "scraped_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         }
 

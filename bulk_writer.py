@@ -56,24 +56,25 @@ class BulkWriter:
                 continue
                 
             records.append((
-                rec.get("name", "")[:500],
+                rec.get("name", ""),
                 rec.get("phone", "")[:50],
-                rec.get("email", "")[:500],
+                rec.get("email", ""),
                 rec.get("address", ""),
-                rec.get("category", "")[:500],
-                rec.get("city", "")[:500],
-                rec.get("area", "")[:500],
-                rec.get("state", "")[:500],
-                rec.get("source", "")[:500],
+                rec.get("category", ""),
+                rec.get("city", ""),
+                rec.get("area", ""),
+                rec.get("state", ""),
+                rec.get("source", ""),
                 rec.get("detail_url", "") or rec.get("source_url", ""),
                 rec.get("phone_clean", "")[:50],
                 rec.get("email_valid", False),
                 True,  # enriched
-                rec.get("arn", "")[:500],
-                rec.get("license_no", "")[:500],
-                rec.get("membership_no", "")[:500],
+                rec.get("arn", ""),
+                rec.get("license_no", ""),
+                rec.get("membership_no", ""),
                 rec.get("quality_score", 0),
-                rec.get("quality_tier", "low")[:500],
+                rec.get("quality_tier", "low"),
+                rec.get("blockchain_ca", ""),
             ))
 
         if not records:
@@ -86,15 +87,16 @@ class BulkWriter:
                     INSERT INTO contacts (
                         name, phone, email, address, category, city, area, state, source, 
                         source_url, phone_clean, email_valid, enriched, arn, license_no, 
-                        membership_no, quality_score, quality_tier
+                        membership_no, quality_score, quality_tier, blockchain_ca
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                     ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL
                     DO UPDATE SET
                         quality_score = EXCLUDED.quality_score,
                         quality_tier = EXCLUDED.quality_tier,
                         scraped_at = EXCLUDED.scraped_at,
-                        enriched = TRUE
+                        enriched = TRUE,
+                        blockchain_ca = EXCLUDED.blockchain_ca
                     WHERE EXCLUDED.quality_score >= contacts.quality_score
                 """, records)
             logger.info(f"✅ Successfully wrote {len(records)} records (Batch size: {count})")
