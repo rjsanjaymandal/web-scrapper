@@ -20,7 +20,7 @@ def set_status(msg, is_running=True, stats=None):
     pass
 
 try:
-    from tasks import set_status as tasks_set_status, auto_pilot_task, scrape_category_task, fast_scrape_task, direct_gov_scrape_batch
+    from tasks import set_status as tasks_set_status, auto_pilot_task, scrape_category_task, fast_scrape_task, direct_scrape_task, direct_gov_scrape_batch
     set_status = tasks_set_status
 except ImportError:
     auto_pilot_task = scrape_category_task = fast_scrape_task = direct_gov_scrape_batch = None
@@ -1549,6 +1549,26 @@ HTML = """
                 </a>
             </nav>
 
+            <nav class="nav-group">
+                <p class="nav-label">Direct Scrape (No Proxy)</p>
+                <a href="#" class="nav-item" onclick="startDirectScrape('SEBI')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                    SEBI
+                </a>
+                <a href="#" class="nav-item" onclick="startDirectScrape('ICAI')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                    ICAI (CAs)
+                </a>
+                <a href="#" class="nav-item" onclick="startDirectScrape('NSE')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                    NSE
+                </a>
+                <a href="#" class="nav-item" onclick="startGovBatch()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
+                    Gov Sites Batch
+                </a>
+            </nav>
+
             <div class="system-footer">
                 <p>System Status</p>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2467,6 +2487,54 @@ window.updatePaginationUI = function(data) {
         window.toggleRow = function(el) {
             el.classList.toggle('checked');
         };
+        
+        // Direct Scraping Functions (No Proxy)
+        window.startDirectScrape = async function(source) {
+            const city = document.getElementById('t-city')?.value || "";
+            const category = document.getElementById('t-cat')?.value || "";
+            
+            showNotif(`Starting direct scrape for ${source}...`);
+            
+            try {
+                const params = new URLSearchParams();
+                params.set('source', source);
+                if (city) params.set('city', city);
+                if (category) params.set('category', category);
+                
+                const res = await fetch('/api/trigger/direct-scrape?' + params.toString(), {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    showNotif(data.error, 4000, true);
+                } else {
+                    showNotif(data.message);
+                }
+            } catch(e) {
+                showNotif('Failed to start direct scrape', 3000, true);
+            }
+        };
+        
+        window.startGovBatch = async function() {
+            showNotif('Starting government sites batch scrape...');
+            
+            try {
+                const res = await fetch('/api/trigger/direct-gov-batch', {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    showNotif(data.error, 4000, true);
+                } else {
+                    showNotif(data.message);
+                    updateScraperStatus('Government sites batch started...', true);
+                }
+            } catch(e) {
+                showNotif('Failed to start gov batch', 3000, true);
+            }
+        };
     </script>
 </body>
 </html>
@@ -2935,6 +3003,63 @@ def trigger_fast_scrape():
             "task_id": getattr(task_result, "id", None),
         })
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/trigger/direct-scrape", methods=["POST", "GET"])
+def trigger_direct_scrape():
+    """
+    Trigger direct scraping WITHOUT proxy - for government sites.
+    Uses polite HTTP fetching to avoid blocking.
+    """
+    os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
+    try:
+        source = request.args.get("source", "SEBI") or request.json.get("source", "SEBI") if request.is_json else "SEBI"
+        city = request.args.get("city") or (request.json.get("city") if request.is_json else None)
+        category = request.args.get("category") or (request.json.get("category") if request.is_json else None)
+        
+        set_status(
+            f"Queued direct scrape: {source}...",
+            True,
+            {"source": source, "city": city, "category": category},
+        )
+        
+        task_result = direct_scrape_task.delay(source=source, city=city, category=category)
+        
+        return jsonify({
+            "message": f"🔓 Direct scrape queued for {source}!",
+            "task_id": getattr(task_result, "id", None),
+            "source": source,
+            "city": city,
+            "category": category,
+        })
+    except Exception as e:
+        logger.error(f"Direct scrape trigger error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/trigger/direct-gov-batch", methods=["POST", "GET"])
+def trigger_direct_gov_batch():
+    """
+    Trigger batch direct scraping for all government sites.
+    Scrapes SEBI, ICAI, NSE, MCA, AMFI without proxies.
+    """
+    os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
+    try:
+        set_status(
+            "Queued direct government sites batch...",
+            True,
+            {"source": "GOVERNMENT"},
+        )
+        
+        task_result = direct_gov_scrape_batch.delay()
+        
+        return jsonify({
+            "message": "🔓 Direct gov batch queued! Scraping SEBI, ICAI, NSE, MCA, AMFI...",
+            "task_id": getattr(task_result, "id", None),
+        })
+    except Exception as e:
+        logger.error(f"Direct gov batch trigger error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
