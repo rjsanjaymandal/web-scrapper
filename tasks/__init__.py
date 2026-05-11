@@ -329,3 +329,190 @@ def export_data_task():
             return await scraper.export_to_csv()
         finally: await scraper.close()
     return asyncio.run(_run())
+
+
+@celery_app.task(name="tasks.direct_scrape_task", time_limit=1800, soft_time_limit=1600)
+def direct_scrape_task(source: str = None, city: str = None, category: str = None):
+    """
+    Direct scraping without proxies - optimized for government sites.
+    Uses polite HTTP fetching to avoid blocking.
+    """
+    set_status(
+        f"Started: Direct scraping {source or 'Gov Sites'}...",
+        True,
+        {"source": source, "city": city, "category": category},
+    )
+    
+    try:
+        from direct_scraper import (
+            DirectPoliteFetcher, 
+            SEBIDirectScraper, 
+            ICAIDirectScraper,
+            MCADirectScraper,
+            AMFIDirectScraper,
+            NSEDirectScraper,
+            get_scraper
+        )
+    except Exception as e:
+        set_status(f"Error: Could not import direct scraper: {e}", False)
+        logger.error(f"Direct scrape import failed: {e}")
+        return {"status": "failed", "error": str(e)}
+    
+    try:
+        fetcher = DirectPoliteFetcher()
+        
+        # Map source names to scraper classes
+        scraper_map = {
+            "SEBI": SEBIDirectScraper,
+            "ICAI": ICAIDirectScraper,
+            "MCA": MCADirectScraper,
+            "AMFI": AMFIDirectScraper,
+            "NSE": NSEDirectScraper,
+        }
+        
+        source_upper = (source or "SEBI").upper()
+        scraper_class = scraper_map.get(source_upper)
+        
+        if not scraper_class:
+            set_status(f"Error: Unknown source {source}", False)
+            return {"status": "failed", "error": f"Unknown source: {source}"}
+        
+        scraper = scraper_class(fetcher)
+        results = scraper.scrape(city=city, category=category)
+        
+        if results:
+            # Save to database
+            from processing import ProcessingHandler
+            from bulk_writer import BulkWriter
+            
+            handler = ProcessingHandler()
+            processed = []
+            
+            for contact in results:
+                try:
+                    cleaned = handler.process_contact(contact)
+                    if cleaned.get('phone_clean') or cleaned.get('email_valid'):
+                        processed.append(cleaned)
+                except Exception as proc_err:
+                    logger.warning(f"Processing error: {proc_err}")
+            
+            if processed:
+                # Save to database
+                try:
+                    from scraper import ContactScraper, load_config
+                    async def save_to_db():
+                        db_scraper = ContactScraper(load_config())
+                        await db_scraper.init_db()
+                        try:
+                            count = await db_scraper.save_contacts(processed)
+                            return count
+                        finally:
+                            await db_scraper.close()
+                    
+                    saved_count = asyncio.run(save_to_db())
+                    set_status(f"Success: Extracted {len(results)}, saved {saved_count} from {source}", False)
+                    return {"status": "completed", "extracted": len(results), "saved": saved_count}
+                except Exception as db_err:
+                    logger.error(f"Database save error: {db_err}")
+                    set_status(f"Extracted {len(results)} but failed to save: {db_err}", False)
+                    return {"status": "completed", "extracted": len(results), "saved": 0, "db_error": str(db_err)}
+        else:
+            set_status(f"No results from {source} via direct scraping", False)
+            return {"status": "completed", "extracted": 0, "saved": 0}
+            
+    except Exception as e:
+        set_status(f"Error: {e}", False)
+        logger.error(f"Direct scrape failed: {e}")
+        return {"status": "failed", "error": str(e)}
+
+
+@celery_app.task(name="tasks.direct_gov_scrape_batch", time_limit=3600, soft_time_limit=3300)
+def direct_gov_scrape_batch():
+    """
+    Batch direct scraping for all government sites.
+    No proxies - polite HTTP fetching for regulatory sites.
+    """
+    set_status("Started: Direct Gov Sites Batch...", True, {"source": "GOVERNMENT"})
+    
+    try:
+        from direct_scraper import (
+            DirectPoliteFetcher,
+            SEBIDirectScraper,
+            ICAIDirectScraper,
+            MCADirectScraper,
+            AMFIDirectScraper,
+            NSEDirectScraper,
+        )
+    except Exception as e:
+        set_status(f"Error: {e}", False)
+        return {"status": "failed", "error": str(e)}
+    
+    try:
+        config_cities = ["Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Pune", 
+                        "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"]
+        
+        gov_sources = [
+            ("SEBI", SEBIDirectScraper, "Investment Advisors"),
+            ("ICAI", ICAIDirectScraper, "Chartered Accountants"),
+            ("NSE", NSEDirectScraper, "Stock Brokers"),
+            ("MCA", MCADirectScraper, "Company Secretaries"),
+            ("AMFI", AMFIDirectScraper, "Mutual Fund Agents"),
+        ]
+        
+        fetcher = DirectPoliteFetcher()
+        total_results = 0
+        total_saved = 0
+        
+        for source_name, scraper_class, category in gov_sources:
+            set_status(f"Scraping {source_name}...", True, {"source": source_name})
+            
+            scraper = scraper_class(fetcher)
+            
+            try:
+                results = scraper.scrape(city=None, category=category)
+                total_results += len(results)
+                
+                if results:
+                    set_status(f"{source_name}: Found {len(results)} records...", True, {"source": source_name})
+                    
+                    # Process and save results
+                    from processing import ProcessingHandler
+                    handler = ProcessingHandler()
+                    processed = []
+                    
+                    for contact in results:
+                        try:
+                            cleaned = handler.process_contact(contact)
+                            if cleaned.get('phone_clean') or cleaned.get('email_valid'):
+                                processed.append(cleaned)
+                        except:
+                            continue
+                    
+                    if processed:
+                        try:
+                            from scraper import ContactScraper, load_config
+                            async def save_batch():
+                                db = ContactScraper(load_config())
+                                await db.init_db()
+                                try:
+                                    count = await db.save_contacts(processed)
+                                    return count
+                                finally:
+                                    await db.close()
+                            
+                            saved = asyncio.run(save_batch())
+                            total_saved += saved
+                        except Exception as db_err:
+                            logger.warning(f"DB save error for {source_name}: {db_err}")
+                            
+            except Exception as src_err:
+                logger.error(f"Source {source_name} failed: {src_err}")
+                continue
+        
+        set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
+        return {"status": "completed", "extracted": total_results, "saved": total_saved}
+        
+    except Exception as e:
+        set_status(f"Error: {e}", False)
+        logger.error(f"Direct gov batch failed: {e}")
+        return {"status": "failed", "error": str(e)}
