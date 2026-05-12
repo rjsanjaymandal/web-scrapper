@@ -1385,20 +1385,22 @@ class ContactScraper:
         name = str(listing.get("name") or "").strip()
         if len(name) < 3:
             return False
-        # MANDATORY: Must have phone or email to be considered a valid record for DB
+        # MANDATORY: Must have phone, email, OR a verified official identifier
         has_contact = bool(
             listing.get("phone_clean")
             or (listing.get("email") and listing.get("email_valid"))
         )
-        if not has_contact:
+        
+        official_sources = ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']
+        has_official_id = (
+            listing.get("source") in official_sources and
+            bool(listing.get("arn") or listing.get("license_no") or listing.get("membership_no") or listing.get("registration_no"))
+        )
+
+        if not (has_contact or has_official_id):
             return False
             
-        return bool(
-            listing.get("arn")
-            or listing.get("license_no")
-            or listing.get("membership_no")
-            or listing.get("address")
-        )
+        return True
 
     def _storage_dedupe_key(self, listing: Dict, source: str):
         if listing.get("phone_clean"):
@@ -1482,11 +1484,18 @@ class ContactScraper:
             
             # REQUIREMENT: Only save if we have either phone or email contact info
             # This is already checked in ProcessingHandler, but we double-check here for safety.
+            # EXCEPTION: Official registry records with identifiers are allowed.
             has_phone = bool(processed.get("phone_clean"))
             has_email = bool(processed.get("email") and processed.get("email_valid"))
             
-            if not (has_phone or has_email):
-                logger.info(f"🚫 [DB_FILTER] Dropping {processed.get('name')} - Missing contact details")
+            official_sources = ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']
+            has_official_id = (
+                processed.get("source") in official_sources and
+                bool(processed.get("registration_no") or processed.get("license_no") or processed.get("membership_no") or processed.get("arn"))
+            )
+            
+            if not (has_phone or has_email or has_official_id):
+                logger.info(f"🚫 [DB_FILTER] Dropping {processed.get('name')} - Missing contact details and no verified ID")
                 continue
 
             if ProcessingHandler.filter_valid([processed]) or self._is_official_registry_record(processed, source):
