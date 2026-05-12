@@ -3073,7 +3073,7 @@ def trigger_direct_gov_batch():
         task_result = direct_gov_scrape_batch.delay()
         
         return jsonify({
-            "message": "🔓 Direct gov batch queued! Scraping SEBI, ICAI, NSE, MCA, AMFI...",
+            "message": "🔓 Direct gov batch queued! Scraping ICAI (CAs), AMFI (MF Agents), SEBI (Investment Advisors), IRDAI (Insurance Agents)...",
             "task_id": getattr(task_result, "id", None),
         })
     except Exception as e:

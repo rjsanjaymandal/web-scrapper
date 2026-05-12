@@ -352,39 +352,28 @@ def direct_scrape_task(source: str = None, city: str = None, category: str = Non
     
     try:
         from direct_scraper import (
-            DirectPoliteFetcher, 
-            SEBIDirectScraper, 
+            DirectPoliteFetcher,
             ICAIDirectScraper,
-            MCADirectScraper,
             AMFIDirectScraper,
-            NSEDirectScraper,
+            SEBIDirectScraper,
+            IRDAIDirectScraper,
             get_scraper
         )
     except Exception as e:
         set_status(f"Error: Could not import direct scraper: {e}", False)
         logger.error(f"Direct scrape import failed: {e}")
         return {"status": "failed", "error": str(e)}
-    
+
     try:
         fetcher = DirectPoliteFetcher()
-        
-        # Map source names to scraper classes
-        scraper_map = {
-            "SEBI": SEBIDirectScraper,
-            "ICAI": ICAIDirectScraper,
-            "MCA": MCADirectScraper,
-            "AMFI": AMFIDirectScraper,
-            "NSE": NSEDirectScraper,
-        }
-        
-        source_upper = (source or "SEBI").upper()
-        scraper_class = scraper_map.get(source_upper)
-        
-        if not scraper_class:
-            set_status(f"Error: Unknown source {source}", False)
+        source_upper = (source or "ICAI").upper()
+        scraper = get_scraper(source_upper)
+
+        if not scraper:
+            set_status(f"Error: Unknown source {source}. Available: ICAI, AMFI, SEBI, IRDAI", False)
             return {"status": "failed", "error": f"Unknown source: {source}"}
-        
-        scraper = scraper_class(fetcher)
+
+        scraper = scraper(fetcher)
         results = scraper.scrape(city=city, category=category)
         
         if results:
@@ -440,73 +429,60 @@ def direct_gov_scrape_batch():
     No proxies - polite HTTP fetching for regulatory sites.
     """
     set_status("Started: Direct Gov Sites Batch...", True, {"source": "GOVERNMENT"})
-    
+
     try:
         from direct_scraper import (
             DirectPoliteFetcher,
-            SEBIDirectScraper,
             ICAIDirectScraper,
-            MCADirectScraper,
             AMFIDirectScraper,
-            NSEDirectScraper,
-            BCIDirectScraper,
-            RBIDirectScraper,
-            GSTDirectScraper,
-            ICSIDirectScraper,
-            IBBIDirectScraper,
+            SEBIDirectScraper,
+            IRDAIDirectScraper,
         )
     except Exception as e:
         set_status(f"Error: {e}", False)
         return {"status": "failed", "error": str(e)}
-    
+
     try:
         from scraper import load_config
         loaded_config = load_config()
         configured_cities = list(getattr(loaded_config, "cities", []) or [])
-        from direct_scraper import DirectScraperConfig
-        all_india_cities = list(DirectScraperConfig.CITY_STATE_MAP.keys())
     except Exception:
         configured_cities = []
-        all_india_cities = []
-    
-    ca_priority_cities = configured_cities + [c.capitalize() for c in all_india_cities]
-    # Remove duplicates and maintain order
-    ca_priority_cities = list(dict.fromkeys(ca_priority_cities))
-    
-    # We use a large set for ICAI to cover India, but a smaller set for others to avoid excessive load
-    icai_cities = ca_priority_cities[:60]
-    general_priority_cities = ca_priority_cities[:15]
-    
-    gov_sources = [
-        ("ICAI", ICAIDirectScraper, "Chartered Accountants", icai_cities),
-        ("ICSI", ICSIDirectScraper, "Company Secretaries", general_priority_cities),
-        ("BCI", BCIDirectScraper, "Lawyers", general_priority_cities),
-        ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
-        ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
-        ("MCA", MCADirectScraper, "Company Secretaries", [None]),
-        ("AMFI", AMFIDirectScraper, "Mutual fund Agents", general_priority_cities[:8]),
-        ("RBI", RBIDirectScraper, "NBFC", [None]),
-        ("IBBI", IBBIDirectScraper, "Insolvency Professionals", [None]),
-        ("GST", GSTDirectScraper, "GST Practitioner", general_priority_cities[:8]),
+
+    ca_priority_cities = [
+        "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad",
+        "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow",
+        "Chandigarh", "Surat", "Vadodara", "Nagpur", "Indore",
+        "Bhopal", "Patna", "Visakhapatnam", "Coimbatore", "Kochi",
     ]
-    
+    for c in configured_cities:
+        if c not in ca_priority_cities:
+            ca_priority_cities.append(c)
+    ca_priority_cities = ca_priority_cities[:30]
+
+    gov_sources = [
+        ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities[:60]),
+        ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:15]),
+        ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
+        ("IRDAI", IRDAIDirectScraper, "Insurance Agents", [None]),
+    ]
+
     fetcher = DirectPoliteFetcher()
     total_results = 0
     total_saved = 0
-    
+
     from processing import ProcessingHandler
     from scraper import ContactScraper
-    
+
     from scrape_state import claim_scrape_job, finish_scrape_job
 
     for source_name, scraper_class, category, cities_to_try in gov_sources:
         scraper = scraper_class(fetcher)
-        
+
         for target_city in cities_to_try:
-            # EFFICIENT TRACING: Skip if recently scraped
             claimed, reason, token = claim_scrape_job(target_city or "all", category, source_name)
             if not claimed:
-                logger.info(f"⏭️ Skipping {source_name} in {target_city or 'all India'}: {reason}")
+                logger.info(f"Skipping {source_name} in {target_city or 'all India'}: {reason}")
                 continue
 
             status_city = target_city or "all India"
@@ -515,33 +491,32 @@ def direct_gov_scrape_batch():
                 True,
                 {"source": source_name, "city": target_city, "category": category},
             )
-            
+
             try:
                 results = scraper.scrape(city=target_city, category=category)
                 total_results += len(results)
                 if not results:
                     finish_scrape_job(target_city or "all", category, source_name, token, count=0, success=True)
                     continue
-                
+
                 set_status(
                     f"{source_name}: Found {len(results)} records...",
                     True,
                     {"source": source_name, "city": target_city, "category": category},
                 )
-                
+
                 processed = []
                 for contact in results:
                     try:
-                        # ProcessingHandler already enforces the phone/email rule
                         cleaned = ProcessingHandler.process_contact(contact)
                         if cleaned and cleaned.get("name"):
                             processed.append(cleaned)
                     except Exception:
                         continue
-                
+
                 if not processed:
                     continue
-                
+
                 try:
                     async def save_batch():
                         db = ContactScraper(load_config())
@@ -550,19 +525,19 @@ def direct_gov_scrape_batch():
                             return await db.save_contacts(processed)
                         finally:
                             await db.close()
-                    
+
                     saved = asyncio.run(save_batch())
                     total_saved += saved
                     finish_scrape_job(target_city or "all", category, source_name, token, count=saved, success=True)
                 except Exception as db_err:
                     logger.warning(f"DB save error for {source_name}: {db_err}")
                     finish_scrape_job(target_city or "all", category, source_name, token, success=False, error=str(db_err))
-            
+
             except Exception as src_err:
                 logger.error(f"Source {source_name} failed: {src_err}")
                 finish_scrape_job(target_city or "all", category, source_name, token, success=False, error=str(src_err))
                 continue
-    
+
     set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
     return {"status": "completed", "extracted": total_results, "saved": total_saved}
 
