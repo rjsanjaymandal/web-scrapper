@@ -1403,19 +1403,30 @@ class ContactScraper:
         return True
 
     def _storage_dedupe_key(self, listing: Dict, source: str):
+        # 1. Professional Identifiers for Official Sources
+        official_id = (
+            listing.get("membership_no") or 
+            listing.get("registration_no") or 
+            listing.get("license_no") or 
+            listing.get("arn")
+        )
+        if official_id and (source or listing.get("source") or "").upper() in ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']:
+            return f"official:{(source or listing.get('source') or '').upper()}:{official_id}"
+
+        # 2. Clean Phone Number
         if listing.get("phone_clean"):
-            return ("phone", listing["phone_clean"])
-        if listing.get("email"):
-            return ("email", str(listing["email"]).lower())
-        for field in ("arn", "license_no", "membership_no"):
-            value = listing.get(field)
-            if value:
-                return (field, (source or listing.get("source") or "").upper(), str(value).strip().upper())
-        if self._is_official_registry_record(listing, source):
-            name = self._normalize_key(listing.get("name"))
-            address = self._normalize_key(listing.get("address"))
-            if name and address:
-                return ("registry", (source or listing.get("source") or "").upper(), name, address)
+            return f"phone:{listing['phone_clean']}"
+        
+        # 3. Valid Email
+        if listing.get("email") and listing.get("email_valid"):
+            return f"email:{listing['email'].lower()}"
+        
+        # 4. Fallback: Name + Address (Normalized)
+        name = self._normalize_key(listing.get("name"))
+        address = self._normalize_key(listing.get("address"))
+        if name and address:
+            return f"nameaddr:{name}:{address}"
+            
         return None
 
     def _registry_exists_sqlite(self, cursor, listing: Dict, source: str) -> bool:

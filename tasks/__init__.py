@@ -497,10 +497,18 @@ def direct_gov_scrape_batch():
     from processing import ProcessingHandler
     from scraper import ContactScraper
     
+    from scrape_state import claim_scrape_job, finish_scrape_job
+
     for source_name, scraper_class, category, cities_to_try in gov_sources:
         scraper = scraper_class(fetcher)
         
         for target_city in cities_to_try:
+            # EFFICIENT TRACING: Skip if recently scraped
+            claimed, reason, token = claim_scrape_job(target_city or "all", category, source_name)
+            if not claimed:
+                logger.info(f"⏭️ Skipping {source_name} in {target_city or 'all India'}: {reason}")
+                continue
+
             status_city = target_city or "all India"
             set_status(
                 f"Scraping {source_name}: {category} ({status_city})...",
@@ -512,6 +520,7 @@ def direct_gov_scrape_batch():
                 results = scraper.scrape(city=target_city, category=category)
                 total_results += len(results)
                 if not results:
+                    finish_scrape_job(target_city or "all", category, source_name, token, count=0, success=True)
                     continue
                 
                 set_status(
@@ -544,11 +553,14 @@ def direct_gov_scrape_batch():
                     
                     saved = asyncio.run(save_batch())
                     total_saved += saved
+                    finish_scrape_job(target_city or "all", category, source_name, token, count=saved, success=True)
                 except Exception as db_err:
                     logger.warning(f"DB save error for {source_name}: {db_err}")
+                    finish_scrape_job(target_city or "all", category, source_name, token, success=False, error=str(db_err))
             
             except Exception as src_err:
                 logger.error(f"Source {source_name} failed: {src_err}")
+                finish_scrape_job(target_city or "all", category, source_name, token, success=False, error=str(src_err))
                 continue
     
     set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
