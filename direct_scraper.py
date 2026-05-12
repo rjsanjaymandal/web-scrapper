@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 class DirectScraperConfig:
     """Configuration for direct scraping without proxies"""
     
-    MIN_DELAY = 3.0
-    MAX_DELAY = 7.0
+    MIN_DELAY = 4.0
+    MAX_DELAY = 10.0
     CONNECT_TIMEOUT = 10
     READ_TIMEOUT = 30
     MAX_RETRIES = 3
@@ -46,17 +46,22 @@ class DirectScraperConfig:
 
     CITY_STATE_MAP = {
         "delhi": "Delhi", "new delhi": "Delhi",
-        "mumbai": "Maharashtra", "pune": "Maharashtra", "nagpur": "Maharashtra",
-        "bangalore": "Karnataka", "bengaluru": "Karnataka",
-        "chennai": "Tamil Nadu", "coimbatore": "Tamil Nadu",
+        "mumbai": "Maharashtra", "pune": "Maharashtra", "nagpur": "Maharashtra", "nashik": "Maharashtra", "thane": "Maharashtra", "aurangabad": "Maharashtra",
+        "bangalore": "Karnataka", "bengaluru": "Karnataka", "mysore": "Karnataka", "hubli": "Karnataka",
+        "chennai": "Tamil Nadu", "coimbatore": "Tamil Nadu", "madurai": "Tamil Nadu", "salem": "Tamil Nadu", "tiruchirappalli": "Tamil Nadu",
         "hyderabad": "Telangana", "warangal": "Telangana",
-        "kolkata": "West Bengal",
-        "ahmedabad": "Gujarat", "surat": "Gujarat", "vadodara": "Gujarat",
-        "jaipur": "Rajasthan", "jodhpur": "Rajasthan",
-        "lucknow": "Uttar Pradesh", "kanpur": "Uttar Pradesh",
-        "noida": "Uttar Pradesh", "ghaziabad": "Uttar Pradesh",
-        "patna": "Bihar", "indore": "Madhya Pradesh", "bhopal": "Madhya Pradesh",
-        "kochi": "Kerala", "chandigarh": "Chandigarh",
+        "kolkata": "West Bengal", "asansol": "West Bengal",
+        "ahmedabad": "Gujarat", "surat": "Gujarat", "vadodara": "Gujarat", "rajkot": "Gujarat", "bhavnagar": "Gujarat",
+        "jaipur": "Rajasthan", "jodhpur": "Rajasthan", "udaipur": "Rajasthan", "kota": "Rajasthan",
+        "lucknow": "Uttar Pradesh", "kanpur": "Uttar Pradesh", "noida": "Uttar Pradesh", "ghaziabad": "Uttar Pradesh", "agra": "Uttar Pradesh", "varanasi": "Uttar Pradesh", "meerut": "Uttar Pradesh",
+        "patna": "Bihar", "gaya": "Bihar",
+        "indore": "Madhya Pradesh", "bhopal": "Madhya Pradesh", "gwalior": "Madhya Pradesh", "jabalpur": "Madhya Pradesh",
+        "kochi": "Kerala", "thiruvananthapuram": "Kerala", "kozhikode": "Kerala",
+        "chandigarh": "Chandigarh", "ludhiana": "Punjab", "amritsar": "Punjab", "jalandhar": "Punjab",
+        "raipur": "Chhattisgarh", "bhilai": "Chhattisgarh",
+        "ranchi": "Jharkhand", "jamshedpur": "Jharkhand",
+        "bhubaneswar": "Odisha", "cuttack": "Odisha",
+        "guwahati": "Assam",
     }
     
     GOVERNMENT_DOMAINS = [

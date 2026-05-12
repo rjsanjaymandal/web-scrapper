@@ -463,29 +463,31 @@ def direct_gov_scrape_batch():
         from scraper import load_config
         loaded_config = load_config()
         configured_cities = list(getattr(loaded_config, "cities", []) or [])
+        from direct_scraper import DirectScraperConfig
+        all_india_cities = list(DirectScraperConfig.CITY_STATE_MAP.keys())
     except Exception:
         configured_cities = []
+        all_india_cities = []
     
-    ca_priority_cities = [
-        "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad",
-        "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow",
-    ]
-    for c in configured_cities:
-        if c not in ca_priority_cities:
-            ca_priority_cities.append(c)
-    ca_priority_cities = ca_priority_cities[:12]
+    ca_priority_cities = configured_cities + [c.capitalize() for c in all_india_cities]
+    # Remove duplicates and maintain order
+    ca_priority_cities = list(dict.fromkeys(ca_priority_cities))
+    
+    # We use a large set for ICAI to cover India, but a smaller set for others to avoid excessive load
+    icai_cities = ca_priority_cities[:60]
+    general_priority_cities = ca_priority_cities[:15]
     
     gov_sources = [
-        ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities),
-        ("ICSI", ICSIDirectScraper, "Company Secretaries", ca_priority_cities[:8]),
-        ("BCI", BCIDirectScraper, "Lawyers", ca_priority_cities[:8]),
+        ("ICAI", ICAIDirectScraper, "Chartered Accountants", icai_cities),
+        ("ICSI", ICSIDirectScraper, "Company Secretaries", general_priority_cities),
+        ("BCI", BCIDirectScraper, "Lawyers", general_priority_cities),
         ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
         ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
         ("MCA", MCADirectScraper, "Company Secretaries", [None]),
-        ("AMFI", AMFIDirectScraper, "Mutual fund Agents", ca_priority_cities[:6]),
+        ("AMFI", AMFIDirectScraper, "Mutual fund Agents", general_priority_cities[:8]),
         ("RBI", RBIDirectScraper, "NBFC", [None]),
         ("IBBI", IBBIDirectScraper, "Insolvency Professionals", [None]),
-        ("GST", GSTDirectScraper, "GST Practitioner", ca_priority_cities[:6]),
+        ("GST", GSTDirectScraper, "GST Practitioner", general_priority_cities[:8]),
     ]
     
     fetcher = DirectPoliteFetcher()
