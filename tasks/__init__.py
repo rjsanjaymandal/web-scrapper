@@ -588,17 +588,22 @@ def auto_pilot_task():
         from scrape_state import claim_scrape_job, finish_scrape_job
         config = load_config()
         
-        cities = list(config.cities)
-        categories = list(config.categories)
+        cities = list(getattr(config, "cities", []))
+        categories = list(getattr(config, "categories", []))
         random.shuffle(cities)
         random.shuffle(categories)
         
-        # Sources to try in order of quality
-        sources = ["Official", "YELLOWPAGES", "JUSTDIAL"]
+        # Prioritize Chartered Accountants if requested
+        if "Chartered Accountants" in categories:
+            categories.remove("Chartered Accountants")
+            categories.insert(0, "Chartered Accountants")
+        
+        # Sources to try in order (Hybrid: Official for quality, Directories for contact info)
+        sources = ["Official", "GROTAL", "YELLOWPAGES", "SULEKHA", "JUSTDIAL", "GMB"]
         
         found_job = False
-        for city in cities:
-            for cat in categories:
+        for cat in categories:
+            for city in cities:
                 for src in sources:
                     # Map src to internal source names or None for default
                     target_src = None if src == "Official" else src

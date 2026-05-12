@@ -124,6 +124,36 @@ class YellowPagesIndiaScraper(BaseScraper):
             listings = self.extract_raw_fallback(html_content, city, category)
         return listings
 
+class GrotalScraper(BaseScraper):
+    """Low security, high volume: Grotal.com"""
+    source_name = "GROTAL"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        # Format: https://www.grotal.com/City/Category-C20/
+        clean_city = city.replace(" ", "-").capitalize()
+        clean_cat = category.replace(" ", "-").capitalize()
+        if page > 1:
+            return f"https://www.grotal.com/{clean_city}/{clean_cat}-C20/Page{page}"
+        return f"https://www.grotal.com/{clean_city}/{clean_cat}-C20/"
+
+    async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        if not html_content: return []
+        return self.extract_raw_fallback(html_content, city, category)
+
+class SulekhaScraper(BaseScraper):
+    """Popular directory: Sulekha.com"""
+    source_name = "SULEKHA"
+    
+    def build_search_url(self, city: str, category: str, page: int = 1) -> str:
+        # Format: https://www.sulekha.com/category-in-city
+        clean_city = city.replace(" ", "-").lower()
+        clean_cat = category.replace(" ", "-").lower()
+        return f"https://www.sulekha.com/{clean_cat}-in-{clean_city}"
+
+    async def extract_listings(self, page, city: str = None, category: str = None, html_content: str = None) -> List[Dict]:
+        if not html_content: return []
+        return self.extract_raw_fallback(html_content, city, category)
+
 # Register directory scrapers
 ScraperRegistry.register("SITEMAP", SitemapScraper)
 ScraperRegistry.register("YELLOWPAGES", YellowPagesIndiaScraper)
@@ -131,3 +161,5 @@ ScraperRegistry.register("GMB", GoogleMapsScraper)
 ScraperRegistry.register("LINKEDIN", LinkedInGoogleScraper)
 ScraperRegistry.register("DORK", GoogleDorkScraper)
 ScraperRegistry.register("GOOGLE_DORK", GoogleDorkScraper)
+ScraperRegistry.register("GROTAL", GrotalScraper)
+ScraperRegistry.register("SULEKHA", SulekhaScraper)
