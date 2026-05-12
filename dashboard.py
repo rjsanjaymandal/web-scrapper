@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, jsonify, Response, send_file
+from flask import Flask, render_template_string, request, jsonify, Response, send_file, stream_with_context
 import psycopg2
 import psycopg2.extras
 import yaml
@@ -1514,21 +1514,27 @@ HTML = """
             <nav class="nav-group">
                 <p class="nav-label">Export Intelligence</p>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px;">
-                    <button class="export-btn export-csv" onclick="exportData('csv', this)" title="Export as CSV">
+                    <button class="export-btn export-csv" onclick="exportData('csv', this)" title="Export Filtered CSV">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>CSV</span>
                     </button>
-                    <button class="export-btn export-excel" onclick="exportData('xlsx', this)" title="Export as Excel">
+                    <button class="export-btn export-excel" onclick="exportData('xlsx', this)" title="Export Filtered Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>Excel</span>
                     </button>
-                    <button class="export-btn export-json" onclick="exportData('json', this)" title="Export as JSON">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span>JSON</span>
+                </div>
+            </nav>
+
+            <nav class="nav-group">
+                <p class="nav-label">Bulk Export (All Records)</p>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; padding: 4px;">
+                    <button class="export-btn export-csv" onclick="exportAllData('csv', this)" style="border-color: var(--accent-blue); background: rgba(59, 130, 246, 0.05);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span style="color: var(--accent-blue)">Export All (CSV)</span>
                     </button>
-                    <button class="export-btn" onclick="exportData('pdf', this)" title="Export as PDF" style="border-color: rgba(239, 68, 68, 0.3); background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                        <span style="color:#ef4444">PDF</span>
+                    <button class="export-btn export-excel" onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-amber); background: rgba(245, 158, 11, 0.05);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span style="color: var(--accent-amber)">Export All (Excel)</span>
                     </button>
                 </div>
             </nav>
@@ -2179,6 +2185,19 @@ window.updatePaginationUI = function(data) {
             const queryString = params.toString();
             if (queryString) url += "?" + queryString;
             window.location.assign(url);
+        };
+
+        window.exportAllData = function(fmt, btn) {
+            if (btn) {
+                const originalHTML = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<div class="spinner-sm"></div>';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                }, 5000);
+            }
+            window.location.assign(window.location.origin + "/export/" + fmt + "?all=true");
         };
 
         window.stopScraping = async function() {
@@ -3110,25 +3129,78 @@ def export(fmt):
     if fmt not in ("csv", "excel", "json", "pdf", "xlsx"):
         return "Invalid format. Use csv, excel, xlsx, json, or pdf.", 400
     
+    export_all = request.args.get("all") == "true"
+    
     try:
         conn = get_db()
         cur = conn.cursor()
         
-        search_query = request.args.get("q", "")
-        filter_city = request.args.get("city", "")
-        filter_category = request.args.get("category", "")
-        filter_source = request.args.get("source", "")
-
-        where_sql, params = build_contact_filters(
-            search_query, filter_city, filter_category, filter_source
-        )
+        if export_all:
+            search_query = filter_city = filter_category = filter_source = ""
+            where_sql, params = "1=1", []
+        else:
+            search_query = request.args.get("q", "")
+            filter_city = request.args.get("city", "")
+            filter_category = request.args.get("category", "")
+            filter_source = request.args.get("source", "")
+            where_sql, params = build_contact_filters(
+                search_query, filter_city, filter_category, filter_source
+            )
+            
         logger.info(f"Export query: WHERE {where_sql} with params {params}")
 
-        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC", params)
+        # For large exports, we use streaming to avoid memory issues
+        if fmt == "csv":
+            import csv
+            
+            def generate():
+                # Yield Header
+                out = io.StringIO()
+                fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at", "arn", "license_no"]
+                writer = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
+                writer.writeheader()
+                yield out.getvalue()
+                
+                # Yield Data in chunks
+                cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC", params)
+                while True:
+                    rows = cur.fetchmany(1000)
+                    if not rows:
+                        break
+                    
+                    out = io.StringIO()
+                    writer = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
+                    for r in rows:
+                        row = dict(r)
+                        for k, v in row.items():
+                            if isinstance(v, (datetime, date)):
+                                row[k] = v.isoformat()
+                            elif v is None:
+                                row[k] = ""
+                        writer.writerow(row)
+                    yield out.getvalue()
+                
+                cur.close()
+                conn.close()
+
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"export_{ts}.csv" if not export_all else f"bulk_export_{ts}.csv"
+            
+            return Response(
+                stream_with_context(generate()),
+                mimetype="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+        # For non-streaming formats, we still need to load data
+        # We cap these to prevent crash
+        limit = 50000 if export_all else 20000
+        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {limit}", params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
         logger.info(f"Export found {len(rows)} rows")
+        
     except Exception as e:
         logger.error(f"Export error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -3138,39 +3210,21 @@ def export(fmt):
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     parts = [ts]
-    if filter_city: parts.append(filter_city.replace(' ', '_'))
-    if filter_category: parts.append(filter_category.replace(' ', '_'))
-    if search_query: parts.append(search_query.replace(' ', '_'))
+    if not export_all:
+        if filter_city: parts.append(filter_city.replace(' ', '_'))
+        if filter_category: parts.append(filter_category.replace(' ', '_'))
+        if search_query: parts.append(search_query.replace(' ', '_'))
+    else:
+        parts.append("BULK_ALL")
+        
     filename_prefix = "_".join(parts)
     total_rows = len(rows)
-
-    if fmt == "csv":
-        import csv
-        out = io.StringIO()
-        fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at"]
-        if rows:
-            fields = list(rows[0].keys())
-        w = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
-        w.writeheader()
-        for r in rows:
-            row = {}
-            for k, v in r.items():
-                if isinstance(v, (datetime, date)):
-                    row[k] = v.isoformat()
-                elif v is None:
-                    row[k] = ""
-                else:
-                    row[k] = v
-            w.writerow(row)
-        csv_data = out.getvalue()
-        logger.info(f"CSV generated: {len(csv_data)} bytes")
-        return Response(csv_data, mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename_prefix}_{total_rows}rows.csv"})
 
     if fmt == "json":
         return jsonify({
             "status": "success",
             "count": total_rows,
-            "filters": {
+            "filters": "ALL" if export_all else {
                 "search": search_query,
                 "city": filter_city,
                 "category": filter_category,
@@ -3182,11 +3236,6 @@ def export(fmt):
 
     if fmt in ("excel", "xlsx"):
         logger.info(f"Starting Excel generation for {len(rows)} records...")
-        # Safety cap for memory-limited environments (Railway 512MB)
-        if len(rows) > 20000:
-            logger.warning(f"Export size ({len(rows)}) exceeds memory safety limit. Capping to 20,000 most recent.")
-            rows = rows[:20000]
-            
         try:
             wb = Workbook(write_only=True)
             ws = wb.create_sheet("Intelligence Data")
@@ -3194,9 +3243,7 @@ def export(fmt):
             if rows:
                 headers = list(rows[0].keys())
                 ws.append(headers)
-                logger.info(f"Excel: Added headers: {headers}")
                 
-                row_count = 0
                 for r in rows:
                     clean_row = []
                     for k in headers:
@@ -3206,22 +3253,15 @@ def export(fmt):
                         elif v is None:
                             clean_row.append("")
                         else:
-                            # Ensure everything is string or basic type for openpyxl
                             if not isinstance(v, (int, float, str, bool)):
                                 clean_row.append(str(v))
                             else:
                                 clean_row.append(v)
                     ws.append(clean_row)
-                    row_count += 1
-                logger.info(f"Excel: Appended {row_count} rows.")
-            else:
-                ws.append(["No data found for selected filters"])
-                logger.warning("Excel: No data to export, added empty message.")
             
             out = io.BytesIO()
             wb.save(out)
             out.seek(0)
-            logger.info("Excel: Workbook saved to buffer successfully.")
             
             return send_file(
                 out, 
@@ -3231,28 +3271,21 @@ def export(fmt):
             )
         except Exception as excel_err:
             logger.error(f"CRITICAL EXCEL ERROR: {excel_err}")
-            import traceback
-            logger.error(traceback.format_exc())
             return f"Excel Export Failed: {str(excel_err)}", 500
 
     if fmt == "pdf":
+        # Keep PDF logic as is, limited to 1000 rows
+        from fpdf import FPDF
         def clean_pdf_text(text):
             if not text: return ""
-            # Handle non-Latin-1 characters by replacing them with a placeholder
-            try:
-                return str(text).encode('latin-1', 'replace').decode('latin-1')
-            except Exception:
-                return ""
+            try: return str(text).encode('latin-1', 'replace').decode('latin-1')
+            except Exception: return ""
 
         class PDF(FPDF):
             def header(self):
                 self.set_font('helvetica', 'B', 15)
                 self.cell(0, 10, 'Maysan Labs Intelligence Export', border=False, align='C')
                 self.ln(10)
-                self.set_font('helvetica', 'I', 8)
-                self.cell(0, 5, f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', align='C')
-                self.ln(10)
-
             def footer(self):
                 self.set_y(-15)
                 self.set_font('helvetica', 'I', 8)
@@ -3261,18 +3294,12 @@ def export(fmt):
         pdf = PDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         pdf.set_font('helvetica', 'B', 9)
-        
-        # Table Header
         cols = ["Name", "Phone", "Email", "City", "Category", "Source"]
         col_widths = [60, 40, 60, 35, 45, 35]
-        
-        for i, col in enumerate(cols):
-            pdf.cell(col_widths[i], 7, col, 1)
+        for i, col in enumerate(cols): pdf.cell(col_widths[i], 7, col, 1)
         pdf.ln()
-        
-        # Table Data
         pdf.set_font('helvetica', '', 8)
-        for r in rows[:1000]: # Limit to 1000 rows for PDF to avoid huge files/timeout
+        for r in rows[:1000]:
             pdf.cell(col_widths[0], 6, clean_pdf_text(r.get("name"))[:35], 1)
             pdf.cell(col_widths[1], 6, clean_pdf_text(r.get("phone"))[:20], 1)
             pdf.cell(col_widths[2], 6, clean_pdf_text(r.get("email"))[:35], 1)
@@ -3281,22 +3308,9 @@ def export(fmt):
             pdf.cell(col_widths[5], 6, clean_pdf_text(r.get("source"))[:20], 1)
             pdf.ln()
             
-        # Handle different FPDF versions (classic vs fpdf2)
-        try:
-            # fpdf2 returns bytearray by default
-            pdf_data = pdf.output()
-            if not isinstance(pdf_data, (bytes, bytearray)):
-                # Classic fpdf might return a string or nothing if dest isn't 'S'
-                pdf_data = pdf.output(dest='S')
-        except Exception:
-            # Fallback for older versions
-            pdf_data = pdf.output(dest='S')
-
-        if isinstance(pdf_data, str):
-            pdf_data = pdf_data.encode('latin-1', 'replace')
-            
-        out = io.BytesIO(pdf_data)
-        return send_file(out, download_name=f"{filename_prefix}_{len(rows[:1000])}rows.pdf", as_attachment=True, mimetype="application/pdf")
+        pdf_data = pdf.output()
+        if isinstance(pdf_data, str): pdf_data = pdf_data.encode('latin-1', 'replace')
+        return send_file(io.BytesIO(pdf_data), download_name=f"{filename_prefix}_sample.pdf", as_attachment=True, mimetype="application/pdf")
 
     return "Invalid format", 400
 
