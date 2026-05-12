@@ -375,23 +375,6 @@ class EmailVerifier:
         match = EmailVerifier.EMAIL_REGEX.search(text)
         return match.group(0) if match else None
 
-    @staticmethod
-    async def verify_email(email: str) -> bool:
-        if not email:
-            return False
-        domain = email.split("@")[1] if "@" in email else None
-        if not domain:
-            return False
-        valid_domains = [
-            "gmail.com",
-            "yahoo.com",
-            "hotmail.com",
-            "outlook.com",
-            "rediffmail.com",
-        ]
-        if domain.lower() in valid_domains:
-            return True
-        return True
 
 
 class DataEnricher:
@@ -1372,30 +1355,6 @@ class ContactScraper:
         "BAR_COUNCIL",
     }
 
-    def _is_official_registry_record(self, listing: Dict, source: str) -> bool:
-        source_name = (source or listing.get("source") or "").upper()
-        if source_name not in self.OFFICIAL_REGISTRY_SOURCES:
-            return False
-        name = str(listing.get("name") or "").strip()
-        if len(name) < 3:
-            return False
-        # MANDATORY: Must have phone, email, OR a verified official identifier
-        has_contact = bool(
-            listing.get("phone_clean")
-            or (listing.get("email") and listing.get("email_valid"))
-        )
-        
-        official_sources = ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']
-        has_official_id = (
-            listing.get("source") in official_sources and
-            bool(listing.get("arn") or listing.get("license_no") or listing.get("membership_no") or listing.get("registration_no"))
-        )
-
-        if not (has_contact or has_official_id):
-            return False
-            
-        return True
-
     def _storage_dedupe_key(self, listing: Dict, source: str):
         # 1. Professional Identifiers for Official Sources
         official_id = (
@@ -1488,23 +1447,14 @@ class ContactScraper:
                 continue
             
             # REQUIREMENT: Only save if we have either phone or email contact info
-            # This is already checked in ProcessingHandler, but we double-check here for safety.
-            # EXCEPTION: Official registry records with identifiers are allowed.
             has_phone = bool(processed.get("phone_clean"))
             has_email = bool(processed.get("email") and processed.get("email_valid"))
             
-            official_sources = ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']
-            has_official_id = (
-                processed.get("source") in official_sources and
-                bool(processed.get("registration_no") or processed.get("license_no") or processed.get("membership_no") or processed.get("arn"))
-            )
-            
-            if not (has_phone or has_email or has_official_id):
-                logger.info(f"🚫 [DB_FILTER] Dropping {processed.get('name')} - Missing contact details and no verified ID")
+            if not (has_phone or has_email):
+                logger.info(f"🚫 [DB_FILTER] Dropping {processed.get('name')} - Missing contact details (Phone/Email)")
                 continue
 
-            if ProcessingHandler.filter_valid([processed]) or self._is_official_registry_record(processed, source):
-                prepared.append(processed)
+            prepared.append(processed)
 
         seen = set()
         valid_listings = []

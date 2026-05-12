@@ -275,20 +275,12 @@ class ProcessingHandler:
         contact['quality_tier'] = cls.get_quality_tier(contact['quality_score'])
         
         # 6. ENFORCED FILTER: Must have phone or email
-        # User requirement: "dont save untill unless any one contact ether number or mail you find of that contact"
-        # EXCEPTION: Official government registry records with verified identifiers are allowed.
+        # User requirement: "save only data only having both or either one of them"
         has_phone = bool(contact.get('phone_clean'))
         has_email = bool(contact.get('email') and contact.get('email_valid'))
         
-        # Check for verified official identifier
-        official_sources = ['ICAI', 'ICSI', 'MCA', 'SEBI', 'RBI', 'NSE', 'AMFI', 'IBBI', 'BAR_COUNCIL', 'IRDAI', 'GST']
-        has_official_id = (
-            contact.get('source') in official_sources and
-            bool(contact.get('registration_no') or contact.get('license_no') or contact.get('membership_no') or contact.get('arn'))
-        )
-        
-        if not (has_phone or has_email or has_official_id):
-            logger.info(f"🚫 [FILTER] Dropping {contact.get('name')} - Missing contact details and no verified official ID found.")
+        if not (has_phone or has_email):
+            logger.info(f"🚫 [FILTER] Dropping {contact.get('name')} - Missing contact details (Phone/Email).")
             return None
 
         # 7. Metadata
