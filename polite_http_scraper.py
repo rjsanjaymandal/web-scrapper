@@ -38,11 +38,9 @@ class PoliteHTTPScraper:
         self.session_lock = asyncio.Lock()
         self.ua = StealthManager.get_persistent_ua()
         
-        # Respect global proxy kill-switch
-        if os.environ.get("SCRAPER_USE_PROXY", "true").lower() == "false":
-            self.proxy = None
-        else:
-            self.proxy = proxy
+        # ARCHITECTURE CHANGE: Paid proxies are removed.
+        # Everything now runs via Direct Stealth Fetching.
+        self.proxy = None
             
         self.base_headers = {}
 
@@ -83,8 +81,8 @@ class PoliteHTTPScraper:
         return StealthManager.get_modern_headers(self.ua)
 
     async def _polite_delay(self):
-        """Strict randomized delay between 1.5s and 3.5s to avoid rate limits."""
-        delay = random.uniform(1.5, 3.5)
+        """Strict randomized delay between 5.0s and 15.0s for direct architecture."""
+        delay = random.uniform(5.0, 15.0)
         await asyncio.sleep(delay)
 
     async def fetch(self, url: str, method: str = "GET", is_json_api: bool = False, headers: Dict = None, **kwargs) -> Optional[aiohttp.ClientResponse]:
@@ -184,9 +182,29 @@ class PoliteHTTPScraper:
                             logger.error(f"Direct fallback failed for {url}: {fallback_err}")
                     
                     if "TRAFFIC_EXHAUSTED" in error_msg or status_code == 407:
-                        logger.error(f"🛑 PROXY TRAFFIC EXHAUSTED (407) for {self.proxy}. Please top up your data plan at DataImpulse.")
-                        # We raise a specific exception that can be caught by the orchestrator
-                        raise Exception("PROXY_TRAFFIC_EXHAUSTED")
+                        logger.warning(f"🛑 Site blocking detected or proxy failure on {url}. Attempting direct bypass...")
+                        try:
+                            await self._init_session(headers)
+                            async with self.session.request(
+                                method, url, 
+                                timeout=aiohttp.ClientTimeout(total=20), 
+                                headers=request_headers, 
+                                proxy=None,
+                                **kwargs
+                            ) as response:
+                                if response.status == 200:
+                                    text = await response.text()
+                                    json_data = None
+                                    try: json_data = await response.json(content_type=None)
+                                    except: pass
+                                    return FetchResult(response.status, text, json_data, str(response.url))
+                                else:
+                                    logger.warning(f"Direct bypass also failed for {url} (Status {response.status})")
+                        except Exception as fallback_err:
+                            logger.error(f"Direct fallback failed for {url}: {fallback_err}")
+                        
+                        # Only raise if direct also failed or isn't possible
+                        raise Exception("SITE_BLOCK_DETECTED")
 
                     if "502" in error_msg or status_code == 502:
                         logger.warning(f"Gateway error on {url} (Proxy issue). Retrying...")

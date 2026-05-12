@@ -420,15 +420,9 @@ class ProxyManager:
         self.current_index = 0
 
     def get_proxy(self) -> Optional[Dict]:
-        # Global Kill-Switch: If SCRAPER_USE_PROXY is explicitly false, never use proxies.
-        if os.environ.get("SCRAPER_USE_PROXY", "true").lower() == "false":
-            return None
-            
-        if self.test_mode or not self.proxies:
-            return None
-        proxy = self.proxies[self.current_index]
-        self.current_index = (self.current_index + 1) % len(self.proxies)
-        return proxy
+        # ARCHITECTURE CHANGE: Proxies are now permanently disabled to eliminate costs.
+        # The system now relies on stealth headers and polite delays.
+        return None
 
     def get_proxy_string(self) -> Optional[str]:
         proxy = self.get_proxy()
@@ -1119,7 +1113,7 @@ class ContactScraper:
                         logger.warning(f"No results for {source} in {city} via fast engine.")
                         
                 except Exception as e:
-                    if "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                    if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
                         raise
                     logger.error(f"Fast extraction failed for {source}: {e}")
                     

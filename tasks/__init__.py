@@ -638,10 +638,10 @@ def auto_pilot_task():
                             break # Move to next city/cat cycle
                         except Exception as e:
                             logger.error(f"AutoPilot job failed: {e}")
-                            if "PROXY_TRAFFIC_EXHAUSTED" in str(e):
-                                set_status("AutoPilot: Proxy traffic exhausted. Waiting 1 hour before retry...", False)
-                                auto_pilot_task.apply_async(countdown=3600)
-                                return {"status": "waiting", "reason": "traffic_exhausted"}
+                            if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                                set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
+                                auto_pilot_task.apply_async(countdown=1800)
+                                return {"status": "waiting", "reason": "site_blocked"}
                             continue
                 if found_job: break
             if found_job: break
