@@ -593,10 +593,12 @@ def auto_pilot_task():
         random.shuffle(cities)
         random.shuffle(categories)
         
-        # Prioritize Chartered Accountants if requested
-        if "Chartered Accountants" in categories:
-            categories.remove("Chartered Accountants")
-            categories.insert(0, "Chartered Accountants")
+        # Prioritize Accountant-related categories
+        priority_cats = ["chartered-accountants", "accountants", "accounting-firms", "Chartered Accountants"]
+        for pcat in reversed(priority_cats):
+            if pcat in categories:
+                categories.remove(pcat)
+                categories.insert(0, pcat)
         
         # Sources to try in order (Hybrid: Official for quality, Directories for contact info)
         sources = ["Official", "GROTAL", "YELLOWPAGES", "SULEKHA", "JUSTDIAL", "GMB"]
