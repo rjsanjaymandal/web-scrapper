@@ -482,7 +482,7 @@ def direct_gov_scrape_batch():
         ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
         ("NSE", NSEDirectScraper, "Stock Brokers", [None]),
         ("MCA", MCADirectScraper, "Company Secretaries", [None]),
-        ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:6]),
+        ("AMFI", AMFIDirectScraper, "Mutual fund Agents", ca_priority_cities[:6]),
         ("RBI", RBIDirectScraper, "NBFC", [None]),
         ("IBBI", IBBIDirectScraper, "Insolvency Professionals", [None]),
         ("GST", GSTDirectScraper, "GST Practitioner", ca_priority_cities[:6]),
@@ -494,7 +494,7 @@ def direct_gov_scrape_batch():
     
     from processing import ProcessingHandler
     from scraper import ContactScraper
-
+    
     for source_name, scraper_class, category, cities_to_try in gov_sources:
         scraper = scraper_class(fetcher)
         
@@ -521,9 +521,9 @@ def direct_gov_scrape_batch():
                 processed = []
                 for contact in results:
                     try:
+                        # ProcessingHandler already enforces the phone/email rule
                         cleaned = ProcessingHandler.process_contact(contact)
-                        has_contact = bool(cleaned.get("phone") or cleaned.get("phone_clean") or cleaned.get("email"))
-                        if cleaned and cleaned.get("name") and has_contact:
+                        if cleaned and cleaned.get("name"):
                             processed.append(cleaned)
                     except Exception:
                         continue
@@ -551,6 +551,8 @@ def direct_gov_scrape_batch():
     
     set_status(f"Gov Batch Complete: {total_results} found, {total_saved} saved", False)
     return {"status": "completed", "extracted": total_results, "saved": total_saved}
+
+
 
 
 @celery_app.task(name="tasks.auto_pilot_task", time_limit=3600, soft_time_limit=3300)

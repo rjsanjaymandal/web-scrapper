@@ -1385,10 +1385,16 @@ class ContactScraper:
         name = str(listing.get("name") or "").strip()
         if len(name) < 3:
             return False
-        return bool(
+        # MANDATORY: Must have phone or email to be considered a valid record for DB
+        has_contact = bool(
             listing.get("phone_clean")
             or (listing.get("email") and listing.get("email_valid"))
-            or listing.get("arn")
+        )
+        if not has_contact:
+            return False
+            
+        return bool(
+            listing.get("arn")
             or listing.get("license_no")
             or listing.get("membership_no")
             or listing.get("address")
@@ -1475,10 +1481,12 @@ class ContactScraper:
                 continue
             
             # REQUIREMENT: Only save if we have either phone or email contact info
-            has_phone = bool(processed.get("phone") or processed.get("phone_clean"))
-            has_email = bool(processed.get("email"))
+            # This is already checked in ProcessingHandler, but we double-check here for safety.
+            has_phone = bool(processed.get("phone_clean"))
+            has_email = bool(processed.get("email") and processed.get("email_valid"))
+            
             if not (has_phone or has_email):
-                logger.debug(f"[FILTER] Dropping {processed.get('name')} - No contact info found")
+                logger.info(f"🚫 [DB_FILTER] Dropping {processed.get('name')} - Missing contact details")
                 continue
 
             if ProcessingHandler.filter_valid([processed]) or self._is_official_registry_record(processed, source):

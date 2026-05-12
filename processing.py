@@ -276,10 +276,12 @@ class ProcessingHandler:
         
         # 6. ENFORCED FILTER: Must have phone or email
         # User requirement: "dont save untill unless any one contact ether number or mail you find of that contact"
-        has_contact = bool(contact.get('phone_clean') or (contact.get('email') and contact.get('email_valid')))
+        # We require either a phone_clean OR a valid email.
+        has_phone = bool(contact.get('phone_clean'))
+        has_email = bool(contact.get('email') and contact.get('email_valid'))
         
-        if not has_contact:
-            logger.debug(f"Skipping contact {contact.get('name')} - No phone or email found.")
+        if not (has_phone or has_email):
+            logger.info(f"🚫 [FILTER] Dropping {contact.get('name')} - No valid phone or email contact info found.")
             return None
 
         # 7. Metadata
