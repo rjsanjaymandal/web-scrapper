@@ -1,7 +1,5 @@
 from celery import Celery
 import asyncio
-from celery import Celery
-import asyncio
 import logging
 import os
 import sys
@@ -38,15 +36,17 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 def start_health_server():
-    # Use 8081 for worker health to avoid collision with web dashboard on 8080
-    # We use a hardcoded 8081 here to ensure no environment variables can override it to 8080
-    port = 8081
+    # Railway healthchecks hit the PORT env var, so the worker health server
+    # MUST listen on $PORT for the healthcheck to pass.
+    # Each Railway service gets its own container, so there is no port collision
+    # between the web dashboard and the worker.
+    port = int(os.environ.get('PORT', 8080))
     try:
         server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
         logger.info(f"Background Health Server started on port {port}")
         server.serve_forever()
     except Exception as e:
-        logger.warning(f"Health server could not start: {e}")
+        logger.warning(f"Health server could not start on port {port}: {e}")
 
 # Only start health server if this is explicitly a worker process
 if 'worker' in sys.argv and not os.environ.get('CELERY_HEALTH_SERVER_STARTED'):

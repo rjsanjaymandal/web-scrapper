@@ -131,7 +131,7 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
-            # Worker health is handled internally by tasks/__init__.py on port 8081
+            # Worker health is handled internally by tasks/__init__.py on $PORT
             cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
             os.execvp(cmd[0], cmd)
         
