@@ -496,9 +496,134 @@ class SchoolDirectScraper:
             logger.warning(f"Failed to decode Bing redirect URL {url}: {e}")
         return url
 
+    def _fetch_npsc_schools(self) -> List[Dict]:
+        schools = []
+        url = "https://npscindia.com/member-school-list.php"
+        try:
+            logger.info("SCHOOL SCRAPER: Fetching National Progressive Schools Conference (NPSC) list...")
+            html, status = self.fetcher.fetch(url)
+            if status == 200 and html:
+                soup = BeautifulSoup(html, 'html.parser')
+                table = soup.find('table')
+                if table:
+                    rows = table.find_all('tr')
+                    for row in rows[1:]:
+                        tds = [td.get_text(strip=True) for td in row.find_all('td')]
+                        if len(tds) >= 8:
+                            name = tds[1].strip()
+                            addr = tds[2].strip()
+                            principal = tds[3].strip()
+                            phone = tds[4].strip()
+                            mobile = tds[5].strip()
+                            email1 = tds[6].strip()
+                            email2 = tds[7].strip()
+                            website = tds[8].strip() if len(tds) > 8 else ""
+                            
+                            source_url = website if website else url
+                            if source_url and not source_url.startswith("http"):
+                                source_url = "http://" + source_url
+                                
+                            best_phone = mobile if mobile else phone
+                            best_email = email1 if email1 else email2
+                            
+                            if best_phone:
+                                best_phone = re.sub(r'[^0-9\s,\-+]', '', best_phone).strip()
+                            
+                            city = "Delhi"
+                            if addr:
+                                for candidate in ["Gurugram", "Noida", "Faridabad", "Ghaziabad", "Jaipur", "Alwar", "Bathinda", "Bhilai", "Ludhiana", "Pilani", "Nainital", "Bhubaneswar", "Rourkela"]:
+                                    if candidate.lower() in addr.lower():
+                                        city = candidate
+                                        break
+                                if city == "Delhi":
+                                    if "new delhi" in addr.lower() or "delhi" in addr.lower():
+                                        city = "Delhi"
+                            
+                            schools.append({
+                                "name": name,
+                                "email": best_email if best_email else None,
+                                "phone": best_phone if best_phone else None,
+                                "address": f"{addr} (Principal: {principal})",
+                                "city": city,
+                                "category": "School",
+                                "source": "NPSC",
+                                "source_url": source_url
+                            })
+        except Exception as e:
+            logger.error(f"SCHOOL SCRAPER: Error crawling NPSC: {e}")
+        return schools
+
+    def _fetch_bsai_schools(self) -> List[Dict]:
+        schools = []
+        url = "https://bsai.co.in/full-members.php"
+        try:
+            logger.info("SCHOOL SCRAPER: Fetching Boarding Schools Association of India (BSAI) list...")
+            html, status = self.fetcher.fetch(url)
+            if status == 200 and html:
+                soup = BeautifulSoup(html, 'html.parser')
+                table = soup.find('table')
+                if table:
+                    rows = table.find_all('tr')
+                    for row in rows[1:]:
+                        tds = [td.get_text(strip=True) for td in row.find_all('td')]
+                        if len(tds) >= 6:
+                            name = tds[1].strip()
+                            state = tds[2].strip().title()
+                            principal = tds[3].strip()
+                            contact = tds[4].strip()
+                            email = tds[5].strip()
+                            
+                            if contact:
+                                contact = re.sub(r'[^0-9\s,\-+]', '', contact).strip()
+                                
+                            schools.append({
+                                "name": name,
+                                "email": email if email else None,
+                                "phone": contact if contact else None,
+                                "address": f"State: {state} (Head: {principal})",
+                                "city": state,
+                                "category": "School",
+                                "source": "BSAI",
+                                "source_url": url
+                            })
+        except Exception as e:
+            logger.error(f"SCHOOL SCRAPER: Error crawling BSAI: {e}")
+        return schools
+
     def scrape(self, city: str = None, category: str = "Schools") -> List[Dict]:
         results = []
-        # Target regions containing "North" or "North Side" of major Indian cities.
+        
+        # 1. Fetch Premium Association Schools (NPSC & BSAI)
+        premium_schools = []
+        try:
+            npsc_list = self._fetch_npsc_schools()
+            logger.info(f"SCHOOL SCRAPER: Loaded {len(npsc_list)} top-tier schools from NPSC.")
+            premium_schools.extend(npsc_list)
+        except Exception as npsc_err:
+            logger.error(f"SCHOOL SCRAPER: Failed NPSC crawl: {npsc_err}")
+            
+        try:
+            bsai_list = self._fetch_bsai_schools()
+            logger.info(f"SCHOOL SCRAPER: Loaded {len(bsai_list)} boarding schools from BSAI.")
+            premium_schools.extend(bsai_list)
+        except Exception as bsai_err:
+            logger.error(f"SCHOOL SCRAPER: Failed BSAI crawl: {bsai_err}")
+            
+        # Filter premium list if city/zone is specified
+        filtered_premium = []
+        if city:
+            city_clean = city.strip().lower()
+            for s in premium_schools:
+                if city_clean in s["address"].lower() or city_clean in s["city"].lower() or city_clean in s["name"].lower():
+                    filtered_premium.append(s)
+            logger.info(f"SCHOOL SCRAPER: Filtered {len(filtered_premium)} premium association schools matching '{city}'")
+        else:
+            filtered_premium = premium_schools
+            logger.info(f"SCHOOL SCRAPER: Using all {len(filtered_premium)} premium association schools.")
+            
+        results.extend(filtered_premium)
+
+        # 2. Bing Local search fallback
         target_zones = []
         if city:
             city_clean = city.strip()
@@ -508,7 +633,6 @@ class SchoolDirectScraper:
                 target_zones.append(f"North {city_clean}")
                 target_zones.append(f"North West {city_clean}")
         else:
-            # Default to major Indian cities' North sides
             target_zones = [
                 "North Delhi", "North West Delhi",
                 "North Bangalore", "North Bengaluru",
@@ -516,7 +640,7 @@ class SchoolDirectScraper:
                 "North Chennai", "North Pune"
             ]
 
-        logger.info(f"SCHOOL SCRAPER: Starting school data extraction for target zones: {target_zones}")
+        logger.info(f"SCHOOL SCRAPER: Appending local Bing search fallback for target zones: {target_zones}")
 
         email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
         phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
