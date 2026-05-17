@@ -324,6 +324,61 @@ def get_db():
     return _connect_db(statement_timeout_ms=DB_STATEMENT_TIMEOUT_MS)
 
 
+def set_active_task_id(task_id):
+    if redis_client:
+        try:
+            if task_id:
+                redis_client.set("scraper:current_task_id", task_id)
+            else:
+                redis_client.delete("scraper:current_task_id")
+        except Exception:
+            pass
+    try:
+        conn = _connect_db()
+        cur = conn.cursor()
+        val = task_id or ""
+        if USE_SQLITE:
+            cur.execute("INSERT OR REPLACE INTO system_status (id, key, value, updated_at) VALUES (2, 'current_task_id', ?, ?)", 
+                       (val, datetime.now()))
+        else:
+            cur.execute("""
+                INSERT INTO system_status (id, key, value, updated_at) 
+                VALUES (2, 'current_task_id', %s, NOW())
+                ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (val,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to set active task id in DB: {e}")
+
+
+def get_active_task_id():
+    if redis_client:
+        try:
+            tid = redis_client.get("scraper:current_task_id")
+            if tid:
+                return tid.decode('utf-8')
+        except Exception:
+            pass
+    try:
+        conn = _connect_db()
+        cur = conn.cursor()
+        if USE_SQLITE:
+            cur.execute("SELECT value FROM system_status WHERE key = ?", ("current_task_id",))
+        else:
+            cur.execute("SELECT value FROM system_status WHERE key = %s", ("current_task_id",))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row and row["value"]:
+            return row["value"]
+    except Exception as e:
+        logger.warning(f"Failed to get active task id from DB: {e}")
+    return None
+
+
+
 def init_tables():
     """Create tables if they don't exist."""
     global DB_INIT_READY, DB_INIT_IN_PROGRESS, DB_INIT_LAST_ATTEMPT, DB_INIT_LAST_ERROR
@@ -1500,6 +1555,22 @@ HTML = """
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .action-btn-green:hover {
+            background: #059669 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+        .action-btn-green:active {
+            transform: translateY(0);
+        }
+        .action-btn-red:hover {
+            background: #dc2626 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        }
+        .action-btn-red:active {
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -1679,6 +1750,16 @@ HTML = """
                     <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                     <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                 </button>
+                <div class="scraping-control-group" style="display:flex; align-items:center; gap:6px; background:var(--card-glass); border:1px solid var(--border-muted); padding:4px 8px; border-radius:12px; backdrop-filter:blur(10px);">
+                    <button class="action-btn-green" onclick="startScrapeGlobal()" id="global-start-btn" style="background:var(--accent-emerald); color:#fff; border:none; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; letter-spacing: 0.5px; transition: all 0.2s ease;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        START SCRAPING
+                    </button>
+                    <button class="action-btn-red" onclick="stopScrapeGlobal()" id="global-stop-btn" style="background:var(--accent-red); color:#fff; border:none; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; letter-spacing: 0.5px; transition: all 0.2s ease;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+                        STOP SCRAPING
+                    </button>
+                </div>
                 <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; display:flex; align-items:center; gap:8px; backdrop-filter:blur(10px);">
                     <span style="color:var(--accent-emerald); font-weight:700;">●</span>
                     <span style="color:var(--text-muted); font-weight:700;">STATUS:</span> 
@@ -2680,6 +2761,33 @@ window.updatePaginationUI = function(data) {
                 showNotif('Failed to start gov batch', 3000, true);
             }
         };
+
+        window.startScrapeGlobal = async function() {
+            const isSchool = {% if is_school_dashboard %}true{% else %}false{% endif %};
+            if (isSchool) {
+                await startDirectScrape('SCHOOL');
+            } else {
+                showNotif('Activating continuous AutoPilot scraping...');
+                try {
+                    const res = await fetch('/api/trigger/scrape?auto=true', { method: 'POST' });
+                    const data = await res.json();
+                    showNotif(data.message);
+                } catch(e) {
+                    showNotif('Failed to activate AutoPilot', 3000, true);
+                }
+            }
+        };
+        
+        window.stopScrapeGlobal = async function() {
+            showNotif('Sending STOP signal to active scraper...');
+            try {
+                const res = await fetch('/api/trigger/stop', { method: 'POST' });
+                const data = await res.json();
+                showNotif(data.message);
+            } catch(e) {
+                showNotif('Failed to stop scraping', 3000, true);
+            }
+        };
     </script>
 </body>
 </html>
@@ -3108,6 +3216,8 @@ def trigger_scrape():
             {"source": "AUTOPILOT", "mode": "CONTINUOUS"},
         )
         task_result = auto_pilot_task.delay()
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         msg = "AutoPilot Activated: Continuous scraping cycle started across all cities/categories."
         logger.info("Dashboard activated Continuous AutoPilot")
     elif not city and not category and not source:
@@ -3118,6 +3228,8 @@ def trigger_scrape():
             {"source": "AUTO", "category": "Chartered Accountants"},
         )
         task_result = direct_gov_scrape_batch.delay()
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         msg = "Auto scrape queued: Chartered Accountants first, then official registries."
         logger.info("Dashboard triggered CA-first auto government scrape")
     elif city and category:
@@ -3128,6 +3240,8 @@ def trigger_scrape():
             {"city": city, "category": category, "source": source or "QUEUE"},
         )
         task_result = scrape_category_task.delay(city=city, category=category, source=source, use_business=use_business)
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         msg = f"🚀 Scrape queued for {category} in {city}!"
         logger.info(log_msg)
     else:
@@ -3137,18 +3251,46 @@ def trigger_scrape():
             {"source": source or "QUEUE"},
         )
         task_result = fast_scrape_task.delay(source=source)
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         msg = f"🚀 Batch fast-scrape queued for all Official sources!"
     
     return jsonify({"message": msg, "task_id": getattr(task_result, "id", None)})
 
 @app.route("/api/trigger/stop", methods=["POST", "GET"])
 def stop_scrape():
-    """Stop continuous AutoPilot"""
+    """Stop active scraping tasks and AutoPilot"""
+    # 1. Stop AutoPilot flag
     if redis_client:
-        redis_client.set("scraper:auto_pilot:active", "0")
+        try:
+            redis_client.set("scraper:auto_pilot:active", "0")
+        except Exception:
+            pass
+            
+    # 2. Find and revoke active celery task
+    task_id = get_active_task_id()
+    revoked = False
+    if task_id:
+        try:
+            from tasks import celery_app
+            celery_app.control.revoke(task_id, terminate=True, signal='SIGTERM')
+            revoked = True
+            logger.info(f"Successfully revoked celery task {task_id}")
+        except Exception as e:
+            logger.warning(f"Could not revoke celery task {task_id}: {e}")
+            
+    # 3. Clear active task ID
+    set_active_task_id(None)
     
-    set_status("AutoPilot: STOP signal sent. Current task will finish then stop.", False)
-    return jsonify({"success": True, "message": "Stop signal sent to AutoPilot."})
+    # 4. Reset status
+    msg = "Scraper STOP signal sent. "
+    if revoked:
+        msg += f"Active task {task_id} terminated successfully."
+    else:
+        msg += "No active celery task was found or running."
+        
+    set_status(msg, False)
+    return jsonify({"success": True, "message": msg})
 
 
 @app.route("/api/trigger/fast-scrape", methods=["POST"])
@@ -3163,6 +3305,8 @@ def trigger_fast_scrape():
             {"source": "QUEUE", "concurrency": max_concurrent},
         )
         task_result = fast_scrape_task.delay(max_concurrent=max_concurrent)
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         return jsonify({
             "message": f"⚡ Fast scrape queued with concurrency={max_concurrent}!",
             "task_id": getattr(task_result, "id", None),
@@ -3190,6 +3334,8 @@ def trigger_direct_scrape():
         )
         
         task_result = direct_scrape_task.delay(source=source, city=city, category=category)
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         
         return jsonify({
             "message": f"🔓 Direct scrape queued for {source}!",
@@ -3218,6 +3364,8 @@ def trigger_direct_gov_batch():
         )
         
         task_result = direct_gov_scrape_batch.delay()
+        if task_result and getattr(task_result, "id", None):
+            set_active_task_id(task_result.id)
         
         return jsonify({
             "message": "🔓 Direct gov batch queued! Scraping ICAI (CAs), AMFI (MF Agents), SEBI (Investment Advisors), IRDAI (Insurance Agents)...",
@@ -3226,6 +3374,7 @@ def trigger_direct_gov_batch():
     except Exception as e:
         logger.error(f"Direct gov batch trigger error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/contacts")
