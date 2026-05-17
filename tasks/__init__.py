@@ -213,6 +213,21 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
         set_status(msg, False)
         return {"status": "skipped", "reason": reason}
 
+    if category and "school" in category.lower():
+        set_status(
+            f"Started: Direct School Scraping in {city}...",
+            True,
+            {"city": city, "category": category, "source": "SCHOOL"},
+        )
+        try:
+            res = direct_scrape_task(source="SCHOOL", city=city, category=category)
+            saved_count = res.get("saved", 0) if isinstance(res, dict) else 0
+            finish_scrape_job(city, category, source, token=token, count=saved_count, success=True)
+            return {"status": "completed", "count": saved_count}
+        except Exception as e:
+            finish_scrape_job(city, category, source, token=token, count=0, success=False, error=str(e))
+            return {"status": "failed", "error": str(e)}
+
     set_status(
         f"Started: High-Speed Scraping {category} in {city}...",
         True,

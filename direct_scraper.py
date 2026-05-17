@@ -597,7 +597,15 @@ class SchoolDirectScraper:
                             results.append(lead)
                             logger.info(f"SCHOOL SCRAPER: Found lead from Bing snippet: {school_name} (Email: {lead['email']}, Phone: {lead['phone']})")
 
-                        if domain and domain not in excluded_domains and domain not in seen_domains:
+                        is_excluded = False
+                        if domain:
+                            for ex in excluded_domains:
+                                if domain == ex or domain.endswith("." + ex):
+                                    is_excluded = True
+                                    break
+
+                        if domain and not is_excluded and domain not in seen_domains:
+
                             seen_domains.add(domain)
                             base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
                             contact_paths = ["", "/contact", "/contact-us", "/contactus", "/about-us", "/about"]
