@@ -1524,6 +1524,14 @@ class ContactScraper:
                     inserted += 1
             self.sqlite_conn.commit()
             logger.info(f"Saved {inserted} records to SQLite")
+
+            # DUAL-WRITE SYNC: Trigger background sync of locally scraped data to hosted PostgreSQL database
+            try:
+                import asyncio
+                asyncio.create_task(self._sync_to_hosted_pg(valid_listings, category, city, source, url))
+            except Exception as sync_err:
+                logger.warning(f"Failed to trigger hosted DB sync: {sync_err}")
+
             return inserted
 
         inserted = 0
@@ -1570,6 +1578,107 @@ class ContactScraper:
         for (source, category, city), batch in grouped.items():
             total_saved += await self.save_to_db(batch, category, city, source, "Direct Gov")
         return total_saved
+
+    async def _sync_to_hosted_pg(self, listings, category, city, source, url):
+        """Asynchronously sync/push locally scraped listings to the hosted PostgreSQL database"""
+        if not listings:
+            return 0
+
+        db_url = os.environ.get("DATABASE_URL")
+        if not db_url:
+            return 0
+
+        logger.info(f"🔄 [SYNC] Attempting to sync {len(listings)} leads to hosted PostgreSQL...")
+
+        import asyncpg
+        conn = None
+        try:
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+            ssl_ctx = "require" if "@" in db_url else None  # Enable SSL for cloud DBs
+
+            conn = await asyncpg.connect(db_url, ssl=ssl_ctx, timeout=15)
+
+            # Create table if not exists (fail-safe)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS contacts (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT,
+                    phone VARCHAR(50),
+                    email TEXT,
+                    address TEXT,
+                    category TEXT,
+                    city TEXT,
+                    area TEXT,
+                    state TEXT,
+                    source TEXT,
+                    source_url TEXT,
+                    phone_clean VARCHAR(50),
+                    email_valid BOOLEAN,
+                    enriched BOOLEAN,
+                    arn TEXT,
+                    license_no TEXT,
+                    membership_no TEXT,
+                    quality_score INT DEFAULT 0,
+                    quality_tier VARCHAR(20) DEFAULT 'low',
+                    blockchain_ca TEXT,
+                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            inserted = 0
+            for l in listings:
+                # Deduplicate check on hosted DB
+                exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM contacts WHERE phone_clean = $1 AND email = $2 AND source = $3)",
+                    l.get("phone_clean"), l.get("email"), l.get("source") or source
+                )
+                if exists:
+                    continue
+
+                await conn.execute("""
+                    INSERT INTO contacts (
+                        name, phone, email, address, category, city, area, state, 
+                        source, source_url, phone_clean, email_valid, enriched, 
+                        arn, license_no, membership_no, quality_score, quality_tier, scraped_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP)
+                    ON CONFLICT DO NOTHING
+                """,
+                    l.get("name"),
+                    l.get("phone"),
+                    l.get("email"),
+                    l.get("address"),
+                    l.get("category") or category,
+                    l.get("city") or city,
+                    l.get("area"),
+                    l.get("state"),
+                    l.get("source") or source,
+                    l.get("source_url") or url,
+                    l.get("phone_clean"),
+                    l.get("email_valid", False),
+                    l.get("enriched", False),
+                    l.get("arn"),
+                    l.get("license_no"),
+                    l.get("membership_no"),
+                    l.get("quality_score", 0),
+                    l.get("quality_tier", "low")
+                )
+                inserted += 1
+
+            logger.info(f"✅ [SYNC] Successfully synchronized {inserted}/{len(listings)} leads to hosted PostgreSQL.")
+            return inserted
+
+        except Exception as e:
+            logger.error(f"❌ [SYNC] Failed to synchronize to hosted PostgreSQL: {e}")
+            return 0
+        finally:
+            if conn:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
 
     async def export_to_csv(self, source: Optional[str] = None):
         os.makedirs(self.config.csv_output_dir, exist_ok=True)
