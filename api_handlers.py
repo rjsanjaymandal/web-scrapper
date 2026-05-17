@@ -335,7 +335,7 @@ class OfficialAPIHandlers:
     @staticmethod
     async def handle_ibbi_insolvency(engine: PoliteHTTPScraper, city: str) -> List[Dict]:
         """Fetch IBBI Insolvency Professionals"""
-        url = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
+        url = "https://ibbi.gov.in/ips-register/view-ip/1"
         resp = await engine.fetch(url)
         if not resp: return []
         html = await resp.text()
@@ -500,7 +500,8 @@ class OfficialAPIHandlers:
             html = await resp.text()
             return await scraper.extract_listings(None, city, category, html)
         return []
-    @classmethod
+
+    @classmethod
     async def dispatch(
         cls,
         source: str,

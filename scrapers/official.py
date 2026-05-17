@@ -113,7 +113,7 @@ class SEBIScraper(BaseScraper):
 class IBBIScraper(BaseScraper):
     """Scraper for IBBI - Insolvency Professionals"""
     source_name = "IBBI"
-    BASE_URL = "https://ibbi.gov.in/en/service-provider/insolvency-professionals"
+    BASE_URL = "https://ibbi.gov.in/ips-register/view-ip/1"
 
     def build_search_url(self, city: str, category: str, page: int = 1) -> str:
         return self.BASE_URL

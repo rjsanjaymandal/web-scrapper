@@ -2269,6 +2269,12 @@ window.updatePaginationUI = function(data) {
             if (q) params.set('q', q);
             if (src) params.set('source', src);
             
+            if (window.isSchoolDashboard) {
+                params.set('schools_only', 'true');
+            } else {
+                params.set('financial_only', 'true');
+            }
+            
             const queryString = params.toString();
             if (queryString) url += "?" + queryString;
             window.location.assign(url);
@@ -2284,7 +2290,13 @@ window.updatePaginationUI = function(data) {
                     btn.innerHTML = originalHTML;
                 }, 5000);
             }
-            window.location.assign(window.location.origin + "/export/" + fmt + "?all=true");
+            let url = window.location.origin + "/export/" + fmt + "?all=true";
+            if (window.isSchoolDashboard) {
+                url += "&schools_only=true";
+            } else {
+                url += "&financial_only=true";
+            }
+            window.location.assign(url);
         };
 
         window.exportCategory = function(category, fmt, btn) {
@@ -2297,7 +2309,13 @@ window.updatePaginationUI = function(data) {
                     btn.innerHTML = originalHTML;
                 }, 5000);
             }
-            window.location.assign(window.location.origin + "/export/" + fmt + "?all=true&category=" + encodeURIComponent(category));
+            let url = window.location.origin + "/export/" + fmt + "?all=true&category=" + encodeURIComponent(category);
+            if (window.isSchoolDashboard) {
+                url += "&schools_only=true";
+            } else {
+                url += "&financial_only=true";
+            }
+            window.location.assign(url);
         };
 
         window.stopScraping = async function() {
@@ -2331,7 +2349,11 @@ window.updatePaginationUI = function(data) {
         };
 
         // Live Telemetry Stream
-        const evtSource = new EventSource("/api/stream/stats");
+        let streamUrl = "/api/stream/stats";
+        if (window.isSchoolDashboard) {
+            streamUrl += "?schools_only=true";
+        }
+        const evtSource = new EventSource(streamUrl);
         evtSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
             if (document.getElementById('stat-total')) {
@@ -3260,6 +3282,9 @@ def export(fmt):
         conn = get_db()
         cur = conn.cursor()
         
+        schools_only = request.args.get("schools_only") == "true"
+        financial_only = request.args.get("financial_only") == "true"
+
         if export_all:
             if target_cat:
                 ph = "?" if USE_SQLITE else "%s"
@@ -3268,14 +3293,26 @@ def export(fmt):
                 filter_category = target_cat
             else:
                 search_query = filter_city = filter_category = filter_source = ""
-                where_sql, params = "1=1", []
+                if schools_only:
+                    ph = "?" if USE_SQLITE else "%s"
+                    where_sql, params = f"LOWER(category) LIKE {ph}", ["%school%"]
+                elif financial_only:
+                    ph = "?" if USE_SQLITE else "%s"
+                    where_sql, params = f"LOWER(category) NOT LIKE {ph}", ["%school%"]
+                else:
+                    where_sql, params = "1=1", []
         else:
             search_query = request.args.get("q", "")
             filter_city = request.args.get("city", "")
             filter_category = request.args.get("category", "")
             filter_source = request.args.get("source", "")
             where_sql, params = build_contact_filters(
-                search_query, filter_city, filter_category, filter_source
+                search_query,
+                filter_city,
+                filter_category,
+                filter_source,
+                exclude_schools=financial_only,
+                only_schools=schools_only
             )
             
         logger.info(f"Export query: WHERE {where_sql} with params {params}")
@@ -3589,23 +3626,30 @@ def api_maintenance_normalize():
 @app.route("/api/stream/stats")
 def stream_stats():
     """Server-Sent Events endpoint for live stats updates"""
+    schools_only = request.args.get("schools_only") == "true"
     def generate():
         while True:
             try:
                 conn = get_db()
                 cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) as cnt FROM contacts")
-                total = cur.fetchone()["cnt"]
-                if USE_SQLITE:
-                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> ?", ("",))
-                    with_phone = cur.fetchone()["cnt"]
-                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> ?", ("",))
-                    with_email = cur.fetchone()["cnt"]
+                ph = "?" if USE_SQLITE else "%s"
+                like_op = "LIKE" if USE_SQLITE else "ILIKE"
+                
+                if schools_only:
+                    where_clause = f"LOWER(category) {like_op} {ph}"
+                    params = ["%school%"]
                 else:
-                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE phone IS NOT NULL AND phone <> %s", ("",))
-                    with_phone = cur.fetchone()["cnt"]
-                    cur.execute("SELECT COUNT(*) as cnt FROM contacts WHERE email IS NOT NULL AND email <> %s", ("",))
-                    with_email = cur.fetchone()["cnt"]
+                    where_clause = f"LOWER(category) NOT {like_op} {ph}"
+                    params = ["%school%"]
+
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause}", params)
+                total = cur.fetchone()["cnt"]
+                
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause} AND phone_clean IS NOT NULL AND phone_clean <> ''", params)
+                with_phone = cur.fetchone()["cnt"]
+                
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause} AND email IS NOT NULL AND email <> ''", params)
+                with_email = cur.fetchone()["cnt"]
 
                 status_data = {}
                 if redis_client:
