@@ -96,6 +96,8 @@ class ProcessingHandler:
         'importers': 'Importer',
         'importer': 'Importer',
         'exporter': 'Exporter',
+        'school': 'School',
+        'schools': 'School',
     }
 
     @staticmethod

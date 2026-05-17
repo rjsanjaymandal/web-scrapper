@@ -7,8 +7,10 @@ import re
 import time
 import random
 import logging
+import base64
 from typing import List, Dict, Optional, Tuple
 from urllib.parse import urlencode
+from stealth_utils import StealthManager
 
 try:
     import requests
@@ -72,28 +74,18 @@ class DirectPoliteFetcher:
         self.config = config or DirectScraperConfig()
         self.session = requests.Session()
         self._last_request_time = 0
-        self._session_ua = random.choice(self.config.USER_AGENTS)
+        self._session_ua = StealthManager.get_persistent_ua()
 
     def _get_random_ua(self) -> str:
         return self._session_ua
 
     def _get_headers(self, referer: str = "https://www.google.com/") -> Dict:
-        ua = self._get_random_ua()
-        return {
-            "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Fetch-User": "?1",
-            "Referer": referer,
-            "Cache-Control": "max-age=0",
-        }
+        ua = self._session_ua
+        headers = StealthManager.get_modern_headers(ua)
+        if referer:
+            headers["Referer"] = referer
+        headers["Sec-Fetch-Site"] = "same-origin"
+        return headers
 
     def _respectful_delay(self):
         elapsed = time.time() - self._last_request_time
@@ -475,12 +467,215 @@ class IRDAIDirectScraper:
         return results
 
 
+class SchoolDirectScraper:
+    SOURCE = "SCHOOL"
+
+    def __init__(self, fetcher: DirectPoliteFetcher = None):
+        self.fetcher = fetcher or DirectPoliteFetcher()
+
+    def _decode_bing_url(self, url: str) -> str:
+        if not url:
+            return ""
+        if "bing.com/ck/a" not in url:
+            return url
+        try:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(url)
+            queries = parse_qs(parsed.query)
+            u_val = queries.get('u', [None])[0]
+            if u_val and len(u_val) > 2:
+                # Strip leading "a0", "a1", "a2"
+                b64_str = u_val[2:]
+                # Add base64 padding
+                padding = len(b64_str) % 4
+                if padding:
+                    b64_str += "=" * (4 - padding)
+                decoded = base64.b64decode(b64_str.encode('utf-8')).decode('utf-8', errors='ignore')
+                return decoded
+        except Exception as e:
+            logger.warning(f"Failed to decode Bing redirect URL {url}: {e}")
+        return url
+
+    def scrape(self, city: str = None, category: str = "Schools") -> List[Dict]:
+        results = []
+        # Target regions containing "North" or "North Side" of major Indian cities.
+        target_zones = []
+        if city:
+            city_clean = city.strip()
+            if any(x in city_clean.lower() for x in ["north", "south", "east", "west", "side"]):
+                target_zones.append(city_clean)
+            else:
+                target_zones.append(f"North {city_clean}")
+                target_zones.append(f"North West {city_clean}")
+        else:
+            # Default to major Indian cities' North sides
+            target_zones = [
+                "North Delhi", "North West Delhi",
+                "North Bangalore", "North Bengaluru",
+                "North Mumbai", "North Kolkata",
+                "North Chennai", "North Pune"
+            ]
+
+        logger.info(f"SCHOOL SCRAPER: Starting school data extraction for target zones: {target_zones}")
+
+        email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+        phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+
+        seen_domains = set()
+        excluded_domains = {
+            "grotal.com", "yellowpages.in", "justdial.com", "wikipedia.org", "facebook.com",
+            "twitter.com", "instagram.com", "linkedin.com", "youtube.com", "indiamart.com",
+            "sulekha.com", "justdial.com", "collegedunia.com", "shiksha.com", "mapsofindia.com",
+            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in"
+        }
+
+        for zone in target_zones:
+            query = f'schools in "{zone}"'
+            encoded_query = urlencode({"q": query})
+            
+            for page in range(1, 3):
+                first = 1 + (page - 1) * 10
+                search_url = f"https://www.bing.com/search?{encoded_query}&first={first}"
+                logger.info(f"SCHOOL SCRAPER: Querying Bing: {search_url}")
+                
+                try:
+                    html, status = self.fetcher.fetch(search_url, "https://www.bing.com/")
+                    if not html or status != 200:
+                        logger.warning(f"SCHOOL SCRAPER: Could not fetch search results for zone: {zone}, page: {page} (Status: {status})")
+                        break
+                        
+                    soup = BeautifulSoup(html, 'html.parser')
+                    results_list = soup.find_all('li', class_='b_algo')
+                    
+                    if not results_list:
+                        logger.info(f"SCHOOL SCRAPER: No organic search results found on page {page} for zone: {zone}")
+                        break
+                        
+                    for li in results_list:
+                        h2 = li.find('h2')
+                        if not h2:
+                            continue
+                        anchor = h2.find('a')
+                        if not anchor or not anchor.get('href'):
+                            continue
+                            
+                        school_name = anchor.get_text(strip=True)
+                        raw_url = anchor['href']
+                        school_url = self._decode_bing_url(raw_url)
+                        
+                        for separator in [" - ", " | ", " – ", ":"]:
+                            if separator in school_name:
+                                school_name = school_name.split(separator)[0].strip()
+                        
+                        from urllib.parse import urlparse
+                        parsed_url = urlparse(school_url)
+                        domain = parsed_url.netloc.lower()
+                        if domain.startswith("www."):
+                            domain = domain[4:]
+                            
+                        snippet_tag = li.find('p') or li.find('div', class_='b_caption') or li.find('div', class_='b_snippet')
+                        snippet = snippet_tag.get_text() if snippet_tag else ""
+                        
+                        emails_found = email_pattern.findall(snippet)
+                        phones_found = phone_pattern.findall(snippet)
+                        
+                        clean_emails = [e for e in emails_found if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                        clean_phones = [p for p in phones_found if len(re.sub(r'\D', '', p)) >= 10]
+                        
+                        lead = {
+                            "name": school_name[:200],
+                            "email": clean_emails[0].lower() if clean_emails else None,
+                            "phone": clean_phones[0] if clean_phones else None,
+                            "address": zone,
+                            "city": city or zone.replace("North", "").replace("West", "").strip(),
+                            "category": "School",
+                            "source": self.SOURCE,
+                            "source_url": school_url,
+                        }
+                        
+                        if lead["email"] or lead["phone"]:
+                            results.append(lead)
+                            logger.info(f"SCHOOL SCRAPER: Found lead from Bing snippet: {school_name} (Email: {lead['email']}, Phone: {lead['phone']})")
+
+                        if domain and domain not in excluded_domains and domain not in seen_domains:
+                            seen_domains.add(domain)
+                            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                            contact_paths = ["", "/contact", "/contact-us", "/contactus", "/about-us", "/about"]
+                            
+                            direct_email = None
+                            direct_phone = None
+                            
+                            for path in contact_paths:
+                                target_page = base_url + path
+                                logger.info(f"SCHOOL SCRAPER: Politely scanning contact page: {target_page}")
+                                
+                                try:
+                                    page_html, page_status = self.fetcher.fetch(target_page, school_url)
+                                    if not page_html or page_status != 200:
+                                        continue
+                                        
+                                    page_soup = BeautifulSoup(page_html, 'html.parser')
+                                    for script in page_soup(["script", "style"]):
+                                        script.decompose()
+                                    text_content = page_soup.get_text()
+                                    
+                                    page_emails = email_pattern.findall(text_content)
+                                    page_phones = phone_pattern.findall(text_content)
+                                    
+                                    valid_emails = [e for e in page_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                                    valid_phones = [p for p in page_phones if len(re.sub(r'\D', '', p)) >= 10]
+                                    
+                                    if valid_emails:
+                                        direct_email = valid_emails[0].lower()
+                                    if valid_phones:
+                                        raw_digits = re.sub(r'\D', '', valid_phones[0])
+                                        direct_phone = raw_digits[-10:] if len(raw_digits) >= 10 else raw_digits
+                                        
+                                    if direct_email or direct_phone:
+                                        break
+                                except Exception as crawl_err:
+                                    logger.warning(f"SCHOOL SCRAPER: Direct crawl failed for {target_page}: {crawl_err}")
+                                    continue
+                            
+                            if direct_email or direct_phone:
+                                direct_lead = {
+                                    "name": school_name[:200],
+                                    "email": direct_email,
+                                    "phone": direct_phone,
+                                    "address": zone,
+                                    "city": city or zone.replace("North", "").replace("West", "").strip(),
+                                    "category": "School",
+                                    "source": self.SOURCE,
+                                    "source_url": base_url,
+                                }
+                                results.append(direct_lead)
+                                logger.info(f"SCHOOL SCRAPER: Successfully extracted direct website lead: {school_name} (Email: {direct_email}, Phone: {direct_phone})")
+                                
+                except Exception as page_err:
+                    logger.error(f"SCHOOL SCRAPER: Error scanning zone {zone}, page {page}: {page_err}")
+                    continue
+                    
+        unique_results = []
+        seen_leads = set()
+        for r in results:
+            if not r.get("phone") and not r.get("email"):
+                continue
+            lead_key = (r["name"].lower(), r.get("email"), r.get("phone"))
+            if lead_key not in seen_leads:
+                seen_leads.add(lead_key)
+                unique_results.append(r)
+                
+        logger.info(f"SCHOOL SCRAPER: School scraping completed! Extracted {len(unique_results)} unique records.")
+        return unique_results
+
+
 # Registry
 SCRAPERS = {
     "ICAI": ICAIDirectScraper,
     "AMFI": AMFIDirectScraper,
     "SEBI": SEBIDirectScraper,
     "IRDAI": IRDAIDirectScraper,
+    "SCHOOL": SchoolDirectScraper,
 }
 
 
@@ -497,7 +692,7 @@ if __name__ == "__main__":
     results = scraper.scrape(city="Delhi", category="Chartered Accountants")
     print(f"ICAI Results: {len(results)} records")
 
-    print("\n=== Testing AMFI Direct Scraper ===")
-    scraper = AMFIDirectScraper(fetcher)
-    results = scraper.scrape(city="Mumbai", category="Mutual Fund Agents")
-    print(f"AMFI Results: {len(results)} records")
+    print("\n=== Testing School Direct Scraper ===")
+    scraper = SchoolDirectScraper(fetcher)
+    results = scraper.scrape(city="Delhi", category="Schools")
+    print(f"School Results: {len(results)} records")

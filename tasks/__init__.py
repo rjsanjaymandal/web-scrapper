@@ -370,7 +370,7 @@ def direct_scrape_task(source: str = None, city: str = None, category: str = Non
         scraper = get_scraper(source_upper)
 
         if not scraper:
-            set_status(f"Error: Unknown source {source}. Available: ICAI, AMFI, SEBI, IRDAI", False)
+            set_status(f"Error: Unknown source {source}. Available: ICAI, AMFI, SEBI, IRDAI, SCHOOL", False)
             return {"status": "failed", "error": f"Unknown source: {source}"}
 
         scraper = scraper(fetcher)
