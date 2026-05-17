@@ -171,7 +171,7 @@ FILTER_CACHE = {}  # Stores { 'cities': (data, timestamp), ... }
 FILTER_CACHE_TTL = 300  # 5 minutes
 
 
-def get_cached_filter(key, query, cur):
+def get_cached_filter(key, query, cur, params=None):
     """Get filter values with a 5-minute TTL to prevent heavy DB scans."""
     now = time.time()
     if key in FILTER_CACHE:
@@ -179,7 +179,10 @@ def get_cached_filter(key, query, cur):
         if (now - ts) < FILTER_CACHE_TTL:
             return val
     
-    cur.execute(query)
+    if params:
+        cur.execute(query, params)
+    else:
+        cur.execute(query)
     data = [r[next(iter(r.keys()))] for r in cur.fetchall()]
     FILTER_CACHE[key] = (data, now)
     return data
@@ -195,6 +198,8 @@ def build_contact_filters(
     category="",
     source="",
     quality="",
+    exclude_schools=False,
+    only_schools=False,
 ):
     """Build a contacts WHERE clause using the active database placeholder style."""
     ph = db_placeholder()
@@ -220,6 +225,13 @@ def build_contact_filters(
     if quality:
         where_clauses.append(f"(quality_tier = {ph} OR quality_tier IS NULL)")
         params.append(quality)
+
+    if exclude_schools:
+        where_clauses.append(f"LOWER(category) NOT LIKE {ph}")
+        params.append("%school%")
+    if only_schools:
+        where_clauses.append(f"LOWER(category) LIKE {ph}")
+        params.append("%school%")
 
     return " AND ".join(where_clauses) if where_clauses else "1=1", params
 
@@ -1500,16 +1512,45 @@ HTML = """
         <aside class="sidebar">
             <div class="brand-box">
                 <p>Maysan Labs</p>
-                <span>Data Platform</span>
+                <span>{% if is_school_dashboard %}Schools Platform{% else %}Financial Platform{% endif %}</span>
             </div>
             
             <nav class="nav-group">
-                <p class="nav-label">Menu</p>
+                <p class="nav-label">Portals</p>
+                {% if is_school_dashboard %}
+                <a href="/" class="nav-item" style="border: 1px dashed var(--accent-blue); background: rgba(59,130,246,0.03); margin-bottom: 4px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    <span style="color: var(--accent-blue); font-weight: 700;">Financial Portal ➜</span>
+                </a>
+                <a href="/schools" class="nav-item active">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    School Dashboard
+                </a>
+                {% else %}
                 <a href="/" class="nav-item active">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    Dashboard
+                    Financial Dashboard
+                </a>
+                <a href="/schools" class="nav-item" style="border: 1px dashed var(--accent-emerald); background: rgba(16,185,129,0.03); margin-top: 4px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    <span style="color: var(--accent-emerald); font-weight: 700;">Schools Portal ➜</span>
+                </a>
+                {% endif %}
+            </nav>
+
+            {% if not is_school_dashboard %}
+            <nav class="nav-group">
+                <p class="nav-label">Categorical Views</p>
+                <a href="/?category=Insurance" class="nav-item {% if selected_category == 'Insurance' %}active{% endif %}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    Insurance Leads
+                </a>
+                <a href="/?category=Mutual Fund" class="nav-item {% if selected_category == 'Mutual Fund' %}active{% endif %}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    Mutual Fund Leads
                 </a>
             </nav>
+            {% endif %}
 
             <nav class="nav-group">
                 <p class="nav-label">Export Intelligence</p>
@@ -1522,6 +1563,39 @@ HTML = """
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>Excel</span>
                     </button>
+                </div>
+            </nav>
+
+            <nav class="nav-group">
+                <p class="nav-label">Categorical Download</p>
+                <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
+                    {% if is_school_dashboard %}
+                    <!-- School Data Download -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Schools</span>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="export-btn export-csv" onclick="exportCategory('School', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
+                            <button class="export-btn export-excel" onclick="exportCategory('School', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- Insurance Data Download -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="export-btn export-csv" onclick="exportCategory('Insurance', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
+                            <button class="export-btn export-excel" onclick="exportCategory('Insurance', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
+                        </div>
+                    </div>
+                    <!-- Mutual Fund Data Download -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Mutual Fund</span>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="export-btn export-csv" onclick="exportCategory('Mutual Fund', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
+                            <button class="export-btn export-excel" onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </nav>
 
@@ -1557,6 +1631,12 @@ HTML = """
 
             <nav class="nav-group">
                 <p class="nav-label">Direct Scrape (No Proxy)</p>
+                {% if is_school_dashboard %}
+                <a href="#" class="nav-item" onclick="startDirectScrape('SCHOOL')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    Schools Scraper
+                </a>
+                {% else %}
                 <a href="#" class="nav-item" onclick="startDirectScrape('SEBI')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
                     SEBI
@@ -1573,6 +1653,7 @@ HTML = """
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
                     Gov Sites Batch
                 </a>
+                {% endif %}
             </nav>
 
             <div class="system-footer">
@@ -1590,8 +1671,13 @@ HTML = """
     <main class="main-view">
         <div class="header-row">
             <div class="page-title">
-                <h2>Intelligence HUD</h2>
-                <p>Data Extraction Engine & Analytics Node</p>
+                {% if is_school_dashboard %}
+                <h2>School Intelligence HUD <span style="color: var(--accent-emerald);">// Schools Portal</span></h2>
+                <p>Targeted High-Yield School Contact Harvesting Portal</p>
+                {% else %}
+                <h2>Intelligence HUD {% if selected_category %}<span style="color: var(--accent-blue);">// {{ selected_category }}s</span>{% endif %}</h2>
+                <p>{% if selected_category %}Targeted Professional Leads Category View{% else %}Data Extraction Engine & Analytics Node{% endif %}</p>
+                {% endif %}
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
@@ -1860,6 +1946,7 @@ HTML = """
 
     <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
     <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>    <script>
+        window.isSchoolDashboard = {% if is_school_dashboard %}true{% else %}false{% endif %};
         // CORE NAVIGATION FUNCTIONS (Defined early)
         window.showNotif = function(msg, dur, isError) {
             if (dur === undefined) dur = 3000;
@@ -2200,6 +2287,19 @@ window.updatePaginationUI = function(data) {
             window.location.assign(window.location.origin + "/export/" + fmt + "?all=true");
         };
 
+        window.exportCategory = function(category, fmt, btn) {
+            if (btn) {
+                const originalHTML = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<div class="spinner-sm"></div>';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                }, 5000);
+            }
+            window.location.assign(window.location.origin + "/export/" + fmt + "?all=true&category=" + encodeURIComponent(category));
+        };
+
         window.stopScraping = async function() {
             try {
                 const res = await fetch('/api/trigger/stop', { method: 'POST' });
@@ -2398,7 +2498,11 @@ window.updatePaginationUI = function(data) {
 
         async function refreshCharts() {
             try {
-                const response = await fetch('/api/stats/charts');
+                let url = '/api/stats/charts';
+                if (window.isSchoolDashboard) {
+                    url += '?schools_only=true';
+                }
+                const response = await fetch(url);
                 const stats = await response.json();
                 if (!stats.sources) return;
                 
@@ -2557,8 +2661,7 @@ window.updatePaginationUI = function(data) {
 </body>
 </html>
 """
-@app.route("/")
-def index():
+def render_dashboard_portal(is_school_dashboard=False):
     try:
         config = load_config()
         scraper_cfg = config.get("scraper", {})
@@ -2598,10 +2701,17 @@ def index():
             selected_category,
             selected_source,
             selected_quality,
+            exclude_schools=not is_school_dashboard,
+            only_schools=is_school_dashboard
         )
 
-        # Get total count (unfiltered)
-        cur.execute("SELECT COUNT(*) as cnt FROM contacts")
+        ph = db_placeholder()
+        like_op = "LIKE" if USE_SQLITE else "ILIKE"
+        where_clause = f"LOWER(category) {like_op} {ph}" if is_school_dashboard else f"LOWER(category) NOT {like_op} {ph}"
+        params_stat = ["%school%"]
+
+        # Get total count (unfiltered for this portal context)
+        cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause}", params_stat)
         total = cur.fetchone()["cnt"]
 
         # Get filtered count
@@ -2618,31 +2728,33 @@ def index():
         
         offset = (page - 1) * limit
 
-        ph = db_placeholder()
         query_sql = f"SELECT id, name, phone, email, city, source, category, quality_tier, quality_score, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_by} LIMIT {ph} OFFSET {ph}"
         cur.execute(query_sql, params + [limit, offset])
         contacts = cur.fetchall()
 
         # Get unique values for filter dropdowns (CACHED)
         cities = get_cached_filter(
-            "cities",
-            "SELECT DISTINCT city FROM contacts WHERE city IS NOT NULL AND city <> '' ORDER BY city",
-            cur
+            f"cities_{'school' if is_school_dashboard else 'fin'}",
+            f"SELECT DISTINCT city FROM contacts WHERE {where_clause} AND city IS NOT NULL AND city <> '' ORDER BY city",
+            cur,
+            params_stat
         )
         categories = get_cached_filter(
-            "categories",
-            "SELECT DISTINCT category FROM contacts WHERE category IS NOT NULL AND category <> '' ORDER BY category",
-            cur
+            f"categories_{'school' if is_school_dashboard else 'fin'}",
+            f"SELECT DISTINCT category FROM contacts WHERE {where_clause} AND category IS NOT NULL AND category <> '' ORDER BY category",
+            cur,
+            params_stat
         )
         sources = get_cached_filter(
-            "sources",
-            "SELECT DISTINCT source FROM contacts WHERE source IS NOT NULL AND source <> '' ORDER BY source",
-            cur
+            f"sources_{'school' if is_school_dashboard else 'fin'}",
+            f"SELECT DISTINCT source FROM contacts WHERE {where_clause} AND source IS NOT NULL AND source <> '' ORDER BY source",
+            cur,
+            params_stat
         )
 
         # Optimized Stats
         if USE_SQLITE:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT 
                     SUM(CASE WHEN phone_clean IS NOT NULL AND phone_clean <> '' THEN 1 ELSE 0 END) as with_phone,
                     SUM(CASE WHEN email IS NOT NULL AND email <> '' THEN 1 ELSE 0 END) as with_email,
@@ -2652,9 +2764,10 @@ def index():
                     SUM(CASE WHEN LOWER(quality_tier) = 'low' THEN 1 ELSE 0 END) as q_low,
                     AVG(quality_score) as avg_score
                 FROM contacts
-            """)
+                WHERE {where_clause}
+            """, params_stat)
         else:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT 
                     COUNT(*) FILTER (WHERE phone_clean IS NOT NULL AND phone_clean <> '') as with_phone,
                     COUNT(*) FILTER (WHERE email IS NOT NULL AND email <> '') as with_email,
@@ -2664,20 +2777,20 @@ def index():
                     COUNT(*) FILTER (WHERE LOWER(quality_tier) = 'low') as q_low,
                     AVG(quality_score) as avg_score
                 FROM contacts
-            """)
+                WHERE {where_clause}
+            """, params_stat)
         stats_row = cur.fetchone()
         if stats_row:
             stats_row = dict(stats_row)
         
-        
-        cur.execute("SELECT source, COUNT(*) as c FROM contacts GROUP BY source")
+        cur.execute(f"SELECT source, COUNT(*) as c FROM contacts WHERE {where_clause} GROUP BY source", params_stat)
         by_source = {r["source"]: r["c"] for r in cur.fetchall()}
-        cur.execute("SELECT category, COUNT(*) as c FROM contacts GROUP BY category")
+        cur.execute(f"SELECT category, COUNT(*) as c FROM contacts WHERE {where_clause} GROUP BY category", params_stat)
         by_cat = {r["category"]: r["c"] for r in cur.fetchall()}
         cur.close()
         conn.close()
     except Exception as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in portal: {e}")
         contacts, total, filtered_total, stats_row = [], 0, 0, {}
         by_source, by_cat, total_pages, page = {}, {}, 1, 1
         cities, categories, sources = [], [], []
@@ -2715,6 +2828,7 @@ def index():
 
     return render_template_string(
         HTML,
+        is_school_dashboard=is_school_dashboard,
         contacts=contacts,
         s={
             "total": total,
@@ -2746,6 +2860,16 @@ def index():
         sort_by=sort_by,
         limit=limit,
     )
+
+
+@app.route("/")
+def index():
+    return render_dashboard_portal(is_school_dashboard=False)
+
+
+@app.route("/schools")
+def schools_index():
+    return render_dashboard_portal(is_school_dashboard=True)
 
 
 @app.route("/api/status")
@@ -3130,14 +3254,21 @@ def export(fmt):
         return "Invalid format. Use csv, excel, xlsx, json, or pdf.", 400
     
     export_all = request.args.get("all") == "true"
+    target_cat = request.args.get("category", "")
     
     try:
         conn = get_db()
         cur = conn.cursor()
         
         if export_all:
-            search_query = filter_city = filter_category = filter_source = ""
-            where_sql, params = "1=1", []
+            if target_cat:
+                ph = "?" if USE_SQLITE else "%s"
+                where_sql, params = f"LOWER(category) LIKE {ph}", [f"%{target_cat.lower()}%"]
+                search_query = filter_city = filter_source = ""
+                filter_category = target_cat
+            else:
+                search_query = filter_city = filter_category = filter_source = ""
+                where_sql, params = "1=1", []
         else:
             search_query = request.args.get("q", "")
             filter_city = request.args.get("city", "")
@@ -3184,7 +3315,10 @@ def export(fmt):
                 conn.close()
 
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"export_{ts}.csv" if not export_all else f"bulk_export_{ts}.csv"
+            if export_all and target_cat:
+                filename = f"bulk_export_{target_cat.replace(' ', '_').lower()}_{ts}.csv"
+            else:
+                filename = f"export_{ts}.csv" if not export_all else f"bulk_export_{ts}.csv"
             
             return Response(
                 stream_with_context(generate()),
@@ -3215,7 +3349,10 @@ def export(fmt):
         if filter_category: parts.append(filter_category.replace(' ', '_'))
         if search_query: parts.append(search_query.replace(' ', '_'))
     else:
-        parts.append("BULK_ALL")
+        if target_cat:
+            parts.append(f"BULK_{target_cat.replace(' ', '_').upper()}")
+        else:
+            parts.append("BULK_ALL")
         
     filename_prefix = "_".join(parts)
     total_rows = len(rows)
@@ -3501,12 +3638,24 @@ def stream_stats():
 @app.route("/api/stats/charts")
 def api_chart_stats():
     try:
+        schools_only = request.args.get("schools_only") == "true"
+        ph = "?" if USE_SQLITE else "%s"
+        
+        if schools_only:
+            where_sql = f"WHERE LOWER(category) LIKE {ph}"
+            params = ["%school%"]
+        else:
+            where_sql = f"WHERE LOWER(category) NOT LIKE {ph}"
+            params = ["%school%"]
+            
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT source, COUNT(*) as count FROM contacts GROUP BY source")
+        
+        cur.execute(f"SELECT source, COUNT(*) as count FROM contacts {where_sql} GROUP BY source", params)
         sources = [dict(r) for r in cur.fetchall()]
+        
         # Normalize categories in Python to ensure perfect grouping regardless of DB state
-        cur.execute("SELECT category, COUNT(*) as count FROM contacts GROUP BY category")
+        cur.execute(f"SELECT category, COUNT(*) as count FROM contacts {where_sql} GROUP BY category", params)
         raw_cats = cur.fetchall()
         from processing import ProcessingHandler
         cat_map = {}
@@ -3515,11 +3664,11 @@ def api_chart_stats():
             cat_map[norm] = cat_map.get(norm, 0) + r["count"]
         
         categories = [{"category": k, "count": v} for k, v in sorted(cat_map.items(), key=lambda x: x[1], reverse=True)[:10]]
-
+ 
         if USE_SQLITE:
-            cur.execute("SELECT strftime('%Y-%m-%d', scraped_at) as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
+            cur.execute(f"SELECT strftime('%Y-%m-%d', scraped_at) as date, COUNT(*) as count FROM contacts {where_sql} GROUP BY date ORDER BY date DESC LIMIT 7", params)
         else:
-            cur.execute("SELECT scraped_at::date as date, COUNT(*) as count FROM contacts GROUP BY date ORDER BY date DESC LIMIT 7")
+            cur.execute(f"SELECT scraped_at::date as date, COUNT(*) as count FROM contacts {where_sql} GROUP BY date ORDER BY date DESC LIMIT 7", params)
         trend = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
