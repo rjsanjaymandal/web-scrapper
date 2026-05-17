@@ -411,8 +411,60 @@ class OfficialAPIHandlers:
                         if btn.get_text(" ", strip=True)
                     ]
 
+                    # Extract contacts: Scan card text first
+                    email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+                    phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+                    
+                    phone = None
+                    email = None
+                    
+                    card_text = card.get_text()
+                    card_emails = email_pattern.findall(card_text)
+                    card_phones = phone_pattern.findall(card_text)
+                    
+                    if card_emails:
+                        email = card_emails[0].strip().lower().rstrip('.')
+                    if card_phones:
+                        phone = card_phones[0].strip()
+
+                    # Politely crawl detail page if missing phone/email
+                    # Capped to 20 profiles per async fast scrape cycle to keep it fast
+                    if (not phone or not email) and source_url and source_url != url and len(leads) < 20:
+                        from urllib.parse import urljoin
+                        absolute_profile_url = urljoin("https://caconnect.icai.org", source_url)
+                        logger.info(f"API ICAI: Fetching profile contact for {name}: {absolute_profile_url}")
+                        try:
+                            p_resp = await engine.fetch(
+                                absolute_profile_url,
+                                headers={"Referer": url},
+                            )
+                            if p_resp and p_resp.status == 200:
+                                p_html = await p_resp.text()
+                                p_soup = BeautifulSoup(p_html, "lxml")
+                                # Clean script & styles
+                                for s in p_soup(["script", "style"]):
+                                    s.decompose()
+                                p_text = p_soup.get_text()
+                                
+                                p_emails = email_pattern.findall(p_text)
+                                p_phones = phone_pattern.findall(p_text)
+                                
+                                clean_emails = [e for e in p_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10]
+                                
+                                if clean_emails and not email:
+                                    email = clean_emails[0].strip().lower().rstrip('.')
+                                if clean_phones and not phone:
+                                    phone = clean_phones[0].strip()
+                                    
+                                logger.info(f"API ICAI: Extracted {name} contacts from profile page (Phone: {phone}, Email: {email})")
+                        except Exception as fetch_err:
+                            logger.warning(f"API ICAI: Profile fetch failed for {absolute_profile_url}: {fetch_err}")
+
                     leads.append({
                         "name": name[:200],
+                        "phone": phone,
+                        "email": email,
                         "address": address[:300] if address else None,
                         "city": listed_city,
                         "state": state,

@@ -9,7 +9,7 @@ import random
 import logging
 import base64
 from typing import List, Dict, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 from stealth_utils import StealthManager
 
 try:
@@ -201,6 +201,7 @@ class ICAIDirectScraper:
         results = []
         seen = set()
 
+        fetches_done = 0
         for target_city in cities_to_try:
             state = self._state_for_city(target_city)
             if not state:
@@ -249,8 +250,53 @@ class ICAIDirectScraper:
                         continue
                     seen.add(key)
 
+                    # Extract contacts: Scan card text first
+                    email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+                    phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+                    
+                    phone = None
+                    email = None
+                    
+                    card_text = card.get_text()
+                    card_emails = email_pattern.findall(card_text)
+                    card_phones = phone_pattern.findall(card_text)
+                    
+                    if card_emails:
+                        email = card_emails[0].strip().lower()
+                    if card_phones:
+                        phone = card_phones[0].strip()
+
+                    # Politely crawl detail page if missing phone/email
+                    if (not phone or not email) and source_url and source_url != search_url and fetches_done < 50:
+                        absolute_profile_url = urljoin("https://caconnect.icai.org", source_url)
+                        logger.info(f"ICAI CA Connect: Fetching profile contact for {name}: {absolute_profile_url}")
+                        fetches_done += 1
+                        try:
+                            profile_html, p_status = self.fetcher.fetch(absolute_profile_url, search_url)
+                            if p_status == 200 and profile_html:
+                                p_soup = BeautifulSoup(profile_html, "html.parser")
+                                # Clean script & styles
+                                for s in p_soup(["script", "style"]):
+                                    s.decompose()
+                                p_text = p_soup.get_text()
+                                
+                                p_emails = email_pattern.findall(p_text)
+                                p_phones = phone_pattern.findall(p_text)
+                                
+                                clean_emails = [e for e in p_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10]
+                                
+                                if clean_emails and not email:
+                                    email = clean_emails[0].strip().lower()
+                                if clean_phones and not phone:
+                                    phone = clean_phones[0].strip()
+                                    
+                                logger.info(f"ICAI CA Connect: Extracted {name} contacts from profile page (Phone: {phone}, Email: {email})")
+                        except Exception as fetch_err:
+                            logger.warning(f"ICAI CA Connect: Profile fetch failed for {absolute_profile_url}: {fetch_err}")
+
                     results.append({
-                        "name": name[:200], "phone": None, "email": None,
+                        "name": name[:200], "phone": phone, "email": email,
                         "address": address[:300] if address else None,
                         "city": listed_city or target_city, "state": state,
                         "category": "Chartered Accountants", "source": self.SOURCE,
@@ -366,8 +412,18 @@ class SEBIDirectScraper:
                             city_col = cols[3].get_text(strip=True) if len(cols) > 3 else city or ""
 
                             if name and "Name" not in name and len(name) > 2:
+                                # Search for embedded contact details in the address field
+                                email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+                                phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+                                
+                                emails = email_pattern.findall(address)
+                                phones = phone_pattern.findall(address)
+                                
+                                email = emails[0].lower() if emails else None
+                                phone = phones[0] if phones else None
+                                
                                 results.append({
-                                    "name": name[:200], "phone": None, "email": None,
+                                    "name": name[:200], "phone": phone, "email": email,
                                     "address": address[:300] if address else None,
                                     "city": city_col or city,
                                     "category": "Investment Advisors",
@@ -590,6 +646,170 @@ class SchoolDirectScraper:
             logger.error(f"SCHOOL SCRAPER: Error crawling BSAI: {e}")
         return schools
 
+    def _fetch_aisa_schools(self) -> List[Dict]:
+        schools = []
+        url = "https://aisa.co.in/ListMemberSchools.aspx"
+        try:
+            logger.info("SCHOOL SCRAPER: Fetching All India Schools Association (AISA) list...")
+            html, status = self.fetcher.fetch(url)
+            if status == 200 and html:
+                soup = BeautifulSoup(html, 'html.parser')
+                current_state = "India"
+                for element in soup.find_all(['h4', 'h5', 'h6', 'li']):
+                    if element.name in ['h4', 'h5', 'h6']:
+                        text = element.get_text(strip=True)
+                        if "–" in text or "Schools" in text or "Combined" in text or "presence" in text:
+                            if "–" in text:
+                                current_state = text.split('–')[0].strip()
+                            elif "-" in text:
+                                current_state = text.split('-')[0].strip()
+                            else:
+                                current_state = text.replace("Schools", "").replace("Combined", "").strip()
+                    elif element.name == 'li':
+                        text = element.get_text(strip=True)
+                        if text and len(text) > 3 and not element.find('a') and not any(x in text.lower() for x in ["download", "policy", "curriculum", "digital", "government", "webinar", "event", "summit", "login", "register"]):
+                            text = re.sub(r'^[•\-\s]+', '', text).strip()
+                            schools.append({
+                                "name": text,
+                                "email": None,
+                                "phone": None,
+                                "address": f"State/Region: {current_state}",
+                                "city": current_state,
+                                "category": "School",
+                                "source": "AISA",
+                                "source_url": url
+                            })
+            logger.info(f"SCHOOL SCRAPER: Successfully crawled AISA list: {len(schools)} school names found.")
+        except Exception as e:
+            logger.error(f"SCHOOL SCRAPER: Error crawling AISA: {e}")
+        return schools
+
+    def _enrich_aisa_school(self, school: Dict) -> Optional[Dict]:
+        """
+        Enrich a school name and state with direct website contacts via organic search and domain crawler.
+        """
+        name = school["name"]
+        region = school["city"]
+        query = f'"{name}" "{region}" school contact'
+        encoded_query = urlencode({"q": query})
+        search_url = f"https://www.bing.com/search?{encoded_query}"
+        
+        logger.info(f"SCHOOL SCRAPER: Enriched search for AISA school: {name} in {region} -> {search_url}")
+        
+        email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+        phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+        excluded_domains = {
+            "grotal.com", "yellowpages.in", "justdial.com", "wikipedia.org", "facebook.com",
+            "twitter.com", "instagram.com", "linkedin.com", "youtube.com", "indiamart.com",
+            "sulekha.com", "justdial.com", "collegedunia.com", "shiksha.com", "mapsofindia.com",
+            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in"
+        }
+        
+        try:
+            html, status = self.fetcher.fetch(search_url, "https://www.bing.com/")
+            if not html or status != 200:
+                return None
+                
+            soup = BeautifulSoup(html, 'html.parser')
+            results_list = soup.find_all('li', class_='b_algo')
+            
+            # 1. Search snippets first
+            for li in results_list[:3]:
+                h2 = li.find('h2')
+                if not h2:
+                    continue
+                anchor = h2.find('a')
+                if not anchor or not anchor.get('href'):
+                    continue
+                    
+                raw_url = anchor['href']
+                school_url = self._decode_bing_url(raw_url)
+                
+                snippet_tag = li.find('p') or li.find('div', class_='b_caption') or li.find('div', class_='b_snippet')
+                snippet = snippet_tag.get_text() if snippet_tag else ""
+                
+                emails_found = email_pattern.findall(snippet)
+                phones_found = phone_pattern.findall(snippet)
+                
+                clean_emails = [e for e in emails_found if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                clean_phones = [p for p in phones_found if len(re.sub(r'\D', '', p)) >= 10]
+                
+                if clean_emails or clean_phones:
+                    school["email"] = clean_emails[0].lower() if clean_emails else None
+                    if clean_phones:
+                        raw_digits = re.sub(r'\D', '', clean_phones[0])
+                        school["phone"] = raw_digits[-10:] if len(raw_digits) >= 10 else raw_digits
+                    school["source_url"] = school_url
+                    logger.info(f"SCHOOL SCRAPER: Quick win contact found for AISA school {name} from snippet: Phone: {school['phone']}, Email: {school['email']}")
+                    return school
+
+            # 2. Trace actual domain contact page
+            for li in results_list[:2]:
+                h2 = li.find('h2')
+                if not h2:
+                    continue
+                anchor = h2.find('a')
+                if not anchor or not anchor.get('href'):
+                    continue
+                    
+                raw_url = anchor['href']
+                school_url = self._decode_bing_url(raw_url)
+                
+                from urllib.parse import urlparse
+                parsed_url = urlparse(school_url)
+                domain = parsed_url.netloc.lower()
+                if domain.startswith("www."):
+                    domain = domain[4:]
+                    
+                is_excluded = False
+                if domain:
+                    for ex in excluded_domains:
+                        if domain == ex or domain.endswith("." + ex):
+                            is_excluded = True
+                            break
+                            
+                if domain and not is_excluded:
+                    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                    contact_paths = ["", "/contact", "/contact-us", "/contactus", "/about-us", "/about"]
+                    
+                    for path in contact_paths:
+                        target_page = base_url + path
+                        try:
+                            page_html, page_status = self.fetcher.fetch(target_page, school_url)
+                            if not page_html or page_status != 200:
+                                continue
+                                
+                            page_soup = BeautifulSoup(page_html, 'html.parser')
+                            for script in page_soup(["script", "style"]):
+                                script.decompose()
+                            text_content = page_soup.get_text()
+                            
+                            page_emails = email_pattern.findall(text_content)
+                            page_phones = phone_pattern.findall(text_content)
+                            
+                            valid_emails = [e for e in page_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
+                            valid_phones = [p for p in page_phones if len(re.sub(r'\D', '', p)) >= 10]
+                            
+                            direct_email = valid_emails[0].lower() if valid_emails else None
+                            direct_phone = None
+                            if valid_phones:
+                                raw_digits = re.sub(r'\D', '', valid_phones[0])
+                                direct_phone = raw_digits[-10:] if len(raw_digits) >= 10 else raw_digits
+                                
+                            if direct_email or direct_phone:
+                                school["email"] = direct_email
+                                school["phone"] = direct_phone
+                                school["source_url"] = base_url
+                                logger.info(f"SCHOOL SCRAPER: Extracted contact for AISA school {name} from website page {target_page}: Phone: {direct_phone}, Email: {direct_email}")
+                                return school
+                        except Exception as e:
+                            logger.debug(f"AISA enrich page crawl error for {target_page}: {e}")
+                            continue
+        except Exception as err:
+            logger.warning(f"SCHOOL SCRAPER: Error enriching AISA school {name}: {err}")
+            
+        return None
+
     def scrape(self, city: str = None, category: str = "Schools") -> List[Dict]:
         results = []
         
@@ -608,6 +828,15 @@ class SchoolDirectScraper:
             premium_schools.extend(bsai_list)
         except Exception as bsai_err:
             logger.error(f"SCHOOL SCRAPER: Failed BSAI crawl: {bsai_err}")
+
+        # Fetch AISA schools
+        aisa_schools = []
+        try:
+            aisa_list = self._fetch_aisa_schools()
+            logger.info(f"SCHOOL SCRAPER: Loaded {len(aisa_list)} schools from All India Schools Association (AISA).")
+            aisa_schools.extend(aisa_list)
+        except Exception as aisa_err:
+            logger.error(f"SCHOOL SCRAPER: Failed AISA crawl: {aisa_err}")
             
         # Filter premium list if city/zone is specified
         filtered_premium = []
@@ -622,6 +851,26 @@ class SchoolDirectScraper:
             logger.info(f"SCHOOL SCRAPER: Using all {len(filtered_premium)} premium association schools.")
             
         results.extend(filtered_premium)
+
+        # Enrich and add AISA schools matching city
+        matching_aisa = []
+        if city:
+            city_clean = city.strip().lower()
+            for s in aisa_schools:
+                if city_clean in s["address"].lower() or city_clean in s["city"].lower() or city_clean in s["name"].lower():
+                    matching_aisa.append(s)
+        else:
+            matching_aisa = aisa_schools
+
+        logger.info(f"SCHOOL SCRAPER: Found {len(matching_aisa)} matching AISA schools. Enriching top 10 with direct contacts...")
+        aisa_enriched_count = 0
+        for s in matching_aisa:
+            if aisa_enriched_count >= 10:
+                break
+            enriched = self._enrich_aisa_school(s)
+            if enriched:
+                results.append(enriched)
+                aisa_enriched_count += 1
 
         # 2. Bing Local search fallback
         target_zones = []
