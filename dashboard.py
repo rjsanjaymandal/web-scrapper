@@ -715,6 +715,7 @@ HTML = """
             position: sticky; 
             top: 0; 
             z-index: 100;
+            overflow-y: auto;
         }
         .main-view { 
             padding: 40px; 
@@ -1569,16 +1570,14 @@ HTML = """
             <nav class="nav-group">
                 <p class="nav-label">Categorical Download</p>
                 <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
-                    {% if is_school_dashboard %}
                     <!-- School Data Download -->
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Schools</span>
                         <div style="display: flex; gap: 4px;">
                             <button class="export-btn export-csv" onclick="exportCategory('School', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
                             <button class="export-btn export-excel" onclick="exportCategory('School', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
                         </div>
                     </div>
-                    {% else %}
                     <!-- Insurance Data Download -->
                     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
@@ -1595,7 +1594,6 @@ HTML = """
                             <button class="export-btn export-excel" onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
                         </div>
                     </div>
-                    {% endif %}
                 </div>
             </nav>
 
@@ -1631,15 +1629,13 @@ HTML = """
 
             <nav class="nav-group">
                 <p class="nav-label">Direct Scrape (No Proxy)</p>
-                {% if is_school_dashboard %}
                 <a href="#" class="nav-item" onclick="startDirectScrape('SCHOOL')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    Schools Scraper
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    <span style="color: var(--accent-emerald); font-weight: 700;">Schools Scraper</span>
                 </a>
-                {% else %}
                 <a href="#" class="nav-item" onclick="startDirectScrape('SEBI')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    SEBI
+                    SEBI (Investment Advisors)
                 </a>
                 <a href="#" class="nav-item" onclick="startDirectScrape('ICAI')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
@@ -1647,13 +1643,12 @@ HTML = """
                 </a>
                 <a href="#" class="nav-item" onclick="startDirectScrape('NSE')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    NSE
+                    NSE (Stock Brokers)
                 </a>
                 <a href="#" class="nav-item" onclick="startGovBatch()">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
                     Gov Sites Batch
                 </a>
-                {% endif %}
             </nav>
 
             <div class="system-footer">
@@ -1799,9 +1794,15 @@ HTML = """
 
             <div class="quick-filters">
                 <span class="quick-label">Quick:</span>
+                {% if is_school_dashboard %}
+                <button class="quick-btn" onclick="setFilter('Delhi', 'Schools')">Schools Delhi</button>
+                <button class="quick-btn" onclick="setFilter('Mumbai', 'Schools')">Schools Mumbai</button>
+                <button class="quick-btn" onclick="setFilter('Bangalore', 'Schools')">Schools Bangalore</button>
+                {% else %}
                 <button class="quick-btn" onclick="setFilter('Delhi', 'Lawyers')">Lawyers Delhi</button>
                 <button class="quick-btn" onclick="setFilter('Mumbai', 'CAs')">CAs Mumbai</button>
                 <button class="quick-btn" onclick="setFilter('Bangalore', 'Doctors')">Doctors Bangalore</button>
+                {% endif %}
                 <button class="clear-btn" onclick="clearFilters()">Clear All</button>
             </div>
         </div>
