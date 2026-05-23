@@ -7,7 +7,7 @@ Usage:
 Or:
     python merge_local_to_remote.py postgresql://user:pass@host:5432/dbname
 """
-import sqlite3, asyncio, sys, os, json
+import sqlite3, asyncio, sys, os, json, datetime
 from pathlib import Path
 
 PROJ_DIR = Path(__file__).parent
@@ -64,8 +64,22 @@ async def merge():
         saved = 0
         skipped = 0
         errors = 0
+        def parse_dt(val):
+            if not val:
+                return None
+            if isinstance(val, datetime.datetime):
+                return val
+            try:
+                return datetime.datetime.strptime(str(val), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                try:
+                    return datetime.datetime.strptime(str(val), "%Y-%m-%dT%H:%M:%S")
+                except ValueError:
+                    return None
+
         for row in rows:
             try:
+                scraped_at = parse_dt(row.get("scraped_at"))
                 result = await conn.execute("""
                     INSERT INTO contacts
                         (name, phone, email, address, category, city, area, state, source, source_url,
@@ -81,7 +95,7 @@ async def merge():
                     bool(row.get("email_valid")), bool(row.get("enriched")),
                     row.get("arn", ""), row.get("license_no", ""), row.get("membership_no", ""),
                     row.get("quality_score", 0), row.get("quality_tier", "low"),
-                    row.get("scraped_at"),
+                    scraped_at,
                 )
                 if "INSERT 0 1" in result:
                     saved += 1
