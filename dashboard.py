@@ -1652,8 +1652,9 @@ HTML = """
             <nav class="nav-group">
                 <p class="nav-label">Categorical Download</p>
                 <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
+                    {% if is_school_dashboard %}
                     <!-- School Data Download -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Schools</span>
                         <div style="display: flex; gap: 4px;">
                             <button class="export-btn export-csv" onclick="exportCategory('School', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
@@ -1661,6 +1662,7 @@ HTML = """
                             <button class="export-btn" onclick="exportCategory('School', 'pdf', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px; color: var(--accent-red); border-color: var(--accent-red);">PDF</button>
                         </div>
                     </div>
+                    {% else %}
                     <!-- Insurance Data Download -->
                     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
@@ -1677,6 +1679,7 @@ HTML = """
                             <button class="export-btn export-excel" onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </nav>
 
@@ -2097,8 +2100,8 @@ HTML = """
     </main>
 </div>
 
-    <datalist id="cities-list">{% for c in cities_default %}<option value="{{c}}">{% endfor %}</datalist>
-    <datalist id="cats-list">{% for c in categories_default %}<option value="{{c}}">{% endfor %}</datalist>    <script>
+    <datalist id="cities-list">{% for c in cities %}<option value="{{c}}">{% endfor %}</datalist>
+    <datalist id="cats-list">{% for c in categories %}<option value="{{c}}">{% endfor %}</datalist>    <script>
         window.isSchoolDashboard = {% if is_school_dashboard %}true{% else %}false{% endif %};
         // CORE NAVIGATION FUNCTIONS (Defined early)
         window.showNotif = function(msg, dur, isError) {
