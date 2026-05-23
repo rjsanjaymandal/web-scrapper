@@ -552,6 +552,134 @@ class SchoolDirectScraper:
             logger.warning(f"Failed to decode Bing redirect URL {url}: {e}")
         return url
 
+    def _is_valid_website(self, web: str) -> bool:
+        if not web:
+            return False
+        web_clean = web.lower().strip()
+        if web_clean in ["n.a.", "na", "n/a", "no", "nil", "none", "not available", "null"]:
+            return False
+        if "example.com" in web_clean or "test.com" in web_clean:
+            return False
+        return True
+
+    def _fetch_cbse_schools(self) -> List[Dict]:
+        """
+        Fetch CBSE schools from open source dataset (anburocky3/cbse-schools-data).
+        Uses a local JSON cache under raw_data/cbse_schools.json to avoid high bandwidth usage.
+        """
+        import os
+        import json
+        
+        if hasattr(self, '_cbse_schools_cache') and self._cbse_schools_cache:
+            return self._cbse_schools_cache
+
+        cache_path = os.path.join("raw_data", "cbse_schools.json")
+        os.makedirs("raw_data", exist_ok=True)
+        
+        # Check if local cache exists
+        if os.path.exists(cache_path):
+            try:
+                logger.info(f"SCHOOL SCRAPER: Loading CBSE schools from local cache: {cache_path}")
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                    self._cbse_schools_cache = payload.get("data", [])
+                    logger.info(f"SCHOOL SCRAPER: Loaded {len(self._cbse_schools_cache)} schools from local CBSE cache.")
+                    return self._cbse_schools_cache
+            except Exception as e:
+                logger.warning(f"SCHOOL SCRAPER: Failed to read local CBSE cache: {e}. Will re-download.")
+
+        # Download from GitHub
+        url = "https://raw.githubusercontent.com/anburocky3/cbse-schools-data/main/data/schools.json"
+        try:
+            logger.info("SCHOOL SCRAPER: Fetching CBSE schools list from open data source...")
+            html, status = self.fetcher.fetch(url)
+            if status == 200 and html:
+                payload = json.loads(html)
+                self._cbse_schools_cache = payload.get("data", [])
+                
+                # Save to cache
+                try:
+                    with open(cache_path, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, ensure_ascii=False)
+                    logger.info(f"SCHOOL SCRAPER: Cached CBSE dataset locally to {cache_path}")
+                except Exception as save_err:
+                    logger.warning(f"SCHOOL SCRAPER: Could not save CBSE cache file: {save_err}")
+                    
+                logger.info(f"SCHOOL SCRAPER: Successfully loaded {len(self._cbse_schools_cache)} CBSE schools.")
+                return self._cbse_schools_cache
+        except Exception as e:
+            logger.error(f"SCHOOL SCRAPER: Error loading CBSE dataset: {e}")
+            
+        return []
+
+    def _enrich_school_from_website(self, name: str, website_url: str, address: str, city: str) -> Optional[Dict]:
+        """
+        Fetches the school's official website directly to extract high-quality contact info (email/phone).
+        Completely bypasses Bing search, making it robust, fast, and block-free.
+        """
+        if not website_url:
+            return None
+            
+        target_web = website_url.strip()
+        if not target_web.startswith("http"):
+            target_web = "http://" + target_web
+            
+        logger.info(f"SCHOOL SCRAPER: Direct website enrichment for '{name}' via official URL: {target_web}")
+        
+        email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+        phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+        
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(target_web)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            
+            contact_paths = ["", "/contact", "/contact-us", "/contactus", "/about-us", "/about"]
+            
+            for path in contact_paths:
+                target_page = base_url + path
+                try:
+                    page_html, page_status = self.fetcher.fetch(target_page, target_web)
+                    if not page_html or page_status != 200:
+                        continue
+                        
+                    page_soup = BeautifulSoup(page_html, 'html.parser')
+                    for script in page_soup(["script", "style"]):
+                        script.decompose()
+                    text_content = page_soup.get_text()
+                    
+                    page_emails = email_pattern.findall(text_content)
+                    page_phones = phone_pattern.findall(text_content)
+                    
+                    valid_emails = [e for e in page_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain", "bootstrap"])]
+                    valid_phones = [p for p in page_phones if len(re.sub(r'\D', '', p)) >= 10]
+                    
+                    direct_email = valid_emails[0].lower() if valid_emails else None
+                    direct_phone = None
+                    if valid_phones:
+                        raw_digits = re.sub(r'\D', '', valid_phones[0])
+                        direct_phone = raw_digits[-10:] if len(raw_digits) >= 10 else raw_digits
+                        
+                    if direct_email or direct_phone:
+                        logger.info(f"SCHOOL SCRAPER: Extracted contact for '{name}' from website page {target_page}: Phone: {direct_phone}, Email: {direct_email}")
+                        return {
+                            "name": name,
+                            "email": direct_email,
+                            "phone": direct_phone,
+                            "address": address,
+                            "city": city,
+                            "category": "School",
+                            "source": "CBSE",
+                            "source_url": target_web
+                        }
+                except Exception as e:
+                    logger.debug(f"Direct page crawl error for {target_page}: {e}")
+                    continue
+        except Exception as err:
+            logger.warning(f"SCHOOL SCRAPER: Error parsing website {target_web} for school {name}: {err}")
+            
+        return None
+
     def _fetch_npsc_schools(self) -> List[Dict]:
         schools = []
         url = "https://npscindia.com/member-school-list.php"
@@ -876,6 +1004,63 @@ class SchoolDirectScraper:
             if enriched:
                 results.append(enriched)
                 aisa_enriched_count += 1
+
+        # Fetch and add CBSE schools matching city (direct website enrichment)
+        try:
+            cbse_schools = self._fetch_cbse_schools()
+            matching_cbse = []
+            if city:
+                city_clean = city.strip().upper()
+                # Normalize city name
+                def _normalize_loc(loc: str) -> str:
+                    loc = loc.upper()
+                    if loc == "BANGALORE":
+                        return "BENGALURU"
+                    if loc == "BENGALURU":
+                        return "BANGALORE"
+                    return loc
+                city_norm = _normalize_loc(city_clean)
+                
+                for s in cbse_schools:
+                    state = (s.get("state") or "").upper()
+                    district = (s.get("district") or "").upper()
+                    addr = (s.get("address") or "").upper()
+                    name = (s.get("schoolName") or "").upper()
+                    
+                    if (city_clean in state or city_clean in district or city_clean in addr or city_clean in name or
+                        city_norm in state or city_norm in district or city_norm in addr or city_norm in name):
+                        matching_cbse.append(s)
+            else:
+                matching_cbse = cbse_schools
+                
+            logger.info(f"SCHOOL SCRAPER: Found {len(matching_cbse)} matching CBSE schools for '{city}'.")
+            
+            # Filter ones with valid websites
+            cbse_with_web = [s for s in matching_cbse if self._is_valid_website(s.get("website"))]
+            logger.info(f"SCHOOL SCRAPER: Out of {len(matching_cbse)} schools, {len(cbse_with_web)} have official websites.")
+            
+            # Shuffle to crawl organically
+            random.shuffle(cbse_with_web)
+            
+            cbse_enriched_count = 0
+            # Enrich a polite batch of up to 15 matching CBSE schools
+            for s in cbse_with_web:
+                if cbse_enriched_count >= 15:
+                    break
+                
+                name = s.get("schoolName", "CBSE School")
+                web = s.get("website")
+                addr = f"{s.get('address', '')} (Principal: {s.get('headName', 'N/A')})"
+                state = s.get("state", "")
+                
+                enriched = self._enrich_school_from_website(name, web, addr, city or state)
+                if enriched:
+                    results.append(enriched)
+                    cbse_enriched_count += 1
+                    
+            logger.info(f"SCHOOL SCRAPER: Successfully enriched {cbse_enriched_count} CBSE schools directly.")
+        except Exception as cbse_err:
+            logger.error(f"SCHOOL SCRAPER: Failed CBSE crawl/enrichment: {cbse_err}")
 
         # 2. Bing Local search fallback
         target_zones = []
