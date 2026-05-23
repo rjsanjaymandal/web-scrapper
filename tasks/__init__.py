@@ -664,30 +664,42 @@ def auto_pilot_task():
         
         found_job = False
         for cat in categories:
+            # Category-level batch for direct-gov sources (handles ALL cities internally)
+            if any(k in cat.lower() for k in ["accountant", "mutual-fund", "insurance-agent", "investment-advisor"]):
+                claimed, reason, token = claim_scrape_job("batch", cat, "Official")
+                if claimed:
+                    set_status(f"AutoPilot: Starting direct gov batch for {cat}...", True)
+                    try:
+                        result = direct_gov_scrape_batch()
+                        count = result.get("saved", 0)
+                        found_job = True
+                        set_status(f"AutoPilot: Finished direct batch for {cat}. Found {count} leads.", True)
+                    except Exception as e:
+                        logger.error(f"AutoPilot direct batch failed: {e}")
+                        if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
+                            set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
+                            auto_pilot_task.apply_async(countdown=1800)
+                            return {"status": "waiting", "reason": "site_blocked"}
+                    break  # One batch per cycle, re-queue after
+                continue  # Not claimable, try next category
+            
+            # Per-city general scraping for all other categories
             for city in cities:
                 for src in sources:
-                    # Map src to internal source names or None for default
                     target_src = None if src == "Official" else src
                     
                     claimed, reason, token = claim_scrape_job(city, cat, target_src)
                     if claimed:
                         set_status(f"AutoPilot: Starting {cat} in {city} via {src}", True)
                         
-                        # Execute the scrape
                         try:
-                            # Check if already running or recently done (redundancy check)
                             if redis_client:
                                 last_run = redis_client.get(f"scraper:last_run:{city}:{cat}")
                                 if last_run:
-                                    # If run within last hour, skip
                                     if time.time() - float(last_run) < 3600:
                                         continue
 
-                            # Use gov batch for Official CA/CS targets, else use general scraper
-                            if src == "Official" and any(k in cat.lower() for k in ["accountant", "secretary", "agent", "advisor"]):
-                                result = direct_gov_scrape_batch()
-                                count = result.get("saved", 0)
-                            elif "school" in cat.lower():
+                            if "school" in cat.lower():
                                 result = school_scrape_task(city=city, category=cat)
                                 count = result.get("saved", 0)
                             else:
@@ -699,7 +711,7 @@ def auto_pilot_task():
 
                             found_job = True
                             set_status(f"AutoPilot: Finished {cat} in {city}. Found {count} leads.", True)
-                            break # Move to next city/cat cycle
+                            break
                         except Exception as e:
                             logger.error(f"AutoPilot job failed: {e}")
                             if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):

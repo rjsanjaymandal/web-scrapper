@@ -3456,6 +3456,82 @@ def api_contacts():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/merge-local", methods=["POST"])
+def api_merge_local():
+    """Accept locally-exported contacts and merge into the active database."""
+    try:
+        data = request.get_json(force=True)
+        contacts = data.get("contacts", [])
+        if not contacts:
+            return jsonify({"error": "No contacts provided"}), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+        saved = 0
+        skipped = 0
+
+        # Determine if we're on SQLite or PostgreSQL
+        is_sqlite = USE_SQLITE or isinstance(conn, sqlite3.Connection)
+
+        if is_sqlite:
+            for c in contacts:
+                try:
+                    cur.execute(
+                        """INSERT OR IGNORE INTO contacts
+                        (name, phone, email, address, category, city, area, state, source, source_url,
+                         phone_clean, email_valid, enriched, arn, license_no, membership_no,
+                         quality_score, quality_tier, scraped_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            c.get("name", ""), c.get("phone", ""), c.get("email", ""),
+                            c.get("address", ""), c.get("category", ""), c.get("city", ""),
+                            c.get("area", ""), c.get("state", ""), c.get("source", ""),
+                            c.get("source_url", ""), c.get("phone_clean", ""),
+                            1 if c.get("email_valid") else 0, 1 if c.get("enriched") else 0,
+                            c.get("arn", ""), c.get("license_no", ""), c.get("membership_no", ""),
+                            c.get("quality_score", 0), c.get("quality_tier", "low"),
+                            c.get("scraped_at"),
+                        ),
+                    )
+                    if cur.rowcount > 0:
+                        saved += 1
+                    else:
+                        skipped += 1
+                except Exception:
+                    skipped += 1
+        else:
+            from psycopg2.extras import execute_values
+            rows = []
+            for c in contacts:
+                rows.append((
+                    c.get("name", ""), c.get("phone", ""), c.get("email", ""),
+                    c.get("address", ""), c.get("category", ""), c.get("city", ""),
+                    c.get("area", ""), c.get("state", ""), c.get("source", ""),
+                    c.get("source_url", ""), c.get("phone_clean", ""),
+                    c.get("arn", ""), c.get("license_no", ""), c.get("membership_no", ""),
+                    c.get("quality_score", 0), c.get("quality_tier", "low"),
+                    c.get("scraped_at"),
+                ))
+            if rows:
+                execute_values(cur,
+                    """INSERT INTO contacts
+                    (name, phone, email, address, category, city, area, state, source, source_url,
+                     phone_clean, arn, license_no, membership_no, quality_score, quality_tier, scraped_at)
+                    VALUES %s
+                    ON CONFLICT (phone_clean) WHERE phone_clean IS NOT NULL DO NOTHING""",
+                    rows,
+                )
+                saved = cur.rowcount if cur.rowcount > 0 else len(rows)
+
+        conn.commit() if not conn.autocommit else None
+        cur.close()
+        conn.close()
+        return jsonify({"saved": saved, "total": len(contacts), "db": "sqlite" if is_sqlite else "postgresql"})
+    except Exception as e:
+        logger.error(f"Merge local failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/export/<fmt>")
 def export(fmt):
     logger.info(f"Export requested: format={fmt}, args={dict(request.args)}")
