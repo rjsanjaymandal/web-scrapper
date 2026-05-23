@@ -702,7 +702,12 @@ class SchoolDirectScraper:
             "grotal.com", "yellowpages.in", "justdial.com", "wikipedia.org", "facebook.com",
             "twitter.com", "instagram.com", "linkedin.com", "youtube.com", "indiamart.com",
             "sulekha.com", "justdial.com", "collegedunia.com", "shiksha.com", "mapsofindia.com",
-            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in"
+            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in",
+            "angi.com", "mrrooter.com", "thumbtack.com", "plumbersofamerica.com",
+            "1tomplumber.com", "rooterhero.com", "bestplumbers.com", "sbrh.ssu.ac.ir",
+            "onefivenine.com", "ezyschooling.com", "timesofindia.indiatimes.com",
+            "moe.gov.sg", "indiatoday.in", "educationtoday.co", "studyguideindia.com",
+            "indiastudychannel.com", "educatetoday.net"
         }
         
         try:
@@ -899,11 +904,16 @@ class SchoolDirectScraper:
             "grotal.com", "yellowpages.in", "justdial.com", "wikipedia.org", "facebook.com",
             "twitter.com", "instagram.com", "linkedin.com", "youtube.com", "indiamart.com",
             "sulekha.com", "justdial.com", "collegedunia.com", "shiksha.com", "mapsofindia.com",
-            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in"
+            "schoolmykids.com", "edustoke.com", "careers360.com", "icbse.com", "schools.org.in",
+            "angi.com", "mrrooter.com", "thumbtack.com", "plumbersofamerica.com",
+            "1tomplumber.com", "rooterhero.com", "bestplumbers.com", "sbrh.ssu.ac.ir",
+            "onefivenine.com", "ezyschooling.com", "timesofindia.indiatimes.com",
+            "moe.gov.sg", "indiatoday.in", "educationtoday.co", "studyguideindia.com",
+            "indiastudychannel.com", "educatetoday.net"
         }
 
         for zone in target_zones:
-            query = f'schools in "{zone}"'
+            query = f'schools in "{zone}" India'
             encoded_query = urlencode({"q": query})
             
             for page in range(1, 3):
