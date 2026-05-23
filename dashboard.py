@@ -3332,8 +3332,13 @@ def trigger_direct_scrape():
             True,
             {"source": source, "city": city, "category": category},
         )
-        
-        task_result = direct_scrape_task.delay(source=source, city=city, category=category)
+
+        # School scraping needs more time - use dedicated task
+        if source.upper() == "SCHOOL":
+            from tasks import school_scrape_task
+            task_result = school_scrape_task.delay(source=source, city=city, category=category)
+        else:
+            task_result = direct_scrape_task.delay(source=source, city=city, category=category)
         if task_result and getattr(task_result, "id", None):
             set_active_task_id(task_result.id)
         

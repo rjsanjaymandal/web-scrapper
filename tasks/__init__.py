@@ -220,7 +220,7 @@ def scrape_category_task(city: str, category: str, source: str = None, use_busin
             {"city": city, "category": category, "source": "SCHOOL"},
         )
         try:
-            res = direct_scrape_task(source="SCHOOL", city=city, category=category)
+            res = school_scrape_task(source="SCHOOL", city=city, category=category)
             saved_count = res.get("saved", 0) if isinstance(res, dict) else 0
             finish_scrape_job(city, category, source, token=token, count=saved_count, success=True)
             return {"status": "completed", "count": saved_count}
@@ -437,6 +437,75 @@ def direct_scrape_task(source: str = None, city: str = None, category: str = Non
         return {"status": "failed", "error": str(e)}
 
 
+@celery_app.task(name="tasks.school_scrape_task", time_limit=14400, soft_time_limit=13200)
+def school_scrape_task(source: str = "SCHOOL", city: str = None, category: str = "Schools"):
+    """
+    Dedicated school scraping task with extended time limit.
+    School scraping involves Bing searches and website crawling with polite delays.
+    """
+    set_status(
+        f"Started: School scraping in {city or 'all cities'}...",
+        True,
+        {"source": "SCHOOL", "city": city, "category": category},
+    )
+
+    try:
+        from direct_scraper import (
+            DirectPoliteFetcher,
+            SchoolDirectScraper,
+        )
+    except Exception as e:
+        set_status(f"Error: Could not import school scraper: {e}", False)
+        logger.error(f"School scrape import failed: {e}")
+        return {"status": "failed", "error": str(e)}
+
+    try:
+        fetcher = DirectPoliteFetcher()
+        scraper = SchoolDirectScraper(fetcher)
+        results = scraper.scrape(city=city, category=category)
+
+        if results:
+            from processing import ProcessingHandler
+            handler = ProcessingHandler()
+            processed = []
+
+            for contact in results:
+                try:
+                    cleaned = handler.process_contact(contact)
+                    if cleaned and cleaned.get("name"):
+                        processed.append(cleaned)
+                except Exception as proc_err:
+                    logger.warning(f"School processing error: {proc_err}")
+
+            if processed:
+                try:
+                    from scraper import ContactScraper, load_config
+                    async def save_to_db():
+                        db_scraper = ContactScraper(load_config())
+                        await db_scraper.init_db()
+                        try:
+                            count = await db_scraper.save_contacts(processed)
+                            return count
+                        finally:
+                            await db_scraper.close()
+
+                    saved_count = asyncio.run(save_to_db())
+                    set_status(f"School: Extracted {len(results)}, saved {saved_count}", False)
+                    return {"status": "completed", "extracted": len(results), "saved": saved_count}
+                except Exception as db_err:
+                    logger.error(f"School DB save error: {db_err}")
+                    set_status(f"School: Extracted {len(results)} but DB save failed: {db_err}", False)
+                    return {"status": "completed", "extracted": len(results), "saved": 0}
+        else:
+            set_status("School: No results found", False)
+            return {"status": "completed", "extracted": 0, "saved": 0}
+
+    except Exception as e:
+        set_status(f"School scrape error: {e}", False)
+        logger.error(f"School scrape failed: {e}")
+        return {"status": "failed", "error": str(e)}
+
+
 @celery_app.task(name="tasks.direct_gov_scrape_batch", time_limit=3600, soft_time_limit=3300)
 def direct_gov_scrape_batch():
     """
@@ -617,6 +686,9 @@ def auto_pilot_task():
                             # Use gov batch for Official CA/CS targets, else use general scraper
                             if src == "Official" and any(k in cat.lower() for k in ["accountant", "secretary", "agent", "advisor"]):
                                 result = direct_gov_scrape_batch()
+                                count = result.get("saved", 0)
+                            elif "school" in cat.lower():
+                                result = school_scrape_task(city=city, category=cat)
                                 count = result.get("saved", 0)
                             else:
                                 result = scrape_category_task(city=city, category=cat, source=target_src)
