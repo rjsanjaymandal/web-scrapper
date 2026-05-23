@@ -2147,6 +2147,12 @@ HTML = """
             if (source) url.searchParams.set('source', source);
             if (sort) url.searchParams.set('sort', sort);
             if (quality) url.searchParams.set('quality', quality);
+            
+            // Preserve category parameter if present in current URL
+            const currentUrl = new URL(window.location.href);
+            const category = currentUrl.searchParams.get('category');
+            if (category) url.searchParams.set('category', category);
+            
             url.searchParams.set('page', p);
             url.searchParams.set('limit', limit);
             window.loadLeads(url.toString(), true);
@@ -2166,6 +2172,12 @@ HTML = """
             if (source) url.searchParams.set('source', source);
             if (sort) url.searchParams.set('sort', sort);
             if (quality) url.searchParams.set('quality', quality);
+            
+            // Preserve category parameter if present in current URL
+            const currentUrl = new URL(window.location.href);
+            const category = currentUrl.searchParams.get('category');
+            if (category) url.searchParams.set('category', category);
+            
             url.searchParams.set('limit', limit);
             url.searchParams.set('page', 1);
             window.loadLeads(url.toString(), true);
@@ -2444,6 +2456,11 @@ window.updatePaginationUI = function(data) {
             if (city) params.set('city', city);
             if (q) params.set('q', q);
             if (src) params.set('source', src);
+            
+            // Preserve category parameter if present in current URL
+            const currentUrl = new URL(window.location.href);
+            const category = currentUrl.searchParams.get('category');
+            if (category) params.set('category', category);
             
             if (window.isSchoolDashboard) {
                 params.set('schools_only', 'true');
