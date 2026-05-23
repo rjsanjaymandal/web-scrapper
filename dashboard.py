@@ -721,6 +721,18 @@ HTML = """
         .export-excel svg { color: var(--accent-blue); }
         .export-excel:hover svg { filter: drop-shadow(0 0 6px var(--accent-blue)); }
 
+        .export-pdf {
+            border-color: rgba(239, 68, 68, 0.3);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);
+        }
+        .export-pdf:hover {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.05));
+            border-color: var(--accent-red);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+        }
+        .export-pdf svg { color: var(--accent-red); }
+        .export-pdf:hover svg { filter: drop-shadow(0 0 6px var(--accent-red)); }
+
         .export-json {
             border-color: rgba(245, 158, 11, 0.3);
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), transparent);
@@ -1622,6 +1634,22 @@ HTML = """
                     Mutual Fund Leads
                 </a>
             </nav>
+            {% else %}
+            <nav class="nav-group">
+                <p class="nav-label">School Data Quick Export</p>
+                <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
+                    <button class="export-btn export-excel" onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.08); padding: 10px 12px; height: auto;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        <span style="color: var(--accent-emerald); font-weight: 700; font-size: 13px;">Download Excel (All Schools)</span>
+                        <span style="color: var(--text-muted); font-size: 9px;">All school records</span>
+                    </button>
+                    <button class="export-btn" onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239,68,68,0.08); padding: 10px 12px; height: auto; color: var(--accent-red);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span style="font-weight: 700; font-size: 13px;">Download PDF (All Schools)</span>
+                        <span style="color: var(--text-muted); font-size: 9px;">Printable school report</span>
+                    </button>
+                </div>
+            </nav>
             {% endif %}
 
             <nav class="nav-group">
@@ -1647,6 +1675,7 @@ HTML = """
                         <div style="display: flex; gap: 4px;">
                             <button class="export-btn export-csv" onclick="exportCategory('School', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
                             <button class="export-btn export-excel" onclick="exportCategory('School', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
+                            <button class="export-btn" onclick="exportCategory('School', 'pdf', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px; color: var(--accent-red); border-color: var(--accent-red);">PDF</button>
                         </div>
                     </div>
                     <!-- Insurance Data Download -->
@@ -1678,6 +1707,10 @@ HTML = """
                     <button class="export-btn export-excel" onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-amber); background: rgba(245, 158, 11, 0.05);">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span style="color: var(--accent-amber)">Export All (Excel)</span>
+                    </button>
+                    <button class="export-btn" onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239, 68, 68, 0.05);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span style="color: var(--accent-red)">Export All (PDF)</span>
                     </button>
                 </div>
             </nav>
