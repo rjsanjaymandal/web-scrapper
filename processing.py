@@ -109,8 +109,11 @@ class ProcessingHandler:
         phone_str = str(phone)
         digits = re.sub(r'[^\d]', '', phone_str)
         if len(digits) >= 10:
-            return digits[-10:]
-        return digits if len(digits) >= 6 else None
+            best_10 = digits[-10:]
+            # Ensure it starts with a valid mobile/landline leading digit (not 0)
+            if best_10[0] != '0':
+                return best_10
+        return None
 
     @staticmethod
     def is_valid_email(email: Any) -> bool:
@@ -215,6 +218,18 @@ class ProcessingHandler:
         Performs full cleaning, normalization, and scoring on a single contact record.
         """
         if not contact:
+            return None
+            
+        # 0. Clean and Validate Name first
+        name = contact.get('name')
+        if name:
+            name_str = re.sub(r'\s+', ' ', str(name)).strip()
+            # If name is too short or contains common junk placeholders, drop it immediately
+            if len(name_str) < 3 or any(x in name_str.lower() for x in ["test", "dummy", "placeholder", "unknown", "no name", "n/a", "na", "aisa"]):
+                logger.info(f"🚫 [FILTER] Dropping record - Invalid or junk name: {name_str}")
+                return None
+        else:
+            logger.info("🚫 [FILTER] Dropping record - Missing name.")
             return None
             
         # 1. Clean Phone
