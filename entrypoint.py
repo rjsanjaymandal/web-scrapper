@@ -154,6 +154,25 @@ def main():
             subprocess.run([sys.executable, automator_script])
             dashboard_proc.wait()
         
+        elif process_type == "schools" or process_type == "school_automator":
+            if not init_tables():
+                sys.exit(1)
+            
+            if is_port_in_use(port):
+                kill_port_owner(port)
+                time.sleep(1)
+
+            gunicorn_cmd = ["gunicorn", "--bind", f"0.0.0.0:{port}", "--workers", "1", "--threads", "4", "--timeout", "300", "dashboard:app"]
+            dashboard_proc = subprocess.Popen(gunicorn_cmd)
+            
+            if not wait_for_http(port, process=dashboard_proc):
+                dashboard_proc.terminate()
+                sys.exit(1)
+            
+            schools_script = os.path.join(os.path.dirname(__file__), "automate_schools.py")
+            subprocess.run([sys.executable, schools_script])
+            dashboard_proc.wait()
+        
     except Exception as e:
         log(f"[ERROR] CRITICAL FAILURE: {e}")
         sys.exit(1)
