@@ -1912,12 +1912,37 @@ HTML = """
                         {% endfor %}
                     </select>
                 </div>
-                <div class="input-group">
+                <div class="input-group" style="min-width:140px;">
                     <label>Sort By</label>
                     <select id="t-sort" onchange="applyFilters()">
-                        <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Recent First</option>
+                        <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Newest First</option>
+                        <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>Oldest First</option>
                         <option value="name" {% if sort_by == 'name' %}selected{% endif %}>Name A-Z</option>
-                        <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Quality Score</option>
+                        <option value="name_desc" {% if sort_by == 'name_desc' %}selected{% endif %}>Name Z-A</option>
+                        <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Quality High-Low</option>
+                        <option value="score_asc" {% if sort_by == 'score_asc' %}selected{% endif %}>Quality Low-High</option>
+                        <option value="city" {% if sort_by == 'city' %}selected{% endif %}>City A-Z</option>
+                        <option value="city_desc" {% if sort_by == 'city_desc' %}selected{% endif %}>City Z-A</option>
+                        <option value="category" {% if sort_by == 'category' %}selected{% endif %}>Category A-Z</option>
+                        <option value="source" {% if sort_by == 'source' %}selected{% endif %}>Source A-Z</option>
+                    </select>
+                </div>
+                <div class="input-group" style="min-width:90px;">
+                    <label>Quality</label>
+                    <select id="t-quality" onchange="applyFilters()">
+                        <option value="">All Qualities</option>
+                        <option value="high" {% if selected_quality == 'high' %}selected{% endif %}>High (70%+)</option>
+                        <option value="medium" {% if selected_quality == 'medium' %}selected{% endif %}>Medium (40-70%)</option>
+                        <option value="low" {% if selected_quality == 'low' %}selected{% endif %}>Low (&lt;40%)</option>
+                    </select>
+                </div>
+                <div class="input-group" style="min-width:70px;">
+                    <label>Per Page</label>
+                    <select id="t-limit" onchange="applyFilters()">
+                        <option value="25" {% if limit == 25 %}selected{% endif %}>25</option>
+                        <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
+                        <option value="100" {% if limit == 100 %}selected{% endif %}>100</option>
+                        <option value="250" {% if limit == 250 %}selected{% endif %}>250</option>
                     </select>
                 </div>
                 <div class="filter-actions">
@@ -1947,6 +1972,8 @@ HTML = """
                 {% endif %}
                 <button class="clear-btn" onclick="clearFilters()">Clear All</button>
             </div>
+
+            <div id="active-filter-chips" style="display:flex; gap:6px; flex-wrap:wrap; padding:4px 0 8px 0; min-height:0;"></div>
         </div>
 
         <div class="charts-row">
@@ -2122,15 +2149,14 @@ HTML = """
         };
         
         window.goToPage = function(p) {
-            console.log("Pagination: Go to page", p, "of", window.totalPages);
             if (p < 1 || p > window.totalPages) return;
             
-            // Explicitly grab current filter values to ensure they persist during pagination
             const city = document.getElementById('t-city')?.value || "";
             const q = document.getElementById('t-cat')?.value || "";
             const source = document.getElementById('t-source')?.value || "";
             const sort = document.getElementById('t-sort')?.value || 'date';
             const quality = document.getElementById('t-quality')?.value || "";
+            const limit = document.getElementById('t-limit')?.value || window.pageSize || '50';
             
             const url = new URL(window.location.origin + window.location.pathname);
             if (city) url.searchParams.set('city', city);
@@ -2138,13 +2164,8 @@ HTML = """
             if (source) url.searchParams.set('source', source);
             if (sort) url.searchParams.set('sort', sort);
             if (quality) url.searchParams.set('quality', quality);
-            
             url.searchParams.set('page', p);
-            // Persist the current page size
-            if (window.pageSize) {
-                url.searchParams.set('limit', window.pageSize);
-            }
-            
+            url.searchParams.set('limit', limit);
             window.loadLeads(url.toString(), true);
         };
 
@@ -2153,12 +2174,16 @@ HTML = """
             const q = document.getElementById('t-cat').value;
             const source = document.getElementById('t-source').value;
             const sort = document.getElementById('t-sort')?.value || 'date';
+            const quality = document.getElementById('t-quality')?.value || '';
+            const limit = document.getElementById('t-limit')?.value || '50';
             
             const url = new URL(window.location.origin + window.location.pathname);
             if (city) url.searchParams.set('city', city);
             if (q) url.searchParams.set('q', q);
             if (source) url.searchParams.set('source', source);
             if (sort) url.searchParams.set('sort', sort);
+            if (quality) url.searchParams.set('quality', quality);
+            url.searchParams.set('limit', limit);
             url.searchParams.set('page', 1);
             window.loadLeads(url.toString(), true);
         };
@@ -2174,10 +2199,14 @@ HTML = """
             document.getElementById('t-cat').value = '';
             document.getElementById('t-source').value = '';
             document.getElementById('t-sort').value = 'date';
+            const ql = document.getElementById('t-quality');
+            if (ql) ql.value = '';
+            const ll = document.getElementById('t-limit');
+            if (ll) ll.value = '50';
             
             const url = new URL(window.location.origin + window.location.pathname);
             url.searchParams.set('page', 1);
-            if (window.pageSize) url.searchParams.set('limit', window.pageSize);
+            url.searchParams.set('limit', '50');
             window.loadLeads(url.toString(), true);
         };
 
@@ -2209,6 +2238,7 @@ HTML = """
                 window.renderLeads(data.contacts);
                 window.updatePaginationUI(data);
                 window.updateStats(data.stats);
+                window.updateFilterChips();
                 
                 if (pushState) {
                     history.pushState({page: data.page, url: url}, '', url);
@@ -2248,6 +2278,26 @@ HTML = """
             if (totalEl && stats.total !== undefined) totalEl.innerText = stats.total.toLocaleString();
             if (phoneEl && stats.phone !== undefined) phoneEl.innerText = stats.phone.toLocaleString();
             if (emailEl && stats.email !== undefined) emailEl.innerText = stats.email.toLocaleString();
+        };
+
+        window.updateFilterChips = function() {
+            const chipsEl = document.getElementById('active-filter-chips');
+            if (!chipsEl) return;
+            const chips = [];
+            const city = document.getElementById('t-city')?.value?.trim();
+            const q = document.getElementById('t-cat')?.value?.trim();
+            const source = document.getElementById('t-source')?.value;
+            const quality = document.getElementById('t-quality')?.value;
+            const sortEl = document.getElementById('t-sort');
+            const sortText = sortEl?.options[sortEl.selectedIndex]?.text;
+            if (city) chips.push({label: 'City: ' + city, onclick: function(){ document.getElementById('t-city').value=''; applyFilters(); }});
+            if (q) chips.push({label: 'Search: ' + q, onclick: function(){ document.getElementById('t-cat').value=''; applyFilters(); }});
+            if (source) chips.push({label: 'Source: ' + source, onclick: function(){ document.getElementById('t-source').value=''; applyFilters(); }});
+            if (quality) chips.push({label: 'Quality: ' + quality, onclick: function(){ document.getElementById('t-quality').value=''; applyFilters(); }});
+            if (chips.length === 0) { chipsEl.innerHTML = ''; return; }
+            chipsEl.innerHTML = chips.map(function(c) {
+                return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);color:var(--accent-blue, #60a5fa);font-size:11px;font-weight:600;cursor:pointer;" onclick="' + c.onclick.toString().replace(/"/g, '&quot;') + '">' + c.label + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span>';
+            }).join('') + '<span style="font-size:10px;color:var(--text-muted);padding:3px 0;margin-left:4px;">' + (sortText ? 'sorted: ' + sortText : '') + '</span>';
         };
 
         window.renderLeads = function(leads) {
@@ -2940,10 +2990,21 @@ def render_dashboard_portal(is_school_dashboard=False):
         # Sort mapping
         sort_map = {
             "date": "scraped_at DESC",
-            "name": "name ASC",
-            "city": "city ASC",
-            "source": "source ASC",
-            "score": "quality_score DESC"
+            "date_asc": "scraped_at ASC",
+            "name": "LOWER(name) ASC",
+            "name_desc": "LOWER(name) DESC",
+            "city": "LOWER(city) ASC",
+            "city_desc": "LOWER(city) DESC",
+            "source": "LOWER(source) ASC",
+            "source_desc": "LOWER(source) DESC",
+            "score": "quality_score DESC",
+            "score_asc": "quality_score ASC",
+            "category": "LOWER(category) ASC",
+            "category_desc": "LOWER(category) DESC",
+            "phone": "phone ASC",
+            "phone_desc": "phone DESC",
+            "email": "email ASC",
+            "email_desc": "email DESC",
         }
         order_by = sort_map.get(sort_by, "scraped_at DESC")
 
@@ -3517,27 +3578,66 @@ def api_contacts():
         filter_city = request.args.get("city", "")
         filter_category = request.args.get("category", "")
         filter_source = request.args.get("source", "")
+        filter_quality = request.args.get("quality", "")
+        sort_by = request.args.get("sort", "date")
 
         where_sql, params = build_contact_filters(
             search_query, filter_city, filter_category, filter_source
         )
+
+        if filter_quality:
+            try:
+                q_min = int(filter_quality)
+                where_sql += f" AND quality_score >= {db_placeholder()}"
+                params.append(q_min)
+            except ValueError:
+                pass
+
+        sort_map = {
+            "name": "LOWER(name) ASC",
+            "name_desc": "LOWER(name) DESC",
+            "date": "scraped_at DESC",
+            "date_asc": "scraped_at ASC",
+            "score": "quality_score DESC",
+            "score_asc": "quality_score ASC",
+            "city": "LOWER(city) ASC",
+            "city_desc": "LOWER(city) DESC",
+            "category": "LOWER(category) ASC",
+            "category_desc": "LOWER(category) DESC",
+            "source": "LOWER(source) ASC",
+            "source_desc": "LOWER(source) DESC",
+            "phone": "phone ASC",
+            "phone_desc": "phone DESC",
+            "email": "email ASC",
+            "email_desc": "email DESC",
+        }
+        order_clause = sort_map.get(sort_by, "scraped_at DESC")
+
         ph = db_placeholder()
-        query = f"SELECT name, phone, email, city, category, source FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {ph} OFFSET {ph}"
+        query = f"SELECT id, name, phone, email, address, city, area, state, category, source, source_url, quality_score, quality_tier, scraped_at FROM contacts WHERE {where_sql} ORDER BY {order_clause} LIMIT {ph} OFFSET {ph}"
         count_query = f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql}"
 
         cur.execute(query, params + [limit, offset])
         contacts = cur.fetchall()
         cur.execute(count_query, params)
         total = cur.fetchone()["cnt"]
+
+        cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql} AND phone IS NOT NULL AND phone != ''", params)
+        phone_count = cur.fetchone()["cnt"]
+        cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_sql} AND email IS NOT NULL AND email != ''", params)
+        email_count = cur.fetchone()["cnt"]
+
         cur.close()
         conn.close()
         return jsonify(
             {
                 "total": total,
-                "page": page, "limit": limit,
+                "page": page,
                 "limit": limit,
-                "total_pages": (total + limit - 1) // limit if total else 1,
-                "data": [dict(c) for c in contacts],
+                "total_pages": max(1, (total + limit - 1) // limit) if total else 1,
+                "filtered_total": total,
+                "contacts": [dict(c) for c in contacts],
+                "stats": {"total": total, "phone": phone_count, "email": email_count},
             }
         )
     except Exception as e:
