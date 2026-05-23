@@ -863,20 +863,19 @@ HTML = """
         .log-msg.SUCCESS { color: var(--accent-emerald); font-weight: 600; }
 
         /* Controls */
-        .controls-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 20px; align-items: flex-end; margin-bottom: 32px; }
-        .input-group label { display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 10px; letter-spacing: 1.5px; font-weight: 700; }
+        .input-group label { display: block; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 1.2px; font-weight: 700; }
         .input-group input, .input-group select { 
-            width: 100%; background: #08090c; border: 1px solid var(--border-muted); padding: 14px 18px; 
-            border-radius: 14px; color: #fff; font-size: 14px; outline: none; transition: all 0.2s;
+            width: 100%; background: #08090c; border: 1px solid var(--border-muted); padding: 10px 14px; 
+            border-radius: 10px; color: #fff; font-size: 13px; outline: none; transition: all 0.2s;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
         .input-group input:focus, .input-group select:focus { border-color: var(--accent-emerald); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1); }
         .input-group select { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; background-size: 18px; }
 
         .btn { 
-            padding: 14px 28px; border-radius: 14px; font-weight: 700; cursor: pointer; border: none; font-size: 13px;
-            text-transform: uppercase; letter-spacing: 1.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
-            display: inline-flex; align-items: center; gap: 10px;
+            padding: 10px 20px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; font-size: 12px;
+            text-transform: uppercase; letter-spacing: 1.2px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            display: inline-flex; align-items: center; gap: 8px;
             box-shadow: var(--shadow-sm);
         }
         .btn-primary { background: var(--accent-emerald); color: #064e3b; position: relative; overflow: hidden; }
@@ -914,9 +913,9 @@ HTML = """
             align-items: center;
             background: #08090c;
             border: 1px solid var(--border-muted);
-            border-radius: 14px;
-            padding: 8px 16px;
-            gap: 12px;
+            border-radius: 12px;
+            padding: 4px 12px;
+            gap: 10px;
             transition: all 0.2s;
         }
         .search-bar-wrapper:focus-within {
@@ -957,15 +956,21 @@ HTML = """
         
         /* Filter Row */
         .filter-row {
-            display: grid;
-            grid-template-columns: 1.2fr 1fr 1fr auto;
-            gap: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
             align-items: flex-end;
+        }
+        .filter-row .input-group {
+            flex: 1 1 130px;
+            min-width: 0;
         }
         .filter-actions {
             display: flex;
             align-items: flex-end;
-            gap: 12px;
+            gap: 10px;
+            flex: 0 0 auto;
+            margin-left: auto;
         }
         
         /* Quick Filters */
@@ -1054,12 +1059,12 @@ HTML = """
         
         table { width: 100%; border-collapse: separate; border-spacing: 0; }
         th { 
-            background: rgba(15, 18, 25, 0.8); padding: 16px 20px; text-align: left; 
-            font-size: 11px; text-transform: uppercase; color: var(--text-muted); 
-            letter-spacing: 1.5px; font-weight: 800; border-bottom: 1px solid var(--border-muted);
+            background: rgba(15, 18, 25, 0.8); padding: 12px 16px; text-align: left; 
+            font-size: 10px; text-transform: uppercase; color: var(--text-muted); 
+            letter-spacing: 1.2px; font-weight: 800; border-bottom: 1px solid var(--border-muted);
             position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px);
         }
-        td { padding: 18px 20px; border-bottom: 1px solid var(--border-muted); font-size: 13px; color: var(--text-primary); transition: 0.2s; }
+        td { padding: 12px 16px; border-bottom: 1px solid var(--border-muted); font-size: 13px; color: var(--text-primary); transition: 0.2s; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: rgba(16, 185, 129, 0.03); color: #fff; }
         
@@ -1124,66 +1129,6 @@ HTML = """
             min-width: 40px;
             padding: 0;
         }
-
-        .page-size-selector {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: 16px;
-        }
-        .page-size-selector label {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .page-size-selector select {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid var(--border-muted);
-            border-radius: 8px;
-            padding: 6px 12px;
-            color: var(--text-primary);
-            font-size: 12px;
-            cursor: pointer;
-        }
-
-        .quick-jump {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: auto;
-        }
-        .quick-jump input {
-            width: 60px;
-            height: 36px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid var(--border-muted);
-            border-radius: 8px;
-            padding: 0 12px;
-            color: var(--text-primary);
-            font-size: 13px;
-            text-align: center;
-        }
-        .quick-jump button {
-            height: 36px;
-            padding: 0 16px;
-            background: var(--accent-blue);
-            border: none;
-            border-radius: 8px;
-            color: #fff;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .quick-jump button:hover {
-            background: #4f9ef7;
-            transform: translateY(-1px);
-        }
-
-        /* Progress Animation */
-        .progress-bar-container { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; margin-top: 8px; }
-        .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent-emerald), var(--accent-blue)); transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
 
         /* Table Styling */
         .lead-row {
@@ -1332,6 +1277,44 @@ HTML = """
         @keyframes shimmer {
             0% { background-position: 200% 0; }
             100% { background-position: -200% 0; }
+        }
+
+        /* Filter Chips */
+        .filter-chips {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 2px 0 0 0;
+            min-height: 0;
+        }
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue, #60a5fa);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .filter-chip:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--accent-red);
+        }
+        .filter-chip:hover svg { stroke: var(--accent-red); }
+        .filter-chip svg { width: 12px; height: 12px; flex-shrink: 0; }
+        .filter-sort-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            padding: 3px 0;
+            margin-left: 4px;
+            font-style: italic;
         }
         
         /* Tooltip */
@@ -1547,8 +1530,8 @@ HTML = """
         }
         @media (max-width: 1200px) {
             .stats-hud { grid-template-columns: repeat(2, 1fr); }
-            .charts-row { grid-template-columns: repeat(2, 1fr); }
-            .filter-row { grid-template-columns: 1fr 1fr; }
+            .charts-row { grid-template-columns: 1fr; }
+            .filter-row .input-group { flex: 1 1 160px; }
         }
         @media (max-width: 768px) {
             .stats-hud { grid-template-columns: 1fr; }
@@ -1912,7 +1895,7 @@ HTML = """
                         {% endfor %}
                     </select>
                 </div>
-                <div class="input-group" style="min-width:140px;">
+                <div class="input-group">
                     <label>Sort By</label>
                     <select id="t-sort" onchange="applyFilters()">
                         <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Newest First</option>
@@ -1927,7 +1910,7 @@ HTML = """
                         <option value="source" {% if sort_by == 'source' %}selected{% endif %}>Source A-Z</option>
                     </select>
                 </div>
-                <div class="input-group" style="min-width:90px;">
+                <div class="input-group">
                     <label>Quality</label>
                     <select id="t-quality" onchange="applyFilters()">
                         <option value="">All Qualities</option>
@@ -1936,7 +1919,7 @@ HTML = """
                         <option value="low" {% if selected_quality == 'low' %}selected{% endif %}>Low (&lt;40%)</option>
                     </select>
                 </div>
-                <div class="input-group" style="min-width:70px;">
+                <div class="input-group">
                     <label>Per Page</label>
                     <select id="t-limit" onchange="applyFilters()">
                         <option value="25" {% if limit == 25 %}selected{% endif %}>25</option>
@@ -1973,7 +1956,7 @@ HTML = """
                 <button class="clear-btn" onclick="clearFilters()">Clear All</button>
             </div>
 
-            <div id="active-filter-chips" style="display:flex; gap:6px; flex-wrap:wrap; padding:4px 0 8px 0; min-height:0;"></div>
+            <div id="active-filter-chips" class="filter-chips"></div>
         </div>
 
         <div class="charts-row">
@@ -2294,10 +2277,10 @@ HTML = """
             if (q) chips.push({label: 'Search: ' + q, onclick: function(){ document.getElementById('t-cat').value=''; applyFilters(); }});
             if (source) chips.push({label: 'Source: ' + source, onclick: function(){ document.getElementById('t-source').value=''; applyFilters(); }});
             if (quality) chips.push({label: 'Quality: ' + quality, onclick: function(){ document.getElementById('t-quality').value=''; applyFilters(); }});
-            if (chips.length === 0) { chipsEl.innerHTML = ''; return; }
-            chipsEl.innerHTML = chips.map(function(c) {
-                return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);color:var(--accent-blue, #60a5fa);font-size:11px;font-weight:600;cursor:pointer;" onclick="' + c.onclick.toString().replace(/"/g, '&quot;') + '">' + c.label + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span>';
-            }).join('') + '<span style="font-size:10px;color:var(--text-muted);padding:3px 0;margin-left:4px;">' + (sortText ? 'sorted: ' + sortText : '') + '</span>';
+            var html = chips.map(function(c) {
+                return '<span class="filter-chip" onclick="' + c.onclick.toString().replace(/"/g, '&quot;') + '">' + c.label + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span>';
+            }).join('') + '<span class="filter-sort-hint">sorted: ' + sortText + '</span>';
+            chipsEl.innerHTML = html;
         };
 
         window.renderLeads = function(leads) {
