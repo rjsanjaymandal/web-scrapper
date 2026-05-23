@@ -1731,12 +1731,40 @@ HTML = """
                 </a>
             </nav>
 
+            {% if is_school_dashboard %}
+            <nav class="nav-group" style="border: 1px solid var(--accent-emerald, #10b981); border-radius: 12px; padding: 8px; background: rgba(16,185,129,0.04);">
+                <p class="nav-label" style="color: var(--accent-emerald, #10b981); font-size: 12px; letter-spacing: 1px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    SCHOOL SCRAPER CONTROLS
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 8px; padding: 6px 2px;">
+                    <div>
+                        <label style="font-size: 10px; color: var(--text-muted, #888); font-weight: 600; display: block; margin-bottom: 3px;">Target Zone / City</label>
+                        <input type="text" id="school-zone" placeholder="e.g. Delhi, Mumbai, North Delhi..." style="width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border-muted, #333); background: var(--bg-secondary, #1a1a2e); color: var(--text-primary); font-size: 12px; box-sizing: border-box;">
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                        <button class="quick-btn" onclick="setSchoolZone('Delhi')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Delhi</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Mumbai')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Mumbai</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Bangalore')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Bangalore</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Chennai')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Chennai</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Kolkata')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Kolkata</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Hyderabad')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Hyderabad</button>
+                        <button class="quick-btn" onclick="setSchoolZone('Pune')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Pune</button>
+                        <button class="quick-btn" onclick="setSchoolZone('')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--accent-emerald); background: transparent; color: var(--accent-emerald); cursor: pointer;">All India</button>
+                    </div>
+                    <button class="action-btn-green" onclick="scrapeSchools()" style="background: var(--accent-emerald, #10b981); color: #fff; border: none; padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.5px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        SCRAPE SCHOOLS NOW
+                    </button>
+                    <div id="school-scrape-status" style="font-size: 10px; color: var(--text-muted, #666); text-align: center; min-height: 16px; padding: 2px 0;">
+                        Ready
+                    </div>
+                </div>
+            </nav>
+            {% endif %}
+
             <nav class="nav-group">
                 <p class="nav-label">Direct Scrape (No Proxy)</p>
-                <a href="#" class="nav-item" onclick="startDirectScrape('SCHOOL')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    <span style="color: var(--accent-emerald); font-weight: 700;">Schools Scraper</span>
-                </a>
                 <a href="#" class="nav-item" onclick="startDirectScrape('SEBI')">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
                     SEBI (Investment Advisors)
@@ -2794,6 +2822,66 @@ window.updatePaginationUI = function(data) {
                 showNotif('Failed to start gov batch', 3000, true);
             }
         };
+
+        window.setSchoolZone = function(zone) {
+            document.getElementById('school-zone').value = zone;
+        };
+
+        window.scrapeSchools = async function() {
+            const zone = document.getElementById('school-zone')?.value || '';
+            const statusEl = document.getElementById('school-scrape-status');
+            statusEl.textContent = 'Starting school scrape for ' + (zone || 'all India') + '...';
+            statusEl.style.color = 'var(--accent-emerald, #10b981)';
+            
+            try {
+                const params = new URLSearchParams();
+                params.set('source', 'SCHOOL');
+                if (zone) params.set('city', zone);
+                params.set('category', 'Schools');
+                
+                const res = await fetch('/api/trigger/direct-scrape?' + params.toString(), {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    statusEl.textContent = 'Error: ' + data.error;
+                    statusEl.style.color = 'var(--accent-red, #ef4444)';
+                    showNotif(data.error, 4000, true);
+                } else {
+                    statusEl.textContent = 'Scraping ' + (zone || 'all India') + ' — task queued! Check logs for progress.';
+                    showNotif('School scraper started for ' + (zone || 'all India'));
+                }
+            } catch(e) {
+                statusEl.textContent = 'Failed to start school scrape';
+                statusEl.style.color = 'var(--accent-red, #ef4444)';
+                showNotif('Failed to start school scrape', 3000, true);
+            }
+        };
+
+        {% if is_school_dashboard %}
+        window.pollSchoolStatus = async function() {
+            const statusEl = document.getElementById('school-scrape-status');
+            if (!statusEl) return;
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data && data.message) {
+                    const msg = data.message || '';
+                    if (msg.toLowerCase().includes('school')) {
+                        statusEl.textContent = msg.substring(0, 60);
+                        statusEl.style.color = 'var(--accent-emerald, #10b981)';
+                    } else if (data.is_running) {
+                        statusEl.textContent = 'System busy: ' + msg.substring(0, 40);
+                        statusEl.style.color = 'var(--accent-emerald, #10b981)';
+                    } else if (statusEl.textContent === 'Ready' || statusEl.textContent.includes('Ready')) {
+                        // keep as is
+                    }
+                }
+            } catch(e) {}
+        };
+        setInterval(window.pollSchoolStatus, 5000);
+        {% endif %}
 
         window.startScrapeGlobal = async function() {
             const isSchool = {% if is_school_dashboard %}true{% else %}false{% endif %};
