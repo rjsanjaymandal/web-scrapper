@@ -641,6 +641,9 @@ class SchoolDirectScraper:
                 try:
                     page_html, page_status = self.fetcher.fetch(target_page, target_web)
                     if not page_html or page_status != 200:
+                        if path == "":
+                            logger.info(f"SCHOOL SCRAPER: Home page {target_page} failed to fetch/resolve (status={page_status}). Skipping other paths.")
+                            break
                         continue
                         
                     page_soup = BeautifulSoup(page_html, 'html.parser')
