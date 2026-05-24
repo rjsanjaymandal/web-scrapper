@@ -131,9 +131,7 @@ class DirectPoliteFetcher:
             if status_data and isinstance(status_data, dict):
                 if status_data.get("running") is False:
                     logger.warning("🛑 SCRAM! Scraper STOP signal detected in global state. Aborting execution immediately.")
-                    raise KeyboardInterrupt("Scraper stop requested by user")
-        except KeyboardInterrupt:
-            raise
+                    return None, 503
         except Exception as e:
             logger.debug(f"Stop-check error: {e}")
 
@@ -602,6 +600,45 @@ class SchoolDirectScraper:
             return False
         if "example.com" in web_clean or "test.com" in web_clean:
             return False
+        return True
+
+    def _is_school_website(self, domain: str, name: str, snippet: str) -> bool:
+        domain_lower = domain.lower()
+        name_lower = name.lower()
+        snippet_lower = snippet.lower() if snippet else ""
+
+        suspicious_domains = {
+            "medium.com", "realpython.com", "microsoft.com", "britannica.com",
+            "zhihu.com", "lefigaro.fr", "economictimes.indiatimes.com",
+            "youtube.com", "linkedin.com", "facebook.com", "twitter.com",
+            "instagram.com", "wikipedia.org", "quora.com", "reddit.com",
+            "amazon.com", "flipkart.com", "ndtv.com", "hindustantimes.com",
+            "thehindu.com", "timesofindia.indiatimes.com", "indiatimes.com",
+            "news18.com", "cnn.com", "bbc.com", "bbc.co.uk",
+            "github.com", "stackoverflow.com", "forbes.com", "bloomberg.com",
+            "reuters.com", "wsj.com", "nytimes.com", "theguardian.com",
+        }
+        if domain_lower in suspicious_domains:
+            return False
+        for sd in suspicious_domains:
+            if domain_lower.endswith("." + sd):
+                return False
+
+        school_keywords = {"school", "academy", ".edu", "college", "institute",
+                          "education", "learning", "campus", "student", "classroom",
+                          "preschool", "kindergarten", "montessori", "dps", "kv",
+                          "kendriya", "vidyalaya", "sarvodaya", "publicschool"}
+        if any(kw in domain_lower for kw in school_keywords):
+            return True
+
+        snippet_school = any(kw in snippet_lower for kw in school_keywords)
+        name_school = any(kw in name_lower for kw in {"school", "academy", "college", "institute", "public school"})
+        if snippet_school or name_school:
+            return True
+
+        if snippet:
+            return False
+
         return True
 
     def _fetch_cbse_schools(self) -> List[Dict]:
@@ -1217,7 +1254,7 @@ class SchoolDirectScraper:
                                     is_excluded = True
                                     break
 
-                        if domain and not is_excluded and domain not in seen_domains:
+                        if domain and not is_excluded and domain not in seen_domains and self._is_school_website(domain, school_name, snippet):
 
                             seen_domains.add(domain)
                             base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
