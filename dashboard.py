@@ -227,10 +227,10 @@ def build_contact_filters(
         params.append(quality)
 
     if exclude_schools:
-        where_clauses.append(f"LOWER(category) NOT LIKE {ph}")
+        where_clauses.append(f"(LOWER(category) NOT LIKE {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))")
         params.append("%school%")
     if only_schools:
-        where_clauses.append(f"LOWER(category) LIKE {ph}")
+        where_clauses.append(f"(LOWER(category) LIKE {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))")
         params.append("%school%")
 
     return " AND ".join(where_clauses) if where_clauses else "1=1", params
@@ -1070,6 +1070,7 @@ HTML = """
         
         .badge { padding: 5px 10px; border-radius: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .badge-src { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2); }
+        .total-count { color: var(--text-primary); font-weight: 800; }
         
         /* Pagination */
         .pagination {
@@ -1605,116 +1606,58 @@ HTML = """
                 {% endif %}
             </nav>
 
-            {% if not is_school_dashboard %}
+            {% if is_school_dashboard %}
             <nav class="nav-group">
-                <p class="nav-label">Categorical Views</p>
-                <a href="/?category=Insurance" class="nav-item {% if selected_category == 'Insurance' %}active{% endif %}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    Insurance Leads
-                </a>
-                <a href="/?category=Mutual Fund" class="nav-item {% if selected_category == 'Mutual Fund' %}active{% endif %}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                    Mutual Fund Leads
-                </a>
+                <p class="nav-label">Quick Export</p>
+                <div style="display: flex; flex-direction: column; gap: 8px; padding: 4px;">
+                    <button onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.08); padding: 10px 12px; height: auto; border-radius: 12px; border: 1px solid var(--border-muted); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span style="color: var(--accent-emerald); font-weight: 700; font-size: 13px;">Download All Schools (Excel)</span>
+                    </button>
+                    <button onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239,68,68,0.08); padding: 10px 12px; height: auto; border-radius: 12px; border: 1px solid var(--border-muted); color: var(--accent-red); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span style="font-weight: 700; font-size: 13px;">Download All Schools (PDF)</span>
+                    </button>
+                </div>
             </nav>
             {% else %}
             <nav class="nav-group">
-                <p class="nav-label">School Data Quick Export</p>
-                <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
-                    <button class="export-btn export-excel" onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.08); padding: 10px 12px; height: auto;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                        <span style="color: var(--accent-emerald); font-weight: 700; font-size: 13px;">Download Excel (All Schools)</span>
-                        <span style="color: var(--text-muted); font-size: 9px;">All school records</span>
-                    </button>
-                    <button class="export-btn" onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239,68,68,0.08); padding: 10px 12px; height: auto; color: var(--accent-red);">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span style="font-weight: 700; font-size: 13px;">Download PDF (All Schools)</span>
-                        <span style="color: var(--text-muted); font-size: 9px;">Printable school report</span>
-                    </button>
+                <p class="nav-label">Category Exports</p>
+                <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 10px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
+                        <div style="display: flex; gap: 3px;">
+                            <button onclick="exportCategory('Insurance', 'csv', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">CSV</button>
+                            <button onclick="exportCategory('Insurance', 'xlsx', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">XLSX</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 10px; font-weight: 700; color: var(--text-secondary);">Mutual Fund</span>
+                        <div style="display: flex; gap: 3px;">
+                            <button onclick="exportCategory('Mutual Fund', 'csv', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">CSV</button>
+                            <button onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">XLSX</button>
+                        </div>
+                    </div>
                 </div>
             </nav>
             {% endif %}
 
             <nav class="nav-group">
-                <p class="nav-label">Export Intelligence</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px;">
-                    <button class="export-btn export-csv" onclick="exportData('csv', this)" title="Export Filtered CSV">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span>CSV</span>
+                <p class="nav-label">Export All</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px;">
+                    <button onclick="exportAllData('csv', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        CSV
                     </button>
-                    <button class="export-btn export-excel" onclick="exportData('xlsx', this)" title="Export Filtered Excel">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span>Excel</span>
+                    <button onclick="exportAllData('xlsx', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Excel
                     </button>
-                </div>
-            </nav>
-
-            <nav class="nav-group">
-                <p class="nav-label">Categorical Download</p>
-                <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 4px;">
-                    {% if is_school_dashboard %}
-                    <!-- School Data Download -->
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Schools</span>
-                        <div style="display: flex; gap: 4px;">
-                            <button class="export-btn export-csv" onclick="exportCategory('School', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
-                            <button class="export-btn export-excel" onclick="exportCategory('School', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
-                            <button class="export-btn" onclick="exportCategory('School', 'pdf', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px; color: var(--accent-red); border-color: var(--accent-red);">PDF</button>
-                        </div>
-                    </div>
-                    {% else %}
-                    <!-- Insurance Data Download -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
-                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
-                        <div style="display: flex; gap: 4px;">
-                            <button class="export-btn export-csv" onclick="exportCategory('Insurance', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
-                            <button class="export-btn export-excel" onclick="exportCategory('Insurance', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
-                        </div>
-                    </div>
-                    <!-- Mutual Fund Data Download -->
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Mutual Fund</span>
-                        <div style="display: flex; gap: 4px;">
-                            <button class="export-btn export-csv" onclick="exportCategory('Mutual Fund', 'csv', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">CSV</button>
-                            <button class="export-btn export-excel" onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 2px 6px; font-size: 10px; height: 24px; min-width: 38px;">Excel</button>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </nav>
-
-            <nav class="nav-group">
-                <p class="nav-label">Bulk Export (All Records)</p>
-                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; padding: 4px;">
-                    <button class="export-btn export-csv" onclick="exportAllData('csv', this)" style="border-color: var(--accent-blue); background: rgba(59, 130, 246, 0.05);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span style="color: var(--accent-blue)">Export All (CSV)</span>
-                    </button>
-                    <button class="export-btn export-excel" onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-amber); background: rgba(245, 158, 11, 0.05);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span style="color: var(--accent-amber)">Export All (Excel)</span>
-                    </button>
-                    <button class="export-btn" onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239, 68, 68, 0.05);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span style="color: var(--accent-red)">Export All (PDF)</span>
+                    <button onclick="exportAllData('pdf', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px; grid-column: span 2;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        PDF
                     </button>
                 </div>
-            </nav>
-
-            <nav class="nav-group">
-                <p class="nav-label">Tools</p>
-                <a href="#" class="nav-item" onclick="cleanup()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
-                    Clean Data
-                </a>
-                <a href="#" class="nav-item" onclick="updateQuality()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    Quality Check
-                </a>
-                <a href="#" class="nav-item" onclick="openMaintenance()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
-                    Maintenance
-                </a>
             </nav>
 
             {% if is_school_dashboard %}
@@ -1747,25 +1690,47 @@ HTML = """
                     </div>
                 </div>
             </nav>
+            {% else %}
+            <nav class="nav-group" style="border: 1px solid var(--accent-blue, #3b82f6); border-radius: 12px; padding: 8px; background: rgba(59,130,246,0.04);">
+                <p class="nav-label" style="color: var(--accent-blue, #3b82f6); font-size: 12px; letter-spacing: 1px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                    FINANCIAL SCRAPER CONTROLS
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 6px; padding: 6px 2px;">
+                    <button onclick="startDirectScrape('SEBI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                        <span style="color: var(--accent-blue);">SEBI (Investment Advisors)</span>
+                    </button>
+                    <button onclick="startDirectScrape('ICAI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                        <span style="color: var(--accent-blue);">ICAI (CAs)</span>
+                    </button>
+                    <button onclick="startDirectScrape('AMFI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                        <span style="color: var(--accent-blue);">AMFI (Mutual Funds)</span>
+                    </button>
+                    <button onclick="startDirectScrape('IRDAI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+                        <span style="color: var(--accent-blue);">IRDAI (Insurance)</span>
+                    </button>
+                    <div style="border-top: 1px solid var(--border-muted); margin: 4px 0 2px;"></div>
+                    <button onclick="startGovBatch()" style="background: rgba(245,158,11,0.08); border: 1px solid var(--accent-amber); color: var(--accent-amber); padding: 10px 10px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.3px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
+                        RUN ALL (GOV BATCH)
+                    </button>
+                </div>
+            </nav>
             {% endif %}
 
             <nav class="nav-group">
-                <p class="nav-label">Direct Scrape (No Proxy)</p>
-                <a href="#" class="nav-item" onclick="startDirectScrape('SEBI')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    SEBI (Investment Advisors)
+                <p class="nav-label">Tools</p>
+                <a href="#" class="nav-item" onclick="cleanup()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                    Clean Data
                 </a>
-                <a href="#" class="nav-item" onclick="startDirectScrape('ICAI')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    ICAI (CAs)
-                </a>
-                <a href="#" class="nav-item" onclick="startDirectScrape('NSE')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    NSE (Stock Brokers)
-                </a>
-                <a href="#" class="nav-item" onclick="startGovBatch()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
-                    Gov Sites Batch
+                <a href="#" class="nav-item" onclick="updateQuality()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    Quality Check
                 </a>
             </nav>
 
@@ -2070,7 +2035,7 @@ HTML = """
                     <div class="pagination" id="pagination-wrapper">
                         <div class="pagination-info">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            <span>Showing <span>{{ contacts|length }}</span> results</span>
+                            <span><span>{% set start_range = (page - 1) * limit + 1 %}{{ start_range }}-{{ start_range + contacts|length - 1 }}</span> of <span class="total-count">{{ "{:,}".format(s.filtered_total) }}</span> leads</span>
                             <span style="color:var(--border-muted);">|</span>
                             <span>Page <span>{{ page }}</span> of <span>{{ total_pages }}</span></span>
                         </div>
@@ -2369,13 +2334,12 @@ window.updatePaginationUI = function(data) {
             // Update info
             var infoEl = document.querySelector('.pagination-info');
             if (infoEl) {
-                var totalText = data.filtered_total !== undefined ? data.filtered_total.toLocaleString() : (data.total_pages * data.contacts.length);
-                var startRange = (data.page - 1) * (data.limit || window.pageSize) + 1;
-                var endRange = Math.min(startRange + data.contacts.length - 1, data.filtered_total || 0);
-                if (data.contacts.length === 0) { startRange = 0; endRange = 0; }
+                var totalText = data.filtered_total !== undefined ? data.filtered_total.toLocaleString() : (data.total_pages * data.contacts.length).toLocaleString();
+                var startRange = data.contacts.length > 0 ? (data.page - 1) * (data.limit || window.pageSize) + 1 : 0;
+                var endRange = data.contacts.length > 0 ? startRange + data.contacts.length - 1 : 0;
                 
                 infoEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' +
-                    '<span><span>' + startRange + '-' + endRange + '</span> of ' + totalText + ' leads</span>' +
+                    '<span><span>' + startRange + '-' + endRange + '</span> of <span class="total-count">' + totalText + '</span> leads</span>' +
                     '<span style="color:var(--border-muted);">|</span>' +
                     '<span>Page <span>' + data.page + '</span> of <span>' + data.total_pages + '</span></span>';
             }
@@ -2571,32 +2535,74 @@ window.updatePaginationUI = function(data) {
                 setTimeout(() => el.classList.remove('animate'), 400);
             }
             if (document.getElementById('last-update')) document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
-            
-            const status = data.scraper_status;
+                  const status = data.scraper_status;
             const statusEl = document.getElementById('live-status');
             const progWrap = document.getElementById('prog-wrap');
             const progBar = document.getElementById('prog-bar');
+            
             const startBtn = document.getElementById('start-btn');
+            const autoBtn = document.getElementById('auto-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            
+            const globalStartBtn = document.getElementById('global-start-btn');
+            const globalStopBtn = document.getElementById('global-stop-btn');
 
             if (status && status.running) {
-                if(statusEl) { statusEl.innerText = status.message || 'RUNNING'; statusEl.style.color = 'var(--accent-emerald)'; }
+                const cleanMsg = (status.message || 'SCRAPING').toUpperCase();
+                if(statusEl) { 
+                    statusEl.innerText = cleanMsg; 
+                    statusEl.style.color = 'var(--accent-emerald)'; 
+                }
                 if(progWrap) progWrap.style.display = 'block';
                 if(progBar) progBar.style.width = (status.stats && status.stats.progress ? status.stats.progress : 100) + '%';
+                
+                // Update local filter buttons
                 if (startBtn) {
                     startBtn.disabled = true;
                     startBtn.innerHTML = '<span class="pulse">COLLECTING...</span>';
                 }
-                const autoBtn = document.getElementById('auto-btn');
                 if (autoBtn) autoBtn.disabled = true;
+                if (stopBtn) stopBtn.style.display = 'inline-flex';
+
+                // Update unified global HUD buttons
+                if (globalStartBtn) {
+                    globalStartBtn.disabled = true;
+                    globalStartBtn.style.opacity = '0.5';
+                    globalStartBtn.style.cursor = 'not-allowed';
+                    globalStartBtn.innerHTML = '<span class="pulse" style="display:flex;align-items:center;gap:4px;"><span class="status-dot-pulse"></span>COLLECTING...</span>';
+                }
+                if (globalStopBtn) {
+                    globalStopBtn.disabled = false;
+                    globalStopBtn.style.opacity = '1';
+                    globalStopBtn.style.cursor = 'pointer';
+                }
             } else {
-                if(statusEl) { statusEl.innerText = 'ONLINE'; statusEl.style.color = 'var(--text-secondary)'; }
+                if(statusEl) { 
+                    statusEl.innerText = 'IDLE / ONLINE'; 
+                    statusEl.style.color = 'var(--text-secondary)'; 
+                }
                 if(progWrap) progWrap.style.display = 'none';
+                
+                // Update local filter buttons
                 if (startBtn) {
                     startBtn.disabled = false;
-                    startBtn.innerText = 'Start Collection';
+                    startBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Start Collection';
                 }
-                const autoBtn = document.getElementById('auto-btn');
                 if (autoBtn) autoBtn.disabled = false;
+                if (stopBtn) stopBtn.style.display = 'none';
+
+                // Update unified global HUD buttons
+                if (globalStartBtn) {
+                    globalStartBtn.disabled = false;
+                    globalStartBtn.style.opacity = '1';
+                    globalStartBtn.style.cursor = 'pointer';
+                    globalStartBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> START SCRAPING';
+                }
+                if (globalStopBtn) {
+                    globalStopBtn.disabled = true;
+                    globalStopBtn.style.opacity = '0.5';
+                    globalStopBtn.style.cursor = 'not-allowed';
+                }
             }
 
             // Activity logs hidden per user request
@@ -2939,7 +2945,11 @@ window.updatePaginationUI = function(data) {
         window.startScrapeGlobal = async function() {
             const isSchool = {% if is_school_dashboard %}true{% else %}false{% endif %};
             if (isSchool) {
-                await startDirectScrape('SCHOOL');
+                if (typeof window.scrapeSchools === 'function') {
+                    await window.scrapeSchools();
+                } else {
+                    await startDirectScrape('SCHOOL');
+                }
             } else {
                 showNotif('Activating continuous AutoPilot scraping...');
                 try {
@@ -2954,10 +2964,40 @@ window.updatePaginationUI = function(data) {
         
         window.stopScrapeGlobal = async function() {
             showNotif('Sending STOP signal to active scraper...');
+            
+            // Immediate UI feedback
+            const statusEl = document.getElementById('live-status');
+            if (statusEl) {
+                statusEl.innerText = 'STOPPING...';
+                statusEl.style.color = 'var(--accent-red)';
+            }
+            const globalStopBtn = document.getElementById('global-stop-btn');
+            if (globalStopBtn) {
+                globalStopBtn.disabled = true;
+                globalStopBtn.style.opacity = '0.5';
+            }
+            
             try {
                 const res = await fetch('/api/trigger/stop', { method: 'POST' });
                 const data = await res.json();
                 showNotif(data.message);
+                
+                // Reset local filter buttons
+                const startBtn = document.getElementById('start-btn');
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Start Collection';
+                }
+                const autoBtn = document.getElementById('auto-btn');
+                if (autoBtn) autoBtn.disabled = false;
+                const stopBtn = document.getElementById('stop-btn');
+                if (stopBtn) stopBtn.style.display = 'none';
+                
+                const schoolStatus = document.getElementById('school-scrape-status');
+                if (schoolStatus) {
+                    schoolStatus.textContent = 'Ready';
+                    schoolStatus.style.color = 'var(--text-muted)';
+                }
             } catch(e) {
                 showNotif('Failed to stop scraping', 3000, true);
             }
@@ -3023,7 +3063,10 @@ def render_dashboard_portal(is_school_dashboard=False):
 
         ph = db_placeholder()
         like_op = "LIKE" if USE_SQLITE else "ILIKE"
-        where_clause = f"LOWER(category) {like_op} {ph}" if is_school_dashboard else f"LOWER(category) NOT {like_op} {ph}"
+        if is_school_dashboard:
+            where_clause = f"(LOWER(category) {like_op} {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))"
+        else:
+            where_clause = f"(LOWER(category) NOT {like_op} {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))"
         params_stat = ["%school%"]
 
         # Get total count (unfiltered for this portal context)
@@ -3750,10 +3793,10 @@ def export(fmt):
                 search_query = filter_city = filter_category = filter_source = ""
                 if schools_only:
                     ph = "?" if USE_SQLITE else "%s"
-                    where_sql, params = f"LOWER(category) LIKE {ph}", ["%school%"]
+                    where_sql, params = f"(LOWER(category) LIKE {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))", ["%school%"]
                 elif financial_only:
                     ph = "?" if USE_SQLITE else "%s"
-                    where_sql, params = f"LOWER(category) NOT LIKE {ph}", ["%school%"]
+                    where_sql, params = f"(LOWER(category) NOT LIKE {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))", ["%school%"]
                 else:
                     where_sql, params = "1=1", []
         else:
@@ -4091,10 +4134,10 @@ def stream_stats():
                 like_op = "LIKE" if USE_SQLITE else "ILIKE"
                 
                 if schools_only:
-                    where_clause = f"LOWER(category) {like_op} {ph}"
+                    where_clause = f"(LOWER(category) {like_op} {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))"
                     params = ["%school%"]
                 else:
-                    where_clause = f"LOWER(category) NOT {like_op} {ph}"
+                    where_clause = f"(LOWER(category) NOT {like_op} {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))"
                     params = ["%school%"]
 
                 cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause}", params)
@@ -4141,10 +4184,10 @@ def api_chart_stats():
         ph = "?" if USE_SQLITE else "%s"
         
         if schools_only:
-            where_sql = f"WHERE LOWER(category) LIKE {ph}"
+            where_sql = f"WHERE (LOWER(category) LIKE {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))"
             params = ["%school%"]
         else:
-            where_sql = f"WHERE LOWER(category) NOT LIKE {ph}"
+            where_sql = f"WHERE (LOWER(category) NOT LIKE {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))"
             params = ["%school%"]
             
         conn = get_db()

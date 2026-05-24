@@ -95,6 +95,48 @@ class DirectPoliteFetcher:
         self._last_request_time = time.time()
 
     def fetch(self, url: str, referer: str = None) -> Tuple[Optional[str], int]:
+        # Global Abortion Check (Instant Scraper Termination)
+        try:
+            import os
+            import json
+            import redis
+            r_url = os.environ.get('REDIS_URL')
+            status_data = None
+            if r_url:
+                try:
+                    r_client = redis.Redis.from_url(r_url, socket_timeout=2)
+                    status_raw = r_client.get("scraper_status")
+                    if status_raw:
+                        status_data = json.loads(status_raw)
+                except Exception as re:
+                    logger.debug(f"Stop-check Redis error: {re}")
+            
+            if not status_data:
+                try:
+                    import sqlite3
+                    from pathlib import Path
+                    db_path = Path(__file__).parent / 'scraper_local.db'
+                    if db_path.exists():
+                        conn = sqlite3.connect(str(db_path), timeout=2)
+                        cur = conn.cursor()
+                        cur.execute("SELECT value FROM system_status WHERE key = 'scraper_status'")
+                        row = cur.fetchone()
+                        cur.close()
+                        conn.close()
+                        if row and row[0]:
+                            status_data = json.loads(row[0])
+                except Exception as se:
+                    logger.debug(f"Stop-check SQLite error: {se}")
+
+            if status_data and isinstance(status_data, dict):
+                if status_data.get("running") is False:
+                    logger.warning("🛑 SCRAM! Scraper STOP signal detected in global state. Aborting execution immediately.")
+                    raise KeyboardInterrupt("Scraper stop requested by user")
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            logger.debug(f"Stop-check error: {e}")
+
         self._respectful_delay()
         headers = self._get_headers(referer or "https://www.google.com/")
 
