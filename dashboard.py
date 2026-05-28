@@ -821,6 +821,8 @@ HTML = """
         .stat-card.emerald .value { color: var(--accent-emerald); text-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
         .stat-card.blue .value { color: var(--accent-blue); text-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
         .stat-card.amber .value { color: var(--accent-amber); text-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+        .stat-card .sub-text { font-size: 11px; color: var(--text-muted); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+        .stat-card .sub-text svg { width: 12px; height: 12px; }
 
         .content-grid { display: flex; flex-direction: column; gap: 32px; }
         .glass-card { 
@@ -1396,86 +1398,7 @@ HTML = """
             animation: spin 0.6s linear infinite;
         }
 
-        /* Stats Cards Enhancement */
-        .stats-hud {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-        }
-        .stat-card {
-            background: var(--card-glass);
-            padding: 24px;
-            border-radius: 20px;
-            border: 1px solid var(--border-muted);
-            transition: all 0.3s ease;
-            backdrop-filter: blur(12px);
-            position: relative;
-            overflow: hidden;
-        }
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, transparent, var(--accent-emerald), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .stat-card:hover::before {
-            opacity: 1;
-        }
-        .stat-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(16, 185, 129, 0.2);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-        }
-        .stat-card .sub-text {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 6px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .stat-card .sub-text svg {
-            width: 12px;
-            height: 12px;
-        }
-
-        /* Charts Enhancement */
-        .charts-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-        .chart-card {
-            background: var(--card-glass);
-            border-radius: 20px;
-            border: 1px solid var(--border-muted);
-            padding: 24px;
-            min-height: 280px;
-            backdrop-filter: blur(8px);
-            transition: all 0.3s ease;
-        }
-        .chart-card:hover {
-            border-color: rgba(255,255,255,0.1);
-            transform: translateY(-2px);
-        }
-        .chart-card p {
-            font-size: 11px;
-            text-transform: uppercase;
-            color: var(--text-secondary);
-            margin-bottom: 20px;
-            letter-spacing: 2px;
-            font-weight: 700;
-        }
-        .chart-container {
-            position: relative;
-            height: 180px;
-            width: 100%;
-        }
+        /* Stats / Charts Enhancement (merged) */
 
 /* Notification Toast */
         .toast {
@@ -3029,29 +2952,6 @@ window.updatePaginationUI = function(data) {
 
         /* ===== AUTO-REFRESH ===== */
 
-        // Auto-refresh live status every 15s
-        window.startStatusPolling = function() {
-            setInterval(async function() {
-                try {
-                    var res = await fetch('/api/status');
-                    var data = await res.json();
-                    var statusEl = document.getElementById('live-status');
-                    var badgeEl = document.getElementById('status-badge');
-                    var updateEl = document.getElementById('last-update');
-                    var sidebarUpdate = document.getElementById('last-update-sidebar');
-                    var now = new Date();
-                    var timeStr = now.toLocaleTimeString();
-                    if (statusEl) statusEl.textContent = data.is_running ? 'RUNNING' : 'IDLE';
-                    if (badgeEl) {
-                        badgeEl.textContent = data.is_running ? 'ACTIVE' : 'ONLINE';
-                        badgeEl.style.color = data.is_running ? 'var(--accent-emerald)' : '';
-                    }
-                    if (updateEl) updateEl.textContent = timeStr;
-                    if (sidebarUpdate) sidebarUpdate.textContent = timeStr;
-                } catch(e) { /* silent */ }
-            }, 15000);
-        };
-
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
@@ -3068,7 +2968,6 @@ window.updatePaginationUI = function(data) {
         });
 
         // Init
-        if (document.getElementById('live-status')) window.startStatusPolling();
     </script>
 </body>
 </html>

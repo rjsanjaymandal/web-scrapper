@@ -547,7 +547,7 @@ def direct_gov_scrape_batch():
 
     gov_sources = [
         ("ICAI", ICAIDirectScraper, "Chartered Accountants", ca_priority_cities[:60]),
-        ("AMFI", AMFIDirectScraper, "Mutual Fund Agents", ca_priority_cities[:15]),
+        ("AMFI", AMFIDirectScraper, "Mutual Fund Agent", ca_priority_cities[:15]),
         ("SEBI", SEBIDirectScraper, "Investment Advisors", [None]),
         ("IRDAI", IRDAIDirectScraper, "Insurance Agents", [None]),
     ]

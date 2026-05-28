@@ -3,6 +3,7 @@ Direct Scraper - Focused on CA, Mutual Fund, Insurance, Accountant
 No proxies - polite HTTP fetching for government/regulatory sites
 """
 
+import os
 import re
 import time
 import random
@@ -310,7 +311,8 @@ class ICAIDirectScraper:
                         phone = card_phones[0].strip()
 
                     # Politely crawl detail page if missing phone/email
-                    if (not phone or not email) and source_url and source_url != search_url and fetches_done < 50:
+                    max_detail_fetches = int(os.environ.get("ICAI_MAX_DETAIL_FETCHES", "50"))
+                    if (not phone or not email) and source_url and source_url != search_url and fetches_done < max_detail_fetches:
                         absolute_profile_url = urljoin("https://caconnect.icai.org", source_url)
                         logger.info(f"ICAI CA Connect: Fetching profile contact for {name}: {absolute_profile_url}")
                         fetches_done += 1
@@ -359,61 +361,75 @@ class AMFIDirectScraper:
     def __init__(self, fetcher: DirectPoliteFetcher = None):
         self.fetcher = fetcher or DirectPoliteFetcher()
 
-    def scrape(self, city: str = None, category: str = "Mutual Fund Agents") -> List[Dict]:
+    def scrape(self, city: str = None, category: str = "Mutual Fund Agent") -> List[Dict]:
         results = []
         logger.info(f"AMFI: Scraping for city={city}")
 
         try:
             if city:
-                api_url = f"{self.API_URL}?city={city.replace(' ', '%20')}"
-                html, status = self.fetcher.fetch(api_url)
+                for page_num in range(1, 6):
+                    api_url = f"{self.API_URL}?city={city.replace(' ', '%20')}&strOpt=city&page={page_num}&pageSize=100"
+                    html, status = self.fetcher.fetch(api_url)
+                    if not html or status in (404, 500):
+                        break
+                    page_entries = self._parse_html(html, city)
+                    if not page_entries:
+                        break
+                    results.extend(page_entries)
+                    logger.info(f"AMFI page {page_num}: {len(page_entries)} records")
+                if not results:
+                    html, status = self.fetcher.fetch(self.BASE_URL)
+                    if html:
+                        results = self._parse_html(html, city)
             else:
                 html, status = self.fetcher.fetch(self.BASE_URL)
-
-            if not html:
-                return results
-
-            soup = BeautifulSoup(html, 'html.parser')
-            listings = []
-            tables = soup.find_all('table')
-            for table in tables:
-                rows = table.find_all('tr')[1:]
-                for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 2:
-                        name = cols[0].get_text(strip=True)
-                        contact = cols[1].get_text(strip=True) if len(cols) > 1 else ""
-                        if len(name) > 3:
-                            listings.append((name, contact))
-
-            if not listings:
-                div_listings = soup.find_all(['div', 'tr'], class_=lambda x: x and ('distributor' in str(x).lower() or 'mutual' in str(x).lower()))
-                for l in div_listings:
-                    listings.append((None, l.get_text()))
-
-            for name_text, full_text in listings:
-                text = full_text or ""
-                if not name_text:
-                    name_match = re.search(r'([A-Z][a-zA-Z\s]+(?:Pvt|Ltd|Inc)?)', text)
-                    name = name_match.group(1)[:200] if name_match else None
-                else:
-                    name = name_text[:200]
-
-                if not name or "Name" in name:
-                    continue
-
-                email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
-                phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
-
-                results.append({
-                    "name": name, "email": email_match.group(0) if email_match else None,
-                    "phone": phone_match.group(0) if phone_match else None,
-                    "city": city, "category": "Mutual Fund Agents", "source": self.SOURCE, "source_url": self.BASE_URL
-                })
+                if html:
+                    results = self._parse_html(html, city)
         except Exception as e:
             logger.error(f"AMFI scrape error: {e}")
 
         logger.info(f"AMFI: Extracted {len(results)} records")
+        return results
+
+    def _parse_html(self, html: str, city: str) -> List[Dict]:
+        results = []
+        soup = BeautifulSoup(html, 'html.parser')
+        listings = []
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')[1:]
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    name = cols[0].get_text(strip=True)
+                    contact = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                    if len(name) > 3:
+                        listings.append((name, contact))
+
+        if not listings:
+            div_listings = soup.find_all(['div', 'tr'], class_=lambda x: x and ('distributor' in str(x).lower() or 'mutual' in str(x).lower()))
+            for l in div_listings:
+                listings.append((None, l.get_text()))
+
+        for name_text, full_text in listings:
+            text = full_text or ""
+            if not name_text:
+                name_match = re.search(r'([A-Z][a-zA-Z\s]+(?:Pvt|Ltd|Inc)?)', text)
+                name = name_match.group(1)[:200] if name_match else None
+            else:
+                name = name_text[:200]
+
+            if not name or "Name" in name:
+                continue
+
+            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
+            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
+
+            results.append({
+                "name": name, "email": email_match.group(0) if email_match else None,
+                "phone": phone_match.group(0) if phone_match else None,
+                "city": city, "category": "Mutual Fund Agent", "source": self.SOURCE, "source_url": self.BASE_URL
+            })
         return results
 
 
@@ -429,59 +445,72 @@ class SEBIDirectScraper:
         logger.info(f"SEBI: Scraping Investment Advisors")
 
         try:
-            html, status = self.fetcher.fetch(self.BASE_URL, "https://www.sebi.gov.in/")
-            if not html:
-                return results
-
-            soup = BeautifulSoup(html, 'html.parser')
-            table = (
-                soup.find('table', {'id': 'sample_1'}) or
-                soup.find('table', {'class': 'table-striped'}) or
-                soup.find('table', {'border': '1'}) or
-                soup.find('table')
-            )
-
-            if table:
-                rows = table.find_all('tr')
-                logger.info(f"SEBI: Found {len(rows)} table rows")
-
-                for row in rows:
-                    cols = row.find_all(['td', 'th'])
-                    if len(cols) >= 4:
-                        try:
-                            reg_no = cols[0].get_text(strip=True)
-                            name = cols[1].get_text(strip=True)
-                            address = cols[2].get_text(strip=True)
-                            city_col = cols[3].get_text(strip=True) if len(cols) > 3 else city or ""
-
-                            if name and "Name" not in name and len(name) > 2:
-                                # Search for embedded contact details in the address field
-                                email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
-                                phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
-                                
-                                emails = email_pattern.findall(address)
-                                phones = phone_pattern.findall(address)
-                                
-                                email = emails[0].lower() if emails else None
-                                phone = phones[0] if phones else None
-                                
-                                results.append({
-                                    "name": name[:200], "phone": phone, "email": email,
-                                    "address": address[:300] if address else None,
-                                    "city": city_col or city,
-                                    "category": "Investment Advisors",
-                                    "source": self.SOURCE, "source_url": self.BASE_URL,
-                                    "registration_no": reg_no, "license_no": reg_no,
-                                })
-                        except:
-                            continue
+            for page_num in range(1, 6):
+                url = f"{self.BASE_URL}&pageNo={page_num}"
+                html, status = self.fetcher.fetch(url, "https://www.sebi.gov.in/")
+                if not html:
+                    break
+                page_results = self._parse_table(html, city, category)
+                if not page_results:
+                    if page_num == 1:
+                        break
+                    break
+                results.extend(page_results)
+                logger.info(f"SEBI page {page_num}: {len(page_results)} records")
 
             if not results:
-                results = self._extract_from_text(soup.get_text(), city, "Investment Advisors")
+                html, status = self.fetcher.fetch(self.BASE_URL, "https://www.sebi.gov.in/")
+                if html:
+                    results = self._extract_from_text(
+                        BeautifulSoup(html, 'html.parser').get_text(), city, "Investment Advisors"
+                    )
         except Exception as e:
             logger.error(f"SEBI scrape error: {e}")
 
         logger.info(f"SEBI: Extracted {len(results)} records")
+        return results
+
+    def _parse_table(self, html: str, city: str, category: str) -> List[Dict]:
+        results = []
+        soup = BeautifulSoup(html, 'html.parser')
+        table = (
+            soup.find('table', {'id': 'sample_1'}) or
+            soup.find('table', {'class': 'table-striped'}) or
+            soup.find('table', {'border': '1'}) or
+            soup.find('table')
+        )
+
+        if table:
+            rows = table.find_all('tr')
+            for row in rows:
+                cols = row.find_all(['td', 'th'])
+                if len(cols) >= 4:
+                    try:
+                        reg_no = cols[0].get_text(strip=True)
+                        name = cols[1].get_text(strip=True)
+                        address = cols[2].get_text(strip=True)
+                        city_col = cols[3].get_text(strip=True) if len(cols) > 3 else city or ""
+
+                        if name and "Name" not in name and len(name) > 2:
+                            email_pattern = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
+                            phone_pattern = re.compile(r'(?:\+91[\s.-]?)?\b[6789]\d{9}\b|\b\d{3,5}[\s.-]?\d{6,8}\b')
+                            
+                            emails = email_pattern.findall(address)
+                            phones = phone_pattern.findall(address)
+                            
+                            email = emails[0].lower() if emails else None
+                            phone = phones[0] if phones else None
+                            
+                            results.append({
+                                "name": name[:200], "phone": phone, "email": email,
+                                "address": address[:300] if address else None,
+                                "city": city_col or city,
+                                "category": "Investment Advisors",
+                                "source": self.SOURCE, "source_url": self.BASE_URL,
+                                "registration_no": reg_no, "license_no": reg_no,
+                            })
+                    except:
+                        continue
         return results
 
     def _extract_from_text(self, text: str, city: str, category: str) -> List[Dict]:

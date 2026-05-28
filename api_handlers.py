@@ -170,7 +170,7 @@ class OfficialAPIHandlers:
                     "address": item.get("Address") or item.get("address"),
                     "city": item.get("City") or city,
                     "source": "AMFI",
-                    "category": "Mutual Fund"
+                    "category": "Mutual Fund Agent"
                 })
 
             total_pages = None
@@ -196,7 +196,7 @@ class OfficialAPIHandlers:
             resp = await engine.fetch(html_url)
             if resp:
                 html = await resp.text()
-                return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund")
+                return BaseScraper.extract_raw_fallback(html, city, "Mutual Fund Agent")
         except Exception as e:
             logger.error(f"Failed AMFI HTML fallback: {e}")
         return []
