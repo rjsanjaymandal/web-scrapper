@@ -2096,6 +2096,7 @@ HTML = """
             url.searchParams.set('limit', limit);
             url.searchParams.set('page', 1);
             window.loadLeads(url.toString(), true);
+            connectStream();
         };
 
         window.setFilter = function(city, q) {
@@ -2118,6 +2119,7 @@ HTML = """
             url.searchParams.set('page', 1);
             url.searchParams.set('limit', '50');
             window.loadLeads(url.toString(), true);
+            connectStream();
         };
 
         window.copyLead = function(text) {
@@ -2397,12 +2399,21 @@ window.updatePaginationUI = function(data) {
                     btn.innerHTML = originalHTML;
                 }, 5000);
             }
-            let url = window.location.origin + "/export/" + fmt + "?all=true";
+            const q = document.getElementById('t-cat')?.value || "";
+            const city = document.getElementById('t-city')?.value || "";
+            const src = document.getElementById('t-source')?.value || "";
+            const quality = document.getElementById('t-quality')?.value || "";
+            const baseUrl = window.location.origin;
+            let url = baseUrl + "/export/" + fmt + "?all=true";
             if (window.isSchoolDashboard) {
                 url += "&schools_only=true";
             } else {
                 url += "&financial_only=true";
             }
+            if (city) url += "&city=" + encodeURIComponent(city);
+            if (q) url += "&q=" + encodeURIComponent(q);
+            if (src) url += "&source=" + encodeURIComponent(src);
+            if (quality) url += "&quality=" + encodeURIComponent(quality);
             window.location.assign(url);
         };
 
@@ -2456,12 +2467,24 @@ window.updatePaginationUI = function(data) {
         };
 
         // Live Telemetry Stream
-        let streamUrl = "/api/stream/stats";
-        if (window.isSchoolDashboard) {
-            streamUrl += "?schools_only=true";
-        }
-        const evtSource = new EventSource(streamUrl);
-        evtSource.onmessage = function(event) {
+        let evtSource = null;
+        function connectStream() {
+            if (evtSource) evtSource.close();
+            let streamUrl = "/api/stream/stats";
+            const params = new URLSearchParams();
+            if (window.isSchoolDashboard) params.set('schools_only', 'true');
+            const q = document.getElementById('t-cat')?.value;
+            const city = document.getElementById('t-city')?.value;
+            const src = document.getElementById('t-source')?.value;
+            const quality = document.getElementById('t-quality')?.value;
+            if (q) params.set('q', q);
+            if (city) params.set('city', city);
+            if (src) params.set('source', src);
+            if (quality) params.set('quality', quality);
+            const qs = params.toString();
+            if (qs) streamUrl += "?" + qs;
+            evtSource = new EventSource(streamUrl);
+            evtSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
             if (document.getElementById('stat-total')) {
                 const el = document.getElementById('stat-total');
@@ -2563,6 +2586,9 @@ window.updatePaginationUI = function(data) {
                 }
             }
         };
+        }
+
+        connectStream();  // initial connection with current filters
 
         // Live Feed SSE (combined with telemetry above)
         
@@ -3077,7 +3103,7 @@ def render_dashboard_portal(is_school_dashboard=False):
             params_stat
         )
 
-        # Optimized Stats
+        # Stats reflect active filters (city, category, source, search, quality)
         if USE_SQLITE:
             cur.execute(f"""
                 SELECT 
@@ -3089,8 +3115,8 @@ def render_dashboard_portal(is_school_dashboard=False):
                     SUM(CASE WHEN LOWER(quality_tier) = 'low' THEN 1 ELSE 0 END) as q_low,
                     AVG(quality_score) as avg_score
                 FROM contacts
-                WHERE {where_clause}
-            """, params_stat)
+                WHERE {where_sql}
+            """, params)
         else:
             cur.execute(f"""
                 SELECT 
@@ -3102,15 +3128,15 @@ def render_dashboard_portal(is_school_dashboard=False):
                     COUNT(*) FILTER (WHERE LOWER(quality_tier) = 'low') as q_low,
                     AVG(quality_score) as avg_score
                 FROM contacts
-                WHERE {where_clause}
-            """, params_stat)
+                WHERE {where_sql}
+            """, params)
         stats_row = cur.fetchone()
         if stats_row:
             stats_row = dict(stats_row)
         
-        cur.execute(f"SELECT source, COUNT(*) as c FROM contacts WHERE {where_clause} GROUP BY source", params_stat)
+        cur.execute(f"SELECT source, COUNT(*) as c FROM contacts WHERE {where_sql} GROUP BY source", params)
         by_source = {r["source"]: r["c"] for r in cur.fetchall()}
-        cur.execute(f"SELECT category, COUNT(*) as c FROM contacts WHERE {where_clause} GROUP BY category", params_stat)
+        cur.execute(f"SELECT category, COUNT(*) as c FROM contacts WHERE {where_sql} GROUP BY category", params)
         by_cat = {r["category"]: r["c"] for r in cur.fetchall()}
         cur.close()
         conn.close()
@@ -3750,21 +3776,16 @@ def export(fmt):
         financial_only = request.args.get("financial_only") == "true"
 
         if export_all:
-            if target_cat:
-                ph = "?" if USE_SQLITE else "%s"
-                where_sql, params = f"LOWER(category) LIKE {ph}", [f"%{target_cat.lower()}%"]
-                search_query = filter_city = filter_source = ""
-                filter_category = target_cat
-            else:
-                search_query = filter_city = filter_category = filter_source = ""
-                if schools_only:
-                    ph = "?" if USE_SQLITE else "%s"
-                    where_sql, params = f"(LOWER(category) LIKE {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))", ["%school%"]
-                elif financial_only:
-                    ph = "?" if USE_SQLITE else "%s"
-                    where_sql, params = f"(LOWER(category) NOT LIKE {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))", ["%school%"]
-                else:
-                    where_sql, params = "1=1", []
+            search_query = request.args.get("q", "")
+            filter_city = request.args.get("city", "")
+            filter_source = request.args.get("source", "")
+            filter_quality = request.args.get("quality", "")
+            filter_category = target_cat or request.args.get("category", "")
+            where_sql, params = build_contact_filters(
+                search_query, filter_city, filter_category, filter_source,
+                quality=filter_quality,
+                exclude_schools=financial_only, only_schools=schools_only,
+            )
         else:
             search_query = request.args.get("q", "")
             filter_city = request.args.get("city", "")
@@ -4091,28 +4112,30 @@ def api_maintenance_normalize():
 def stream_stats():
     """Server-Sent Events endpoint for live stats updates"""
     schools_only = request.args.get("schools_only") == "true"
+    search_q = request.args.get("q", "")
+    filter_city = request.args.get("city", "")
+    filter_cat = request.args.get("category", "")
+    filter_src = request.args.get("source", "")
+    filter_qual = request.args.get("quality", "")
     def generate():
         while True:
             try:
                 conn = get_db()
                 cur = conn.cursor()
-                ph = "?" if USE_SQLITE else "%s"
-                like_op = "LIKE" if USE_SQLITE else "ILIKE"
-                
-                if schools_only:
-                    where_clause = f"(LOWER(category) {like_op} {ph} OR LOWER(source) IN ('npsc', 'bsai', 'aisa'))"
-                    params = ["%school%"]
-                else:
-                    where_clause = f"(LOWER(category) NOT {like_op} {ph} AND LOWER(source) NOT IN ('npsc', 'bsai', 'aisa'))"
-                    params = ["%school%"]
+                where_filter, filter_params = build_contact_filters(
+                    search_q, filter_city, filter_cat, filter_src,
+                    quality=filter_qual,
+                    exclude_schools=not schools_only,
+                    only_schools=schools_only,
+                )
 
-                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause}", params)
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_filter}", filter_params)
                 total = cur.fetchone()["cnt"]
                 
-                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause} AND phone_clean IS NOT NULL AND phone_clean <> ''", params)
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_filter} AND phone_clean IS NOT NULL AND phone_clean <> ''", filter_params)
                 with_phone = cur.fetchone()["cnt"]
                 
-                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_clause} AND email IS NOT NULL AND email <> ''", params)
+                cur.execute(f"SELECT COUNT(*) as cnt FROM contacts WHERE {where_filter} AND email IS NOT NULL AND email <> ''", filter_params)
                 with_email = cur.fetchone()["cnt"]
 
                 status_data = {}
