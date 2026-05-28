@@ -51,6 +51,10 @@ class ProcessingHandler:
     CATEGORY_MAP = {
         'mutual fund agent': 'Mutual Fund Agent',
         'mutual fund agents': 'Mutual Fund Agent',
+        'mutual fund': 'Mutual Fund Agent',
+        'mutual funds': 'Mutual Fund Agent',
+        'mutual fund distributor': 'Mutual Fund Agent',
+        'mutual fund distributors': 'Mutual Fund Agent',
         'mutual fund advisor': 'Mutual Fund Agent',
         'mutual fund advisors': 'Mutual Fund Agent',
         'mutual fund consultants': 'Mutual Fund Agent',
