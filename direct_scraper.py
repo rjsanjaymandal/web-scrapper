@@ -1125,18 +1125,40 @@ class SchoolDirectScraper:
             random.shuffle(cbse_with_web)
             
             cbse_enriched_count = 0
-            # Enrich a polite batch of up to 15 matching CBSE schools
+            # Enrich a polite batch of up to 50 matching CBSE schools
             for s in cbse_with_web:
-                if cbse_enriched_count >= 15:
+                if cbse_enriched_count >= 50:
                     break
                 
                 name = s.get("schoolName", "CBSE School")
                 web = s.get("website")
-                addr = f"{s.get('address', '')} (Principal: {s.get('headName', 'N/A')})"
+                address = s.get("address", "")
+                district = s.get("district", "")
                 state = s.get("state", "")
+                pincode = s.get("pincode", "")
+                head_name = s.get("headName", "")
+                cbse_affiliation = s.get("affiliationNo", "")
                 
-                enriched = self._enrich_school_from_website(name, web, addr, city or state)
+                addr_parts = [address]
+                if district:
+                    addr_parts.append(f"District: {district}")
+                if state:
+                    addr_parts.append(state)
+                if pincode:
+                    addr_parts.append(pincode)
+                if head_name:
+                    addr_parts.append(f"Principal: {head_name}")
+                full_address = ", ".join(addr_parts)
+                
+                enriched = self._enrich_school_from_website(name, web, full_address, city or state)
                 if enriched:
+                    # Attach CBSE-specific metadata
+                    enriched["address"] = full_address
+                    enriched["state"] = state
+                    enriched["district"] = district
+                    enriched["affiliation"] = cbse_affiliation
+                    enriched["principal"] = head_name
+                    enriched["pincode"] = pincode
                     results.append(enriched)
                     cbse_enriched_count += 1
                     

@@ -652,12 +652,21 @@ def auto_pilot_task():
         random.shuffle(cities)
         random.shuffle(categories)
         
-        # Prioritize Accountant-related categories
-        priority_cats = ["chartered-accountants", "accountants", "accounting-firms", "Chartered Accountants"]
+        # Prioritize financial categories (keep schools at the bottom)
+        priority_cats = [
+            "chartered-accountants", "accountants", "accounting-firms", "Chartered Accountants",
+            "financial-advisors", "insurance-agents", "mutual-fund-advisors",
+            "tax-consultants", "gst-consultants", "investment-consultants",
+            "loan-consultants", "business-consultants",
+        ]
         for pcat in reversed(priority_cats):
             if pcat in categories:
                 categories.remove(pcat)
                 categories.insert(0, pcat)
+        # Move schools to the end
+        if "schools" in categories:
+            categories.remove("schools")
+            categories.append("schools")
         
         # Sources to try in order (Hybrid: Official for quality, Directories for contact info)
         sources = ["Official", "GROTAL", "YELLOWPAGES", "SULEKHA", "JUSTDIAL", "GMB"]

@@ -200,7 +200,18 @@ class ProcessingHandler:
             score += 10 # Official sources are high trust
         elif source == 'JUSTDIAL' and contact.get('area'):
             score += 5
-            
+
+        # School-specific source quality bonus (premium associations have verified data)
+        category = contact.get('category', '')
+        if category == 'School':
+            if source in ['NPSC', 'BSAI']:
+                score += 15  # Premium verified associations (table-extracted, no Bing needed)
+            elif source == 'CBSE':
+                score += 10  # Official data with direct website enrichment
+            elif source == 'AISA':
+                score += 5   # Association list, enriched via search
+            # SCHOOL (Bing fallback) gets 0 bonus
+
         return min(score, 100)
 
     @staticmethod
