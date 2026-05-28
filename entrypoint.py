@@ -155,6 +155,10 @@ def main():
             dashboard_proc.wait()
         
         elif process_type == "schools" or process_type == "school_automator":
+            log("[DEPRECATED] School automation disabled. Use 'financial' process type instead.")
+            sys.exit(0)
+        
+        elif process_type == "financial" or process_type == "financial_automator":
             if not init_tables():
                 sys.exit(1)
             
@@ -169,8 +173,8 @@ def main():
                 dashboard_proc.terminate()
                 sys.exit(1)
             
-            schools_script = os.path.join(os.path.dirname(__file__), "automate_schools.py")
-            subprocess.run([sys.executable, schools_script])
+            financial_script = os.path.join(os.path.dirname(__file__), "automate_financial_consultants.py")
+            subprocess.run([sys.executable, financial_script])
             dashboard_proc.wait()
         
     except Exception as e:
