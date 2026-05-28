@@ -797,14 +797,17 @@ HTML = """
         .header-row h2 { font-size: 28px; font-weight: 800; letter-spacing: -1px; background: linear-gradient(to right, #fff, var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         
         /* HUD Components */
-        .stats-hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .stats-hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
         .stat-card { 
-            background: var(--card-glass); padding: 24px; border-radius: 20px; 
+            background: var(--card-glass); padding: 18px 20px; border-radius: 16px; 
             border: 1px solid var(--border-muted);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             backdrop-filter: blur(12px);
             position: relative;
             overflow: hidden;
+            min-height: 110px;
+            display: flex;
+            flex-direction: column;
         }
         .stat-card:hover { 
             background: var(--card-glass-hover); 
@@ -819,8 +822,8 @@ HTML = """
         }
         .stat-card:hover::after { left: 100%; }
         
-        .stat-card .label { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1.5px; margin-bottom: 12px; display: block; font-weight: 700; }
-        .stat-card .value { font-size: 32px; font-weight: 800; }
+        .stat-card .label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 1.2px; margin-bottom: 8px; display: block; font-weight: 700; }
+        .stat-card .value { font-size: 26px; font-weight: 800; }
         .stat-card.emerald .value { color: var(--accent-emerald); text-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
         .stat-card.blue .value { color: var(--accent-blue); text-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
         .stat-card.amber .value { color: var(--accent-amber); text-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
@@ -1067,6 +1070,8 @@ HTML = """
         td { padding: 12px 16px; border-bottom: 1px solid var(--border-muted); font-size: 13px; color: var(--text-primary); transition: 0.2s; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: rgba(16, 185, 129, 0.03); color: #fff; }
+        tbody tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+        td.cell-truncate { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
         .badge { padding: 5px 10px; border-radius: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .badge-src { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2); }
@@ -1148,8 +1153,8 @@ HTML = """
             gap: 10px;
         }
         .score-bar {
-            width: 50px;
-            height: 6px;
+            width: 64px;
+            height: 8px;
             background: rgba(255,255,255,0.08);
             border-radius: 3px;
             overflow: hidden;
@@ -1567,6 +1572,138 @@ HTML = """
         .action-btn-red:active {
             transform: translateY(0);
         }
+        /* Sidebar utility classes */
+        .sidebar-btn {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-muted);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sidebar-btn:hover {
+            background: rgba(16,185,129,0.08);
+            border-color: var(--accent-emerald);
+            color: var(--accent-emerald);
+        }
+        .sidebar-btn-sm {
+            font-size: 9px;
+            padding: 1px 5px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .sidebar-btn-md {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 8px;
+            border-radius: 8px;
+            gap: 4px;
+        }
+        .sidebar-btn-lg {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 8px 10px;
+            border-radius: 8px;
+            gap: 6px;
+        }
+        .sidebar-export-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 4px;
+        }
+        .sidebar-scraper-btn {
+            background: rgba(59,130,246,0.06);
+            border: 1px solid var(--border-muted);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .sidebar-scraper-btn:hover {
+            background: rgba(59,130,246,0.12);
+            border-color: var(--accent-blue);
+        }
+        .sidebar-scraper-label {
+            color: var(--accent-blue);
+        }
+        .portal-link-blue {
+            border: 1px dashed var(--accent-blue);
+            background: rgba(59,130,246,0.03);
+            margin-bottom: 4px;
+        }
+        .portal-link-blue span {
+            color: var(--accent-blue);
+            font-weight: 700;
+        }
+        .portal-link-green {
+            border: 1px dashed var(--accent-emerald);
+            background: rgba(16,185,129,0.03);
+            margin-top: 4px;
+        }
+        .portal-link-green span {
+            color: var(--accent-emerald);
+            font-weight: 700;
+        }
+        .export-btn-green {
+            border: 1px solid var(--accent-emerald);
+            background: rgba(16,185,129,0.08);
+            padding: 10px 12px;
+            height: auto;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .export-btn-green svg { stroke: var(--accent-emerald); }
+        .export-btn-green span { color: var(--accent-emerald); font-weight: 700; font-size: 13px; }
+        .export-btn-green:hover { background: rgba(16,185,129,0.15); border-color: var(--accent-emerald); }
+        .export-btn-red {
+            border: 1px solid var(--accent-red);
+            background: rgba(239,68,68,0.08);
+            padding: 10px 12px;
+            height: auto;
+            border-radius: 12px;
+            color: var(--accent-red);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .export-btn-red span { font-weight: 700; font-size: 13px; }
+        .export-btn-red:hover { background: rgba(239,68,68,0.15); }
+        .cat-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); }
+        .btn-group { display: flex; gap: 3px; }
+        .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; }
+        .scraper-nav-group { border-radius: 12px; padding: 8px; }
+        .scraper-nav-label { font-size: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 4px; }
+        .scraper-control-group { display: flex; flex-direction: column; gap: 8px; padding: 6px 2px; }
+        .zone-label { font-size: 10px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 3px; }
+        .zone-input { width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: var(--bg-secondary); color: var(--text-primary); font-size: 12px; box-sizing: border-box; }
+        .zone-btn-row { display: flex; flex-wrap: wrap; gap: 4px; }
+        .zone-btn { font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+        .zone-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--accent-emerald); color: var(--accent-emerald); }
+        .zone-btn-all { font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--accent-emerald); background: transparent; color: var(--accent-emerald); cursor: pointer; transition: all 0.2s; }
+        .zone-btn-all:hover { background: rgba(16,185,129,0.1); }
+        .scrape-btn { background: var(--accent-emerald); color: #fff; border: none; padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.5px; transition: all 0.2s; }
+        .scrape-btn:hover { background: #059669; transform: translateY(-1px); }
+        .status-text { font-size: 10px; color: var(--text-muted); text-align: center; min-height: 16px; padding: 2px 0; }
+        .gov-batch-btn { background: rgba(245,158,11,0.08); border: 1px solid var(--accent-amber); color: var(--accent-amber); padding: 10px 10px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.3px; transition: all 0.2s; }
+        .gov-batch-btn:hover { background: rgba(245,158,11,0.15); transform: translateY(-1px); }
+        .divider-line { border-top: 1px solid var(--border-muted); margin: 4px 0 2px; }
     </style>
 </head>
 <body>
@@ -1586,9 +1723,9 @@ HTML = """
             <nav class="nav-group">
                 <p class="nav-label">Portals</p>
                 {% if is_school_dashboard %}
-                <a href="/" class="nav-item" style="border: 1px dashed var(--accent-blue); background: rgba(59,130,246,0.03); margin-bottom: 4px;">
+                <a href="/" class="nav-item portal-link-blue">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    <span style="color: var(--accent-blue); font-weight: 700;">Financial Portal ➜</span>
+                    <span>Financial Portal ➜</span>
                 </a>
                 <a href="/schools" class="nav-item active">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
@@ -1599,9 +1736,9 @@ HTML = """
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Financial Dashboard
                 </a>
-                <a href="/schools" class="nav-item" style="border: 1px dashed var(--accent-emerald); background: rgba(16,185,129,0.03); margin-top: 4px;">
+                <a href="/schools" class="nav-item portal-link-green">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    <span style="color: var(--accent-emerald); font-weight: 700;">Schools Portal ➜</span>
+                    <span>Schools Portal ➜</span>
                 </a>
                 {% endif %}
             </nav>
@@ -1609,33 +1746,33 @@ HTML = """
             {% if is_school_dashboard %}
             <nav class="nav-group">
                 <p class="nav-label">Quick Export</p>
-                <div style="display: flex; flex-direction: column; gap: 8px; padding: 4px;">
-                    <button onclick="exportAllData('xlsx', this)" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.08); padding: 10px 12px; height: auto; border-radius: 12px; border: 1px solid var(--border-muted); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span style="color: var(--accent-emerald); font-weight: 700; font-size: 13px;">Download All Schools (Excel)</span>
-                    </button>
-                    <button onclick="exportAllData('pdf', this)" style="border-color: var(--accent-red); background: rgba(239,68,68,0.08); padding: 10px 12px; height: auto; border-radius: 12px; border: 1px solid var(--border-muted); color: var(--accent-red); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                <div class="sidebar-section" style="gap: 8px;">
+                    <button onclick="exportAllData('xlsx', this)" class="export-btn-green">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span style="font-weight: 700; font-size: 13px;">Download All Schools (PDF)</span>
+                        <span>Download All Schools (Excel)</span>
+                    </button>
+                    <button onclick="exportAllData('pdf', this)" class="export-btn-red">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        <span>Download All Schools (PDF)</span>
                     </button>
                 </div>
             </nav>
             {% else %}
             <nav class="nav-group">
                 <p class="nav-label">Category Exports</p>
-                <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 10px; font-weight: 700; color: var(--text-secondary);">Insurance</span>
-                        <div style="display: flex; gap: 3px;">
-                            <button onclick="exportCategory('Insurance', 'csv', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">CSV</button>
-                            <button onclick="exportCategory('Insurance', 'xlsx', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">XLSX</button>
+                <div class="sidebar-section">
+                    <div class="sidebar-export-item">
+                        <span class="cat-label">Insurance</span>
+                        <div class="btn-group">
+                            <button onclick="exportCategory('Insurance', 'csv', this)" class="sidebar-btn sidebar-btn-sm">CSV</button>
+                            <button onclick="exportCategory('Insurance', 'xlsx', this)" class="sidebar-btn sidebar-btn-sm">XLSX</button>
                         </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 10px; font-weight: 700; color: var(--text-secondary);">Mutual Fund</span>
-                        <div style="display: flex; gap: 3px;">
-                            <button onclick="exportCategory('Mutual Fund', 'csv', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">CSV</button>
-                            <button onclick="exportCategory('Mutual Fund', 'xlsx', this)" style="padding: 1px 5px; font-size: 9px; height: 20px; border-radius: 4px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">XLSX</button>
+                    <div class="sidebar-export-item">
+                        <span class="cat-label">Mutual Fund</span>
+                        <div class="btn-group">
+                            <button onclick="exportCategory('Mutual Fund', 'csv', this)" class="sidebar-btn sidebar-btn-sm">CSV</button>
+                            <button onclick="exportCategory('Mutual Fund', 'xlsx', this)" class="sidebar-btn sidebar-btn-sm">XLSX</button>
                         </div>
                     </div>
                 </div>
@@ -1644,16 +1781,16 @@ HTML = """
 
             <nav class="nav-group">
                 <p class="nav-label">Export All</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px;">
-                    <button onclick="exportAllData('csv', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <div class="export-grid">
+                    <button onclick="exportAllData('csv', this)" class="sidebar-btn sidebar-btn-md">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         CSV
                     </button>
-                    <button onclick="exportAllData('xlsx', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <button onclick="exportAllData('xlsx', this)" class="sidebar-btn sidebar-btn-md">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Excel
                     </button>
-                    <button onclick="exportAllData('pdf', this)" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-muted); background: rgba(255,255,255,0.03); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px; grid-column: span 2;">
+                    <button onclick="exportAllData('pdf', this)" class="sidebar-btn sidebar-btn-md" style="grid-column: span 2;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                         PDF
                     </button>
@@ -1661,60 +1798,58 @@ HTML = """
             </nav>
 
             {% if is_school_dashboard %}
-            <nav class="nav-group" style="border: 1px solid var(--accent-emerald, #10b981); border-radius: 12px; padding: 8px; background: rgba(16,185,129,0.04);">
-                <p class="nav-label" style="color: var(--accent-emerald, #10b981); font-size: 12px; letter-spacing: 1px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+            <nav class="nav-group scraper-nav-group" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.04);">
+                <p class="nav-label scraper-nav-label" style="color: var(--accent-emerald);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
                     SCHOOL SCRAPER CONTROLS
                 </p>
-                <div style="display: flex; flex-direction: column; gap: 8px; padding: 6px 2px;">
+                <div class="scraper-control-group" style="gap: 6px;">
                     <div>
-                        <label style="font-size: 10px; color: var(--text-muted, #888); font-weight: 600; display: block; margin-bottom: 3px;">Target Zone / City</label>
-                        <input type="text" id="school-zone" placeholder="e.g. Delhi, Mumbai, North Delhi..." style="width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border-muted, #333); background: var(--bg-secondary, #1a1a2e); color: var(--text-primary); font-size: 12px; box-sizing: border-box;">
+                        <label class="zone-label">Target Zone / City</label>
+                        <input type="text" id="school-zone" class="zone-input" placeholder="e.g. Delhi, Mumbai, North Delhi...">
                     </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                        <button class="quick-btn" onclick="setSchoolZone('Delhi')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Delhi</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Mumbai')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Mumbai</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Bangalore')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Bangalore</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Chennai')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Chennai</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Kolkata')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Kolkata</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Hyderabad')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Hyderabad</button>
-                        <button class="quick-btn" onclick="setSchoolZone('Pune')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-muted); background: transparent; color: var(--text-muted); cursor: pointer;">Pune</button>
-                        <button class="quick-btn" onclick="setSchoolZone('')" style="font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--accent-emerald); background: transparent; color: var(--accent-emerald); cursor: pointer;">All India</button>
+                    <div class="zone-btn-row">
+                        <button class="zone-btn" onclick="setSchoolZone('Delhi')">Delhi</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Mumbai')">Mumbai</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Bangalore')">Bangalore</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Chennai')">Chennai</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Kolkata')">Kolkata</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Hyderabad')">Hyderabad</button>
+                        <button class="zone-btn" onclick="setSchoolZone('Pune')">Pune</button>
+                        <button class="zone-btn-all" onclick="setSchoolZone('')">All India</button>
                     </div>
-                    <button class="action-btn-green" onclick="scrapeSchools()" style="background: var(--accent-emerald, #10b981); color: #fff; border: none; padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.5px;">
+                    <button class="scrape-btn" onclick="scrapeSchools()">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         SCRAPE SCHOOLS NOW
                     </button>
-                    <div id="school-scrape-status" style="font-size: 10px; color: var(--text-muted, #666); text-align: center; min-height: 16px; padding: 2px 0;">
-                        Ready
-                    </div>
+                    <div id="school-scrape-status" class="status-text">Ready</div>
                 </div>
             </nav>
             {% else %}
-            <nav class="nav-group" style="border: 1px solid var(--accent-blue, #3b82f6); border-radius: 12px; padding: 8px; background: rgba(59,130,246,0.04);">
-                <p class="nav-label" style="color: var(--accent-blue, #3b82f6); font-size: 12px; letter-spacing: 1px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
+            <nav class="nav-group scraper-nav-group" style="border-color: var(--accent-blue); background: rgba(59,130,246,0.04);">
+                <p class="nav-label scraper-nav-label" style="color: var(--accent-blue);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
                     FINANCIAL SCRAPER CONTROLS
                 </p>
-                <div style="display: flex; flex-direction: column; gap: 6px; padding: 6px 2px;">
-                    <button onclick="startDirectScrape('SEBI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <div class="scraper-control-group" style="gap: 6px;">
+                    <button onclick="startDirectScrape('SEBI')" class="sidebar-scraper-btn sidebar-btn-lg">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span style="color: var(--accent-blue);">SEBI (Investment Advisors)</span>
+                        <span class="sidebar-scraper-label">SEBI (Investment Advisors)</span>
                     </button>
-                    <button onclick="startDirectScrape('ICAI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <button onclick="startDirectScrape('ICAI')" class="sidebar-scraper-btn sidebar-btn-lg">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span style="color: var(--accent-blue);">ICAI (CAs)</span>
+                        <span class="sidebar-scraper-label">ICAI (CAs)</span>
                     </button>
-                    <button onclick="startDirectScrape('AMFI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <button onclick="startDirectScrape('AMFI')" class="sidebar-scraper-btn sidebar-btn-lg">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span style="color: var(--accent-blue);">AMFI (Mutual Funds)</span>
+                        <span class="sidebar-scraper-label">AMFI (Mutual Funds)</span>
                     </button>
-                    <button onclick="startDirectScrape('IRDAI')" style="background: rgba(59,130,246,0.06); border: 1px solid var(--border-muted); color: var(--text-primary); padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <button onclick="startDirectScrape('IRDAI')" class="sidebar-scraper-btn sidebar-btn-lg">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span style="color: var(--accent-blue);">IRDAI (Insurance)</span>
+                        <span class="sidebar-scraper-label">IRDAI (Insurance)</span>
                     </button>
-                    <div style="border-top: 1px solid var(--border-muted); margin: 4px 0 2px;"></div>
-                    <button onclick="startGovBatch()" style="background: rgba(245,158,11,0.08); border: 1px solid var(--accent-amber); color: var(--accent-amber); padding: 10px 10px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; letter-spacing: 0.3px;">
+                    <div class="divider-line"></div>
+                    <button onclick="startGovBatch()" class="gov-batch-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
                         RUN ALL (GOV BATCH)
                     </button>
@@ -1757,29 +1892,28 @@ HTML = """
                 <p>{% if selected_category %}Targeted Professional Leads Category View{% else %}Data Extraction Engine & Analytics Node{% endif %}</p>
                 {% endif %}
             </div>
-            <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
                     <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                     <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                 </button>
-                <div class="scraping-control-group" style="display:flex; align-items:center; gap:6px; background:var(--card-glass); border:1px solid var(--border-muted); padding:4px 8px; border-radius:12px; backdrop-filter:blur(10px);">
-                    <button class="action-btn-green" onclick="startScrapeGlobal()" id="global-start-btn" style="background:var(--accent-emerald); color:#fff; border:none; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; letter-spacing: 0.5px; transition: all 0.2s ease;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        START SCRAPING
+                <div class="scraping-control-group" style="display:flex; align-items:center; gap:4px; background:var(--card-glass); border:1px solid var(--border-muted); padding:3px 6px; border-radius:10px; backdrop-filter:blur(10px);">
+                    <button class="action-btn-green" onclick="startScrapeGlobal()" id="global-start-btn" style="background:var(--accent-emerald); color:#fff; border:none; padding:6px 10px; border-radius:7px; font-size:10px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px; letter-spacing: 0.5px; transition: all 0.2s ease;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        START
                     </button>
-                    <button class="action-btn-red" onclick="stopScrapeGlobal()" id="global-stop-btn" style="background:var(--accent-red); color:#fff; border:none; padding:8px 12px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; letter-spacing: 0.5px; transition: all 0.2s ease;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
-                        STOP SCRAPING
+                    <button class="action-btn-red" onclick="stopScrapeGlobal()" id="global-stop-btn" style="background:var(--accent-red); color:#fff; border:none; padding:6px 10px; border-radius:7px; font-size:10px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px; letter-spacing: 0.5px; transition: all 0.2s ease;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+                        STOP
                     </button>
                 </div>
-                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; display:flex; align-items:center; gap:8px; backdrop-filter:blur(10px);">
+                <div class="status-pill" style="background:var(--card-glass); border:1px solid var(--border-muted); padding:5px 10px; border-radius:10px; font-size:11px; display:flex; align-items:center; gap:5px; backdrop-filter:blur(10px);">
                     <span style="color:var(--accent-emerald); font-weight:700;">●</span>
-                    <span style="color:var(--text-muted); font-weight:700;">STATUS:</span> 
-                    <span id="live-status" style="font-weight:800; color:var(--text-secondary); letter-spacing:1px;">IDLE</span>
+                    <span id="live-status" style="font-weight:800; color:var(--text-secondary); letter-spacing:0.5px;">IDLE</span>
                 </div>
-                <div style="background:var(--card-glass); border:1px solid var(--border-muted); padding:8px 16px; border-radius:12px; font-size:12px; backdrop-filter:blur(10px); display:flex; align-items:center; gap:8px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span style="color:var(--text-muted); font-weight:700;">UPDATED:</span> <span id="last-update" class="mono" style="color:var(--text-primary);">--:--:--</span>
+                <div class="status-pill" style="background:var(--card-glass); border:1px solid var(--border-muted); padding:5px 10px; border-radius:10px; font-size:11px; backdrop-filter:blur(10px); display:flex; align-items:center; gap:5px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span id="last-update" class="mono" style="color:var(--text-primary);">--:--:--</span>
                 </div>
             </div>
         </div>
@@ -1823,21 +1957,6 @@ HTML = """
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                     Avg score
                 </span>
-            </div>
-        </div>
-
-        <div class="charts-row">
-            <div class="chart-card">
-                <p>Industry Distribution</p>
-                <div class="chart-container"><canvas id="catChart"></canvas></div>
-            </div>
-            <div class="chart-card">
-                <p>Intelligence Sources</p>
-                <div class="chart-container"><canvas id="srcChart"></canvas></div>
-            </div>
-            <div class="chart-card">
-                <p>Extraction Velocity</p>
-                <div class="chart-container"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
 
@@ -1929,7 +2048,7 @@ HTML = """
 
         <div class="charts-row">
             <div class="chart-card">
-                <p>Leads by Source</p>
+                <p>Source Distribution</p>
                 <div class="chart-container"><canvas id="sourceChart"></canvas></div>
             </div>
             <div class="chart-card">
@@ -2007,10 +2126,10 @@ HTML = """
                                         </div>
                                     </td>
                                     <td style="color:var(--text-muted); font-size:11px;">{{ loop.index + (page - 1) * limit }}</td>
-                                    <td style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
-                                    <td class="mono" style="font-size:12px;">{{c.phone or '---'}}</td>
-                                    <td class="mono" style="color:var(--accent-blue); font-size:11px;">{{c.email or '---'}}</td>
-                                    <td style="font-size:12px; font-weight:500;">{{c.category}}</td>
+                                    <td class="cell-truncate" style="font-weight:700; font-family:'Outfit',sans-serif; color:#fff;">{{c.name}}</td>
+                                    <td class="mono cell-truncate" style="font-size:12px;">{{c.phone or '---'}}</td>
+                                    <td class="mono cell-truncate" style="color:var(--accent-blue); font-size:11px;">{{c.email or '---'}}</td>
+                                    <td class="cell-truncate" style="font-size:12px; font-weight:500;">{{c.category}}</td>
                                     <td style="font-size:12px; color:var(--text-secondary);">{{c.city or '---'}}</td>
                                     <td><span class="badge badge-src">{{c.source}}</span></td>
                                     <td>
@@ -2280,10 +2399,10 @@ HTML = """
                 return '<tr class="lead-row">' +
                     '<td><div class="row-checkbox" onclick="toggleRow(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg></div></td>' +
                     '<td style="color:var(--text-muted); font-size:11px;">' + rowNum + '</td>' +
-                    '<td style="font-weight:700; font-family:\\'Outfit\\',sans-serif; color:#fff;">' + window.escapeHtml(c.name) + '</td>' +
-                    '<td class="mono" style="font-size:12px;">' + window.escapeHtml(c.phone) + '</td>' +
-                    '<td class="mono" style="color:var(--accent-blue); font-size:11px;">' + window.escapeHtml(c.email) + '</td>' +
-                    '<td style="font-size:12px; font-weight:500;">' + window.escapeHtml(c.category) + '</td>' +
+                    '<td class="cell-truncate" style="font-weight:700; font-family:\\'Outfit\\',sans-serif; color:#fff;">' + window.escapeHtml(c.name) + '</td>' +
+                    '<td class="mono cell-truncate" style="font-size:12px;">' + window.escapeHtml(c.phone) + '</td>' +
+                    '<td class="mono cell-truncate" style="color:var(--accent-blue); font-size:11px;">' + window.escapeHtml(c.email) + '</td>' +
+                    '<td class="cell-truncate" style="font-size:12px; font-weight:500;">' + window.escapeHtml(c.category) + '</td>' +
                     '<td style="font-size:12px; color:var(--text-secondary);">' + window.escapeHtml(c.city) + '</td>' +
                     '<td><span class="badge badge-src">' + window.escapeHtml(c.source) + '</span></td>' +
                     '<td>' +
