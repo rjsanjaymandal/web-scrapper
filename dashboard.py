@@ -584,7 +584,7 @@ HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MaysanLabs Scrapper | Intelligence HUD</title>
+    <title>Maysan Labs</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -1730,28 +1730,28 @@ HTML = """
         <aside class="sidebar">
             <div class="brand-box">
                 <p>Maysan Labs</p>
-                <span>{% if is_school_dashboard %}Schools Platform{% else %}Financial Platform{% endif %}</span>
+                <span>{% if is_school_dashboard %}Schools{% else %}Financial{% endif %}</span>
             </div>
             
             <nav class="nav-group">
-                <p class="nav-label">Portals</p>
+                <p class="nav-label">Views</p>
                 {% if is_school_dashboard %}
-                <a href="/" class="nav-item portal-link-blue">
+                <a href="/" class="nav-item" style="border:1px dashed var(--accent-blue);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    <span>Financial Portal ➜</span>
+                    <span style="color:var(--accent-blue);">Financial</span>
                 </a>
                 <a href="/schools" class="nav-item active">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    School Dashboard
+                    Schools
                 </a>
                 {% else %}
                 <a href="/" class="nav-item active">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    Financial Dashboard
+                    Financial
                 </a>
-                <a href="/schools" class="nav-item portal-link-green">
+                <a href="/schools" class="nav-item" style="border:1px dashed var(--accent-emerald);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    <span>Schools Portal ➜</span>
+                    <span style="color:var(--accent-emerald);">Schools</span>
                 </a>
                 {% endif %}
             </nav>
@@ -1790,11 +1790,11 @@ HTML = """
         <div class="header-row">
             <div class="page-title">
                 {% if is_school_dashboard %}
-                <h2>School Intelligence HUD <span style="color: var(--accent-emerald);">// Schools Portal</span></h2>
-                <p>Targeted High-Yield School Contact Harvesting Portal</p>
+                <h2>Schools</h2>
+                <p>School lead records</p>
                 {% else %}
-                <h2>Intelligence HUD {% if selected_category %}<span style="color: var(--accent-blue);">// {{ selected_category }}s</span>{% endif %}</h2>
-                <p>{% if selected_category %}Targeted Professional Leads Category View{% else %}Data Extraction Engine & Analytics Node{% endif %}</p>
+                <h2>Dashboard{% if selected_category %}<span style="color: var(--accent-blue);"> / {{ selected_category }}s</span>{% endif %}</h2>
+                <p>{% if selected_category %}{{ selected_category }} records{% else %}Financial lead records{% endif %}</p>
                 {% endif %}
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
@@ -1832,7 +1832,7 @@ HTML = """
 
         <div class="stats-hud">
             <div class="stat-card tooltip" data-tip="Total scraped records">
-                <span class="label">Total Intelligence</span>
+                <span class="label">Total Leads</span>
                 <span class="value mono" id="stat-total">{{s.total}}</span>
                 <span class="sub-text">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
@@ -1989,7 +1989,7 @@ HTML = """
         </div>
 
         <div class="chart-card" style="margin-top: -12px;">
-            <p>Intelligence Growth Trend (Last 7 Days)</p>
+            <p>Growth Trend (Last 7 Days)</p>
             <div class="chart-container" style="height: 120px;"><canvas id="growthChart"></canvas></div>
         </div>
 
