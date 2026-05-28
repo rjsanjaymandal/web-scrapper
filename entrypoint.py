@@ -131,6 +131,21 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
+            # Start Flask dashboard on PORT (handles Railway healthchecks + UI)
+            if is_port_in_use(port):
+                kill_port_owner(port)
+                time.sleep(1)
+            dashboard_port = str(int(port) + 1) if os.environ.get("DASHBOARD_PORT_SEPARATE") else port
+            if dashboard_port == port:
+                os.environ["WORKER_HEALTH_SERVER_DISABLE"] = "1"
+            gunicorn_cmd = ["gunicorn", "--bind", f"0.0.0.0:{dashboard_port}", "--workers", "1", "--threads", "8", "--timeout", "300", "dashboard:app"]
+            dashboard_proc = subprocess.Popen(gunicorn_cmd)
+            if not wait_for_http(int(dashboard_port), path="/", process=dashboard_proc):
+                log("[ERROR] Dashboard failed to start")
+                dashboard_proc.terminate()
+                sys.exit(1)
+            log(f"Dashboard running on port {dashboard_port}")
+            
             # Auto-start the auto_pilot scraper immediately (queues in Redis)
             try:
                 log("Queuing auto_pilot scraping task...")
@@ -155,9 +170,18 @@ def main():
             except Exception as e:
                 log(f"Auto-pilot pre-trigger warning: {e}")
             
-            # Worker health is handled internally by tasks/__init__.py on $PORT
+            # Start Celery worker as subprocess (dashboard stays alive if worker exits)
+            worker_env = os.environ.copy()
+            worker_env["WORKER_HEALTH_SERVER_DISABLE"] = "1"
             cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
-            os.execvp(cmd[0], cmd)
+            worker_proc = subprocess.Popen(cmd, env=worker_env)
+            try:
+                worker_proc.wait()
+            except KeyboardInterrupt:
+                worker_proc.terminate()
+                worker_proc.wait()
+            log("Worker exited. Keeping dashboard alive for monitoring.")
+            dashboard_proc.wait()
         
         elif process_type == "automator":
             if not init_tables():

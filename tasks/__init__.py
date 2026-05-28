@@ -49,7 +49,8 @@ def start_health_server():
         logger.warning(f"Health server could not start on port {port}: {e}")
 
 # Only start health server if this is explicitly a worker process
-if 'worker' in sys.argv and not os.environ.get('CELERY_HEALTH_SERVER_STARTED'):
+# and the dashboard/Flask is NOT already handling PORT
+if 'worker' in sys.argv and not os.environ.get('CELERY_HEALTH_SERVER_STARTED') and not os.environ.get('WORKER_HEALTH_SERVER_DISABLE'):
     os.environ['CELERY_HEALTH_SERVER_STARTED'] = '1'
     threading.Thread(target=start_health_server, daemon=True).start()
 
