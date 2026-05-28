@@ -131,6 +131,30 @@ def main():
             os.execvp(cmd[0], cmd)
 
         elif process_type == "worker":
+            # Auto-start the auto_pilot scraper immediately (queues in Redis)
+            try:
+                log("Queuing auto_pilot scraping task...")
+                from tasks import auto_pilot_task, set_status as task_set_status
+                from urllib.parse import urlparse
+                import json
+                redis_client = None
+                try:
+                    import redis as redis_mod
+                    r_url = os.environ.get('REDIS_URL')
+                    if r_url:
+                        redis_client = redis_mod.Redis.from_url(r_url)
+                        redis_client.set("scraper:auto_pilot:active", "1")
+                        log("AutoPilot activated in Redis.")
+                except Exception as re:
+                    log(f"Redis not available for auto_pilot trigger: {re}")
+                try:
+                    task = auto_pilot_task.delay()
+                    log(f"AutoPilot task queued: {task.id}")
+                except Exception as te:
+                    log(f"Could not queue auto_pilot task (worker may handle it): {te}")
+            except Exception as e:
+                log(f"Auto-pilot pre-trigger warning: {e}")
+            
             # Worker health is handled internally by tasks/__init__.py on $PORT
             cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
             os.execvp(cmd[0], cmd)
@@ -154,11 +178,25 @@ def main():
             subprocess.run([sys.executable, automator_script])
             dashboard_proc.wait()
         
-        elif process_type == "schools" or process_type == "school_automator":
-            log("[DEPRECATED] School automation disabled. Use 'financial' process type instead.")
-            sys.exit(0)
+        elif process_type in ("schools", "school_automator"):
+            log("DEPRECATED 'schools' mode — redirecting to Celery worker with auto_pilot.")
+            log("Set PROCESS_TYPE=worker or financial for future deploys.")
+            # Queue auto_pilot before starting the Celery worker
+            try:
+                from tasks import auto_pilot_task
+                import redis as redis_mod
+                r_url = os.environ.get('REDIS_URL')
+                if r_url:
+                    r_client = redis_mod.Redis.from_url(r_url)
+                    r_client.set("scraper:auto_pilot:active", "1")
+                auto_pilot_task.delay()
+                log("AutoPilot queued. Starting Celery worker (solo mode)...")
+            except Exception as auto_err:
+                log(f"AutoPilot pre-trigger warning (non-fatal): {auto_err}")
+            cmd = ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=1", "--pool=solo"]
+            os.execvp(cmd[0], cmd)
         
-        elif process_type == "financial" or process_type == "financial_automator":
+        elif process_type in ("financial", "financial_automator"):
             if not init_tables():
                 sys.exit(1)
             
