@@ -639,12 +639,6 @@ HTML = """
             background-attachment: fixed;
         }
 
-        .film-grain {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background-image: url('https://upload.wikimedia.org/wikipedia/commons/7/76/1k_noise.png');
-            opacity: 0.02; pointer-events: none; z-index: 9999; mix-blend-mode: overlay;
-        }
-
         /* Typography */
         h1, h2, h3, .brand-box p { font-family: 'Outfit', sans-serif; }
         .mono { font-family: 'JetBrains Mono', monospace; }
@@ -1705,67 +1699,8 @@ HTML = """
         .gov-batch-btn:hover { background: rgba(245,158,11,0.15); transform: translateY(-1px); }
         .divider-line { border-top: 1px solid var(--border-muted); margin: 4px 0 2px; }
 
-        /* Section Tabs */
-        .section-tabs {
-            display: flex;
-            gap: 4px;
-            padding: 4px;
-            background: var(--card-glass);
-            border: 1px solid var(--border-muted);
-            border-radius: 14px;
-            backdrop-filter: blur(12px);
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        .section-tab {
-            flex: 1;
-            padding: 10px 16px;
-            border-radius: 10px;
-            border: none;
-            background: transparent;
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            white-space: nowrap;
-            letter-spacing: 0.3px;
-        }
-        .section-tab:hover {
-            background: rgba(255,255,255,0.04);
-            color: var(--text-primary);
-        }
-        .section-tab.active {
-            background: rgba(16,185,129,0.1);
-            color: var(--accent-emerald);
-            box-shadow: 0 0 15px rgba(16,185,129,0.05);
-        }
-        .section-tab svg { opacity: 0.5; transition: 0.2s; flex-shrink: 0; }
-        .section-tab:hover svg, .section-tab.active svg { opacity: 1; }
-        .section-tab .badge-count {
-            background: rgba(255,255,255,0.06);
-            padding: 1px 8px;
-            border-radius: 10px;
-            font-size: 10px;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .section-tab.active .badge-count {
-            background: rgba(16,185,129,0.15);
-            color: var(--accent-emerald);
-        }
-
-        .tab-content { display: block; }
-        .tab-content.hidden { display: none; }
-
         /* Responsive */
         @media (max-width: 1024px) {
-            .layout-wrapper { grid-template-columns: 1fr; }
-            .sidebar { display: none; }
-            .main-view { padding: 20px; }
             .stats-hud { grid-template-columns: repeat(2, 1fr); }
             .charts-row { grid-template-columns: 1fr; }
             .filter-row { flex-direction: column; }
@@ -1773,36 +1708,14 @@ HTML = """
             .filter-actions { margin-left: 0; width: 100%; }
             .filter-actions .btn { flex: 1; }
             .header-row h2 { font-size: 20px; }
-            .section-tab { font-size: 10px; padding: 8px 10px; }
-            .section-tab .tab-label-text { display: none; }
         }
         @media (max-width: 640px) {
             .stats-hud { grid-template-columns: 1fr; }
-            .stat-card { min-height: 80px; }
-            .charts-row .chart-card { min-height: 200px; }
             .main-view { padding: 12px; gap: 20px; }
             .glass-card { padding: 16px; }
             .controls-card { padding: 16px; }
-            .pagination-info { font-size: 11px; }
-            .pagination-btn { min-width: 32px; height: 32px; font-size: 11px; }
             .header-row { flex-direction: column; align-items: flex-start; gap: 8px; }
             .header-row h2 { font-size: 18px; }
-        }
-        /* Hamburger menu for mobile */
-        .mobile-menu-btn {
-            display: none;
-            background: var(--card-glass);
-            border: 1px solid var(--border-muted);
-            color: var(--text-secondary);
-            padding: 10px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .mobile-menu-btn:hover { border-color: var(--accent-emerald); color: var(--accent-emerald); }
-        @media (max-width: 1024px) {
-            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
-            .sidebar.mobile-open { display: flex; position: fixed; top: 0; left: 0; width: 280px; height: 100vh; z-index: 1000; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
         }
     </style>
 </head>
@@ -1843,44 +1756,8 @@ HTML = """
                 {% endif %}
             </nav>
 
-            {% if is_school_dashboard %}
             <nav class="nav-group">
-                <p class="nav-label">Quick Export</p>
-                <div class="sidebar-section" style="gap: 8px;">
-                    <button onclick="exportAllData('xlsx', this)" class="export-btn-green">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span>Download All Schools (Excel)</span>
-                    </button>
-                    <button onclick="exportAllData('pdf', this)" class="export-btn-red">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span>Download All Schools (PDF)</span>
-                    </button>
-                </div>
-            </nav>
-            {% else %}
-            <nav class="nav-group">
-                <p class="nav-label">Category Exports</p>
-                <div class="sidebar-section">
-                    <div class="sidebar-export-item">
-                        <span class="cat-label">Insurance</span>
-                        <div class="btn-group">
-                            <button onclick="exportCategory('Insurance', 'csv', this)" class="sidebar-btn sidebar-btn-sm">CSV</button>
-                            <button onclick="exportCategory('Insurance', 'xlsx', this)" class="sidebar-btn sidebar-btn-sm">XLSX</button>
-                        </div>
-                    </div>
-                    <div class="sidebar-export-item">
-                        <span class="cat-label">Mutual Fund</span>
-                        <div class="btn-group">
-                            <button onclick="exportCategory('Mutual Fund', 'csv', this)" class="sidebar-btn sidebar-btn-sm">CSV</button>
-                            <button onclick="exportCategory('Mutual Fund', 'xlsx', this)" class="sidebar-btn sidebar-btn-sm">XLSX</button>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-            {% endif %}
-
-            <nav class="nav-group">
-                <p class="nav-label">Export All</p>
+                <p class="nav-label">Export Data</p>
                 <div class="export-grid">
                     <button onclick="exportAllData('csv', this)" class="sidebar-btn sidebar-btn-md">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1892,81 +1769,9 @@ HTML = """
                     </button>
                     <button onclick="exportAllData('pdf', this)" class="sidebar-btn sidebar-btn-md" style="grid-column: span 2;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        PDF
+                        PDF Report
                     </button>
                 </div>
-            </nav>
-
-            {% if is_school_dashboard %}
-            <nav class="nav-group scraper-nav-group" style="border-color: var(--accent-emerald); background: rgba(16,185,129,0.04);">
-                <p class="nav-label scraper-nav-label" style="color: var(--accent-emerald);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    SCHOOL SCRAPER CONTROLS
-                </p>
-                <div class="scraper-control-group" style="gap: 6px;">
-                    <div>
-                        <label class="zone-label">Target Zone / City</label>
-                        <input type="text" id="school-zone" class="zone-input" placeholder="e.g. Delhi, Mumbai, North Delhi...">
-                    </div>
-                    <div class="zone-btn-row">
-                        <button class="zone-btn" onclick="setSchoolZone('Delhi')">Delhi</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Mumbai')">Mumbai</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Bangalore')">Bangalore</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Chennai')">Chennai</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Kolkata')">Kolkata</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Hyderabad')">Hyderabad</button>
-                        <button class="zone-btn" onclick="setSchoolZone('Pune')">Pune</button>
-                        <button class="zone-btn-all" onclick="setSchoolZone('')">All India</button>
-                    </div>
-                    <button class="scrape-btn" onclick="scrapeSchools()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        SCRAPE SCHOOLS NOW
-                    </button>
-                    <div id="school-scrape-status" class="status-text">Ready</div>
-                </div>
-            </nav>
-            {% else %}
-            <nav class="nav-group scraper-nav-group" style="border-color: var(--accent-blue); background: rgba(59,130,246,0.04);">
-                <p class="nav-label scraper-nav-label" style="color: var(--accent-blue);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    FINANCIAL SCRAPER CONTROLS
-                </p>
-                <div class="scraper-control-group" style="gap: 6px;">
-                    <button onclick="startDirectScrape('SEBI')" class="sidebar-scraper-btn sidebar-btn-lg">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span class="sidebar-scraper-label">SEBI (Investment Advisors)</span>
-                    </button>
-                    <button onclick="startDirectScrape('ICAI')" class="sidebar-scraper-btn sidebar-btn-lg">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span class="sidebar-scraper-label">ICAI (CAs)</span>
-                    </button>
-                    <button onclick="startDirectScrape('AMFI')" class="sidebar-scraper-btn sidebar-btn-lg">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span class="sidebar-scraper-label">AMFI (Mutual Funds)</span>
-                    </button>
-                    <button onclick="startDirectScrape('IRDAI')" class="sidebar-scraper-btn sidebar-btn-lg">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        <span class="sidebar-scraper-label">IRDAI (Insurance)</span>
-                    </button>
-                    <div class="divider-line"></div>
-                    <button onclick="startGovBatch()" class="gov-batch-btn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
-                        RUN ALL (GOV BATCH)
-                    </button>
-                </div>
-            </nav>
-            {% endif %}
-
-            <nav class="nav-group">
-                <p class="nav-label">Tools</p>
-                <a href="#" class="nav-item" onclick="cleanup()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
-                    Clean Data
-                </a>
-                <a href="#" class="nav-item" onclick="updateQuality()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    Quality Check
-                </a>
             </nav>
 
             <div class="system-footer">
@@ -2018,26 +1823,6 @@ HTML = """
             </div>
         </div>
 
-        <div class="section-tabs" role="tablist">
-            <button class="section-tab active" data-tab="overview" onclick="switchTab('overview')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                <span class="tab-label-text">Overview</span>
-            </button>
-            <button class="section-tab" data-tab="leads" onclick="switchTab('leads')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                <span class="tab-label-text">Leads</span>
-                <span class="badge-count">{{ s.filtered_total }}</span>
-            </button>
-            <button class="section-tab" data-tab="scrapers" onclick="switchTab('scrapers')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                <span class="tab-label-text">Scrapers</span>
-            </button>
-            <button class="section-tab" data-tab="analytics" onclick="switchTab('analytics')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                <span class="tab-label-text">Analytics</span>
-            </button>
-        </div>
-
         <div id="prog-wrap" style="display:none; margin-top: -16px;">
             <div class="progress-bar-container">
                 <div id="prog-bar" class="progress-bar" style="width: 0%;"></div>
@@ -2045,7 +1830,6 @@ HTML = """
             <p style="font-size:10px; color:var(--accent-emerald); margin-top:8px; font-weight:700; letter-spacing:1px; text-align:right;">EXTRACTION IN PROGRESS...</p>
         </div>
 
-        <div id="tab-overview" class="tab-content">
         <div class="stats-hud">
             <div class="stat-card tooltip" data-tip="Total scraped records">
                 <span class="label">Total Intelligence</span>
@@ -2208,9 +1992,7 @@ HTML = """
             <p>Intelligence Growth Trend (Last 7 Days)</p>
             <div class="chart-container" style="height: 120px;"><canvas id="growthChart"></canvas></div>
         </div>
-        </div>
 
-        <div id="tab-leads" class="tab-content hidden">
         <div class="content-grid">
             <div class="glass-card">
                 <div class="table-section">
@@ -2304,79 +2086,6 @@ HTML = """
                 </div>
             </div>
         </div>
-        </div>
-
-        <div id="tab-scrapers" class="tab-content hidden">
-            <div class="controls-card">
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                    <div>
-                        <h3 style="font-size:16px; font-weight:700;">Scraper Controls</h3>
-                        <p style="font-size:12px; color:var(--text-muted);">Direct regulatory source scraping</p>
-                    </div>
-                </div>
-                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
-                    <button onclick="startDirectScrape('SEBI')" class="sidebar-scraper-btn sidebar-btn-lg" style="justify-content:center; padding:14px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        SEBI (Investment Advisors)
-                    </button>
-                    <button onclick="startDirectScrape('ICAI')" class="sidebar-scraper-btn sidebar-btn-lg" style="justify-content:center; padding:14px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        ICAI (CAs)
-                    </button>
-                    <button onclick="startDirectScrape('AMFI')" class="sidebar-scraper-btn sidebar-btn-lg" style="justify-content:center; padding:14px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        AMFI (Mutual Funds)
-                    </button>
-                    <button onclick="startDirectScrape('IRDAI')" class="sidebar-scraper-btn sidebar-btn-lg" style="justify-content:center; padding:14px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 9h6v6H9z"></path></svg>
-                        IRDAI (Insurance)
-                    </button>
-                </div>
-                <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-                    <button onclick="startGovBatch()" class="gov-batch-btn" style="padding:12px 24px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"></path></svg>
-                        RUN ALL (GOV BATCH)
-                    </button>
-                    <button onclick="scrapeSchools()" class="scrape-btn" style="padding:12px 24px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        SCRAPE SCHOOLS
-                    </button>
-                </div>
-                <div id="school-scrape-status" class="status-text" style="margin-top:12px; text-align:left;">Ready</div>
-            </div>
-        </div>
-
-        <div id="tab-analytics" class="tab-content hidden">
-            <div class="controls-card">
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                    <div>
-                        <h3 style="font-size:16px; font-weight:700;">Data Analytics</h3>
-                        <p style="font-size:12px; color:var(--text-muted);">Quality metrics and data health overview</p>
-                    </div>
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-                    <div class="stat-card">
-                        <span class="label">Phone Coverage</span>
-                        <span class="value mono" style="color:var(--accent-emerald);">{{s.with_phone_pct}}%</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="label">Email Coverage</span>
-                        <span class="value mono" style="color:var(--accent-blue);">{{s.with_email_pct}}%</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="label">Avg Quality Score</span>
-                        <span class="value mono" style="color:var(--accent-amber);">{{s.avg_quality}}%</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="label">Total Intelligence</span>
-                        <span class="value mono">{{ s.total }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </main>
 </div>
 
@@ -3318,24 +3027,7 @@ window.updatePaginationUI = function(data) {
             }
         };
 
-        /* ===== UI REFINEMENTS ===== */
-
-        // Tab switching
-        window.switchTab = function(tabId) {
-            document.querySelectorAll('.tab-content').forEach(function(el) {
-                el.classList.add('hidden');
-            });
-            var target = document.getElementById('tab-' + tabId);
-            if (target) target.classList.remove('hidden');
-            document.querySelectorAll('.section-tab').forEach(function(el) {
-                el.classList.remove('active');
-            });
-            var tabBtn = document.querySelector('.section-tab[data-tab="' + tabId + '"]');
-            if (tabBtn) tabBtn.classList.add('active');
-            // Scroll to top of tab content
-            var mainView = document.querySelector('.main-view');
-            if (mainView) mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        };
+        /* ===== AUTO-REFRESH ===== */
 
         // Auto-refresh live status every 15s
         window.startStatusPolling = function() {
@@ -3362,7 +3054,6 @@ window.updatePaginationUI = function(data) {
 
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
-            // Don't trigger in input fields
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
                 if (e.key === 'Enter' && (e.target.id === 't-cat' || e.target.id === 't-city')) {
                     e.preventDefault();
@@ -3371,10 +3062,6 @@ window.updatePaginationUI = function(data) {
                 return;
             }
             switch(e.key) {
-                case '1': switchTab('overview'); break;
-                case '2': switchTab('leads'); break;
-                case '3': switchTab('scrapers'); break;
-                case '4': switchTab('analytics'); break;
                 case 'r': case 'R': applyFilters(); break;
                 case 'Escape': clearFilters(); break;
             }
@@ -3382,30 +3069,6 @@ window.updatePaginationUI = function(data) {
 
         // Init
         if (document.getElementById('live-status')) window.startStatusPolling();
-
-        // Responsive sidebar toggle
-        document.addEventListener('DOMContentLoaded', function() {
-            var header = document.querySelector('.header-row');
-            if (header && !document.querySelector('.mobile-menu-btn')) {
-                var menuBtn = document.createElement('button');
-                menuBtn.className = 'mobile-menu-btn';
-                menuBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>';
-                menuBtn.title = 'Toggle Sidebar';
-                menuBtn.onclick = function() {
-                    document.querySelector('.sidebar').classList.toggle('mobile-open');
-                };
-                header.appendChild(menuBtn);
-                // Close sidebar when clicking outside on mobile
-                document.addEventListener('click', function(e) {
-                    var sidebar = document.querySelector('.sidebar');
-                    if (window.innerWidth <= 1024 && sidebar && sidebar.classList.contains('mobile-open')) {
-                        if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
-                            sidebar.classList.remove('mobile-open');
-                        }
-                    }
-                });
-            }
-        });
     </script>
 </body>
 </html>
