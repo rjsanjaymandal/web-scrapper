@@ -236,7 +236,9 @@ class ProcessingHandler:
         if name:
             name_str = re.sub(r'\s+', ' ', str(name)).strip()
             # If name is too short or contains common junk placeholders, drop it immediately
-            if len(name_str) < 3 or any(x in name_str.lower() for x in ["test", "dummy", "placeholder", "unknown", "no name", "n/a", "na", "aisa"]):
+            # Use word-boundary matching to avoid substring false positives (e.g. "na" in "SATIHIYANARAYANAN")
+            junk_pattern = re.compile(r'\b(?:test|dummy|placeholder|unknown|no name|n/a|na|aisa)\b', re.I)
+            if len(name_str) < 3 or junk_pattern.search(name_str):
                 logger.info(f"🚫 [FILTER] Dropping record - Invalid or junk name: {name_str}")
                 return None
         else:

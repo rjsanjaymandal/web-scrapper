@@ -235,6 +235,9 @@ class ICAIDirectScraper:
             return ["Audit"]
         return list(self.fetcher.config.CA_CONNECT_SERVICES)
 
+    # Known generic/organizational phone numbers found on ICAI profile pages (not member-specific)
+    GENERIC_PHONE_BLACKLIST = {"0120-3876857", "01203876857", "1203876857"}
+
     def _scrape_caconnect(self, city: str = None, category: str = None) -> List[Dict]:
         cities_to_try = [city] if city else self.fetcher.config.CA_PRIORITY_CITIES
         services_to_try = self._services_for_category(category)
@@ -324,7 +327,7 @@ class ICAIDirectScraper:
                                 p_phones = phone_pattern.findall(p_text)
                                 
                                 clean_emails = [e for e in p_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
-                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10]
+                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10 and p.strip() not in self.GENERIC_PHONE_BLACKLIST]
                                 
                                 if clean_emails and not email:
                                     email = clean_emails[0].strip().lower()

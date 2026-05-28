@@ -450,7 +450,8 @@ class OfficialAPIHandlers:
                                 p_phones = phone_pattern.findall(p_text)
                                 
                                 clean_emails = [e for e in p_emails if not any(x in e.lower() for x in ["test", "example", "sample", "domain"])]
-                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10]
+                                GENERIC_PHONE_BLACKLIST = {"0120-3876857", "01203876857", "1203876857"}
+                                clean_phones = [p for p in p_phones if len(re.sub(r'\D', '', p)) >= 10 and p.strip() not in GENERIC_PHONE_BLACKLIST]
                                 
                                 if clean_emails and not email:
                                     email = clean_emails[0].strip().lower().rstrip('.')
