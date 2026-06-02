@@ -678,29 +678,29 @@ def auto_pilot_task():
                 city_total = 0
                 city_cats = []
                 for cat in categories:
-                    set_status(f"AutoPilot: Scraping {cat} in {city} via AMFI", True)
+                    set_status(f"AutoPilot: Scraping {cat} in {city} (all sources)", True)
                     try:
-                        result = scrape_category_task(city=city, category=cat, source="AMFI")
+                        result = scrape_category_task(city=city, category=cat)
                         count = result.get("count", 0)
                         if count > 0:
                             city_total += count
                             city_cats.append(cat)
                         else:
-                            logger.info(f"AutoPilot: AMFI {city} {cat} returned 0 leads.")
+                            logger.info(f"AutoPilot: {city} {cat} returned 0 leads.")
                     except Exception as e:
-                        logger.error(f"AutoPilot AMFI failed for {city} {cat}: {e}")
+                        logger.error(f"AutoPilot failed for {city} {cat}: {e}")
                         if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
                             set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
                             auto_pilot_task.apply_async(countdown=1800)
                             return {"status": "waiting", "reason": "site_blocked"}
                 if city_total > 0:
                     found_job = True
-                    set_status(f"AutoPilot: AMFI {city} done. Found {city_total} leads across {len(city_cats)} categories.", True)
-                    logger.info(f"AutoPilot: AMFI {city} -> {city_total} leads ({', '.join(city_cats)})")
+                    set_status(f"AutoPilot: {city} done. Found {city_total} leads across {len(city_cats)} categories.", True)
+                    logger.info(f"AutoPilot: {city} -> {city_total} leads ({', '.join(city_cats)})")
                     break  # One CITY per cycle (all categories done)
             
         if not found_job:
-            set_status("AutoPilot: No new AMFI jobs found.", False)
+            set_status("AutoPilot: No new mutual fund jobs found.", False)
     
     except Exception as e:
         logger.error(f"AutoPilot core error: {e}")
