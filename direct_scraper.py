@@ -174,9 +174,81 @@ class ICAIDirectScraper:
     SOURCE = "ICAI"
     BASE_URL = "https://www.icai.org/traceamember.html"
     CA_CONNECT_SEARCH_URL = "https://caconnect.icai.org/search"
+    CA_CONNECT_BASE = "https://caconnect.icai.org"
+    LOGIN_URL = "https://caconnect.icai.org/login"
 
     def __init__(self, fetcher: DirectPoliteFetcher = None):
         self.fetcher = fetcher or DirectPoliteFetcher()
+        self._authenticated = False
+        self._login_email = os.environ.get("ICAI_EMAIL", "")
+        self._login_password = os.environ.get("ICAI_PASSWORD", "")
+
+    def _login(self) -> bool:
+        """Authenticate with ICAI CA Connect using credentials from env vars.
+        Returns True if login succeeded (or was already authenticated).
+        """
+        if self._authenticated:
+            return True
+        if not self._login_email or not self._login_password:
+            logger.info("ICAI Login: No credentials set (set ICAI_EMAIL/ICAI_PASSWORD env vars)")
+            return False
+
+        try:
+            logger.info("ICAI Login: Attempting authentication...")
+            # Step 1: Fetch login page to get CSRF token and session cookies
+            login_page_html, status = self.fetcher.fetch(self.LOGIN_URL, "https://caconnect.icai.org/")
+            if not login_page_html or status != 200:
+                logger.warning("ICAI Login: Failed to fetch login page")
+                return False
+
+            soup = BeautifulSoup(login_page_html, 'html.parser')
+            token_input = soup.find('input', {'name': '_token'})
+            if not token_input:
+                logger.warning("ICAI Login: Could not find CSRF token on login page")
+                return False
+            csrf_token = token_input.get('value', '')
+
+            # Step 2: POST credentials
+            login_data = {
+                '_token': csrf_token,
+                'email': self._login_email,
+                'password': self._login_password,
+                'remember': '1',
+            }
+            headers = self.fetcher._get_headers("https://caconnect.icai.org/login")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            headers["Origin"] = "https://caconnect.icai.org"
+            headers["Referer"] = self.LOGIN_URL
+
+            resp = self.fetcher.session.post(
+                self.LOGIN_URL,
+                data=login_data,
+                headers=headers,
+                timeout=(self.fetcher.config.CONNECT_TIMEOUT, self.fetcher.config.READ_TIMEOUT),
+                allow_redirects=True,
+            )
+
+            if resp.status_code == 200 or resp.status_code == 302:
+                # Check if login succeeded by examining final URL or response content
+                final_url = resp.url
+                if 'login' not in final_url.lower():
+                    self._authenticated = True
+                    logger.info("ICAI Login: Successfully authenticated")
+                    return True
+                # Check response body for error indicators
+                if 'invalid' in resp.text.lower() or 'incorrect' in resp.text.lower():
+                    logger.warning("ICAI Login: Invalid credentials")
+                    return False
+                self._authenticated = True
+                logger.info("ICAI Login: Successfully authenticated")
+                return True
+            else:
+                logger.warning(f"ICAI Login: HTTP {resp.status_code}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"ICAI Login: Error during authentication: {e}")
+            return False
 
     def scrape(self, city: str = None, category: str = "Chartered Accountants") -> List[Dict]:
         results = self._scrape_caconnect(city, category)
@@ -244,6 +316,10 @@ class ICAIDirectScraper:
         services_to_try = self._services_for_category(category)
         results = []
         seen = set()
+
+        # Attempt authentication if credentials are available
+        # This stores auth cookies in self.fetcher.session for profile page requests
+        has_auth = self._login()
 
         fetches_done = 0
         for target_city in cities_to_try:

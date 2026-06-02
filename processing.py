@@ -120,6 +120,65 @@ class ProcessingHandler:
         return None
 
     @staticmethod
+    def clean_email_text(email: Any) -> Optional[str]:
+        """
+        Cleans and recovers corrupted emails containing prefix/suffix noise
+        caused by HTML text concatenation.
+        """
+        if not email:
+            return None
+            
+        email_str = str(email).strip().lower()
+        if '@' not in email_str:
+            return email_str
+            
+        local_part, domain = email_str.split('@', 1)
+        
+        # 1. Clean Suffix Noise (e.g. .comcontact -> .com)
+        noise_suffixes = [
+            'contact', 'contacts', 'support', 'phone', 'website', 'web', 
+            'telephonenumber', 'address', 'mobile', 'home', 'about', 
+            'office', 'fax', 'enquiry', 'enquiries', 'queries', 'query', 
+            'email', 'go', 'view', 'map', 'maps', 'location', 'locations', 
+            'details', 'detail', 'info', 'link', 'links', 'click', 'here', 
+            'tel', 'call'
+        ]
+        
+        # Sort TLDs by length descending to match longer ones first
+        tlds = ['.co.in', '.com.in', '.net.in', '.org.in', '.gov.in', '.ac.in', '.com', '.in', '.org', '.net', '.co', '.edu', '.gov', '.info', '.biz']
+        
+        domain_cleaned = domain
+        for suffix in noise_suffixes:
+            for tld in tlds:
+                pattern = re.escape(tld) + re.escape(suffix) + r'$'
+                if re.search(pattern, domain_cleaned, re.IGNORECASE):
+                    domain_cleaned = re.sub(pattern, tld, domain_cleaned, flags=re.IGNORECASE)
+                    break
+                    
+        # 2. Clean Prefix Noise (e.g. 400059emailsupport -> support)
+        local_cleaned = local_part
+        prefix_patterns = [
+            r'^\d*email',
+            r'^\d*contact',
+            r'^\d*phone',
+            r'^\d*tel',
+            r'^\d+_'
+        ]
+        
+        for pattern in prefix_patterns:
+            match = re.match(pattern, local_cleaned, re.IGNORECASE)
+            if match:
+                matched_len = match.end()
+                candidate = local_cleaned[matched_len:]
+                # Strip leading non-alphanumeric chars
+                candidate = re.sub(r'^[^a-zA-Z0-9]+', '', candidate)
+                if len(candidate) >= 3:
+                    local_cleaned = candidate
+                    break
+                    
+        return f"{local_cleaned}@{domain_cleaned}"
+
+    @staticmethod
     def is_valid_email(email: Any) -> bool:
         """Robust email validation including domain check."""
         if not email:
@@ -239,12 +298,16 @@ class ProcessingHandler:
         name = contact.get('name')
         if name:
             name_str = re.sub(r'\s+', ' ', str(name)).strip()
+            # Remove trailing trademark/copyright/registered symbols and junk noise
+            name_str = re.sub(r'[\u00ae\u2122\u00a9]|(?:\([rR]\))|(?:\([tT][mM]\))|(?:\([cC]\))$', '', name_str).strip()
+            
             # If name is too short or contains common junk placeholders, drop it immediately
             # Use word-boundary matching to avoid substring false positives (e.g. "na" in "SATIHIYANARAYANAN")
             junk_pattern = re.compile(r'\b(?:test|dummy|placeholder|unknown|no name|n/a|na)\b', re.I)
             if len(name_str) < 3 or junk_pattern.search(name_str):
                 logger.info(f"🚫 [FILTER] Dropping record - Invalid or junk name: {name_str}")
                 return None
+            contact['name'] = name_str
         else:
             logger.info("🚫 [FILTER] Dropping record - Missing name.")
             return None
@@ -258,9 +321,12 @@ class ProcessingHandler:
         # 2. Validate Email
         email = str(contact.get('email') or '').strip().lower()
         if email:
-            is_valid = cls.is_valid_email(email)
+            cleaned_email = cls.clean_email_text(email)
+            is_valid = cls.is_valid_email(cleaned_email)
             contact['email_valid'] = is_valid
-            if not is_valid:
+            if is_valid:
+                contact['email'] = cleaned_email
+            else:
                 # DESTRUCTIVE CLEAN: Wipe the email field if it is junk
                 contact['email'] = None
         else:

@@ -4,8 +4,10 @@ High-speed extraction without Playwright/Browser.
 Targets: AMFI, SEBI, IBBI, Bar Council, ICAI, IRDAI.
 """
 import logging
+import os
 import re
 import json
+import aiohttp
 from typing import List, Dict, Optional, Callable, Awaitable
 from urllib.parse import urlencode
 from polite_http_scraper import PoliteHTTPScraper
@@ -42,6 +44,85 @@ CA_CITY_STATE_MAP = {
 }
 
 CA_CONNECT_SERVICES = ["Audit", "Direct Taxes", "Goods and Services Tax"]
+
+# Module-level cache to avoid repeated logins across cities
+_icai_auth_cache = {"authenticated": False}
+
+async def _icai_login(engine: PoliteHTTPScraper) -> bool:
+    """Authenticate with ICAI CA Connect using credentials from env vars.
+    Uses the engine's aiohttp session for cookie persistence.
+    Caches result globally to avoid repeated logins across cities.
+    Returns True if login succeeded.
+    """
+    global _icai_auth_cache
+    if _icai_auth_cache["authenticated"]:
+        return True
+
+    email = os.environ.get("ICAI_EMAIL", "")
+    password = os.environ.get("ICAI_PASSWORD", "")
+    if not email or not password:
+        logger.info("ICAI Login: No credentials set (set ICAI_EMAIL/ICAI_PASSWORD env vars)")
+        return False
+
+    login_url = "https://caconnect.icai.org/login"
+    try:
+        logger.info("ICAI Login: Attempting authentication...")
+        # Fetch login page for CSRF token (uses engine.fetch which maintains cookies)
+        resp = await engine.fetch(login_url, headers={"Referer": "https://caconnect.icai.org/"})
+        if not resp or resp.status != 200:
+            logger.warning("ICAI Login: Failed to fetch login page")
+            return False
+
+        html = await resp.text()
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+        token_input = soup.find('input', {'name': '_token'})
+        if not token_input:
+            logger.warning("ICAI Login: Could not find CSRF token")
+            return False
+        csrf_token = token_input.get('value', '')
+
+        # Ensure session is initialized for direct POST
+        await engine._init_session()
+
+        # POST credentials using the engine's session (preserves cookies)
+        login_data = {
+            '_token': csrf_token,
+            'email': email,
+            'password': password,
+            'remember': '1',
+        }
+        post_headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://caconnect.icai.org",
+            "Referer": login_url,
+        }
+        if engine.session and not engine.session.closed:
+            async with engine.session.post(
+                login_url, data=login_data, headers=post_headers,
+                allow_redirects=True, timeout=aiohttp.ClientTimeout(total=30)
+            ) as auth_resp:
+                if auth_resp.status in (200, 302, 303):
+                    final_url = str(auth_resp.url)
+                    if 'login' not in final_url.lower():
+                        _icai_auth_cache["authenticated"] = True
+                        logger.info("ICAI Login: Successfully authenticated")
+                        return True
+                    body = await auth_resp.text()
+                    if 'invalid' in body.lower() or 'incorrect' in body.lower():
+                        logger.warning("ICAI Login: Invalid credentials")
+                        return False
+                    _icai_auth_cache["authenticated"] = True
+                    logger.info("ICAI Login: Authenticated (stayed on login page, no error)")
+                    return True
+                else:
+                    logger.warning(f"ICAI Login: HTTP {auth_resp.status}")
+                    return False
+        return False
+    except Exception as e:
+        logger.warning(f"ICAI Login: Error during authentication: {e}")
+        return False
+
 
 class OfficialAPIHandlers:
     """Specialized handlers for each regulatory body"""
@@ -356,6 +437,10 @@ class OfficialAPIHandlers:
         state = CA_CITY_STATE_MAP.get((city or "").strip().lower())
         if state:
             from bs4 import BeautifulSoup
+
+            # Attempt authentication if credentials are available
+            # This stores auth cookies in engine.session for profile page requests
+            await _icai_login(engine)
 
             leads = []
             seen = set()
