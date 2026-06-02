@@ -648,15 +648,16 @@ def auto_pilot_task():
         from scrape_state import claim_scrape_job, finish_scrape_job
         config = load_config()
         
-        # Clear stale "running" locks that were never released
+        # Clear ALL stale "running" locks left from old code (double-claim bug)
         if redis_client:
             try:
-                for key in redis_client.scan_iter("scraper:job:running:*"):
-                    ttl = redis_client.ttl(key)
-                    if ttl < 0:
-                        redis_client.delete(key)
-                    elif ttl < 120:
-                        redis_client.delete(key)
+                cursor = 0
+                while True:
+                    cursor, keys = redis_client.scan(cursor, match="scraper:job:running:*", count=5000)
+                    if keys:
+                        redis_client.delete(*keys)
+                    if cursor == 0:
+                        break
             except Exception:
                 pass
         
