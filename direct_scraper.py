@@ -442,70 +442,61 @@ class AMFIDirectScraper:
         logger.info(f"AMFI: Scraping for city={city}")
 
         try:
-            if city:
-                for page_num in range(1, 6):
-                    api_url = f"{self.API_URL}?city={city.replace(' ', '%20')}&strOpt=city&page={page_num}&pageSize=100"
+            cities_to_scrape = [city] if city else []
+            if not cities_to_scrape:
+                from scraper import load_config
+                config = load_config()
+                cities_to_scrape = list(getattr(config, "cities", []))
+
+            for c in cities_to_scrape:
+                page = 1
+                while True:
+                    api_url = (
+                        f"{self.API_URL}?strOpt=ALL&city={c.replace(' ', '%20')}"
+                        f"&search=&page={page}&pageSize=10000"
+                    )
                     html, status = self.fetcher.fetch(api_url)
                     if not html or status in (404, 500):
                         break
-                    page_entries = self._parse_html(html, city)
-                    if not page_entries:
+                    try:
+                        import json
+                        data = json.loads(html)
+                    except json.JSONDecodeError:
                         break
-                    results.extend(page_entries)
-                    logger.info(f"AMFI page {page_num}: {len(page_entries)} records")
-                if not results:
-                    html, status = self.fetcher.fetch(self.BASE_URL)
-                    if html:
-                        results = self._parse_html(html, city)
-            else:
-                html, status = self.fetcher.fetch(self.BASE_URL)
-                if html:
-                    results = self._parse_html(html, city)
+
+                    records = []
+                    if isinstance(data, dict):
+                        records = data.get("list") or data.get("data") or []
+                    elif isinstance(data, list):
+                        records = data
+
+                    if not records:
+                        break
+
+                    for rec in records:
+                        results.append({
+                            "name": rec.get("ARNHolderName") or rec.get("name") or rec.get("distributor_name"),
+                            "arn": rec.get("ARN") or rec.get("arn_number") or rec.get("arn"),
+                            "phone": rec.get("TelephoneNumber_O") or rec.get("mobile_number") or rec.get("phone"),
+                            "email": rec.get("Email") or rec.get("email"),
+                            "address": rec.get("Address") or rec.get("address"),
+                            "city": rec.get("City") or c,
+                            "category": "Mutual Fund Agent",
+                            "source": self.SOURCE,
+                            "source_url": self.API_URL,
+                        })
+
+                    meta = data.get("meta") if isinstance(data, dict) else {}
+                    total_pages = meta.get("pageCount") or 1
+                    logger.info(f"AMFI {c} page {page}/{total_pages}: {len(records)} records")
+                    if page >= int(total_pages):
+                        break
+                    page += 1
+
         except Exception as e:
             logger.error(f"AMFI scrape error: {e}")
 
         logger.info(f"AMFI: Extracted {len(results)} records")
-        return results
-
-    def _parse_html(self, html: str, city: str) -> List[Dict]:
-        results = []
-        soup = BeautifulSoup(html, 'html.parser')
-        listings = []
-        tables = soup.find_all('table')
-        for table in tables:
-            rows = table.find_all('tr')[1:]
-            for row in rows:
-                cols = row.find_all('td')
-                if len(cols) >= 2:
-                    name = cols[0].get_text(strip=True)
-                    contact = cols[1].get_text(strip=True) if len(cols) > 1 else ""
-                    if len(name) > 3:
-                        listings.append((name, contact))
-
-        if not listings:
-            div_listings = soup.find_all(['div', 'tr'], class_=lambda x: x and ('distributor' in str(x).lower() or 'mutual' in str(x).lower()))
-            for l in div_listings:
-                listings.append((None, l.get_text()))
-
-        for name_text, full_text in listings:
-            text = full_text or ""
-            if not name_text:
-                name_match = re.search(r'([A-Z][a-zA-Z\s]+(?:Pvt|Ltd|Inc)?)', text)
-                name = name_match.group(1)[:200] if name_match else None
-            else:
-                name = name_text[:200]
-
-            if not name or "Name" in name:
-                continue
-
-            email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
-            phone_match = re.search(r'(\+91[\s.-]?\d{10}|\b\d{10}\b)', text)
-
-            results.append({
-                "name": name, "email": email_match.group(0) if email_match else None,
-                "phone": phone_match.group(0) if phone_match else None,
-                "city": city, "category": "Mutual Fund Agent", "source": self.SOURCE, "source_url": self.BASE_URL
-            })
         return results
 
 

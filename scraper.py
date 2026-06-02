@@ -1010,7 +1010,7 @@ class ContactScraper:
         all_listings = []
         total_leads_acc = 0
         page_num = 1
-        page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "100"))
+        page_size = int(os.environ.get("SCRAPER_AMFI_PAGE_SIZE", "10000"))
         timeout = aiohttp.ClientTimeout(total=max(30, self.config.timeout_seconds))
 
         user_agent = StealthManager.get_random_ua()

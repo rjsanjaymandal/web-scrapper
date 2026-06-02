@@ -208,12 +208,11 @@ class OfficialAPIHandlers:
             "X-Requested-With": "XMLHttpRequest"
         }
         
-        page_size = 500
-        max_pages = 25
+        page_size = 10000
         page = 1
         leads = []
 
-        while page <= max_pages:
+        while True:
             params = {
                 "strOpt": "ALL",
                 "city": city.title(),
@@ -440,7 +439,10 @@ class OfficialAPIHandlers:
 
             # Attempt authentication if credentials are available
             # This stores auth cookies in engine.session for profile page requests
-            await _icai_login(engine)
+            authenticated = await _icai_login(engine)
+            if not authenticated:
+                logger.info(f"ICAI: Skipping {city} — no authenticated session (set ICAI_EMAIL/ICAI_PASSWORD)")
+                return []
 
             leads = []
             seen = set()
