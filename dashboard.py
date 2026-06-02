@@ -1654,194 +1654,7 @@ HTML = """
             .header-row h2 { font-size: 18px; }
         }
 
-        /* SEO Checker Custom Styles */
-        .seo-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-top: 20px;
-        }
-        @media (max-width: 1024px) {
-            .seo-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        .gauge-box {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            background: var(--card-glass);
-            border: 1px solid var(--border-muted);
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            position: relative;
-        }
-        .gauge-svg-container {
-            position: relative;
-            width: 150px;
-            height: 150px;
-        }
-        .gauge-svg {
-            transform: rotate(-90deg);
-            width: 100%;
-            height: 100%;
-        }
-        .gauge-bg {
-            fill: none;
-            stroke: rgba(255, 255, 255, 0.03);
-            stroke-width: 12;
-        }
-        .gauge-fill {
-            fill: none;
-            stroke-width: 12;
-            stroke-linecap: round;
-            transition: stroke-dashoffset 1.5s cubic-bezier(0.1, 1, 0.1, 1), stroke 0.5s ease;
-            stroke-dasharray: 440;
-            stroke-dashoffset: 440;
-        }
-        .gauge-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-        }
-        .gauge-num {
-            font-size: 38px;
-            font-weight: 800;
-            color: var(--text-primary);
-            font-family: var(--font-mono), monospace;
-            line-height: 1;
-        }
-        .gauge-label {
-            font-size: 9px;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: var(--text-muted);
-            margin-top: 6px;
-            font-weight: 700;
-        }
 
-        .audit-section-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 32px 0 16px;
-        }
-        .audit-section-header h3 {
-            font-size: 14px;
-            font-weight: 800;
-            color: var(--text-primary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .audit-section-header span.badge {
-            padding: 3px 10px;
-            border-radius: 8px;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-        }
-        .audit-section-header span.badge.critical {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--accent-red);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-        .audit-section-header span.badge.warning {
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--accent-amber);
-            border: 1px solid rgba(245, 158, 11, 0.2);
-        }
-        .audit-section-header span.badge.passed {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--accent-emerald);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-        
-        .audit-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .audit-card {
-            display: flex;
-            gap: 16px;
-            padding: 18px;
-            background: var(--card-glass);
-            border: 1px solid var(--border-muted);
-            border-radius: 16px;
-            backdrop-filter: blur(10px);
-            transition: all 0.2s ease;
-        }
-        .audit-card:hover {
-            transform: translateY(-2px);
-            border-color: rgba(255,255,255,0.1);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-        }
-        .audit-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 38px;
-            height: 38px;
-            border-radius: 12px;
-            flex-shrink: 0;
-        }
-        .audit-card.critical {
-            border-left: 4px solid var(--accent-red);
-        }
-        .audit-card.critical .audit-icon {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--accent-red);
-            border: 1px solid rgba(239, 68, 68, 0.15);
-        }
-        .audit-card.warning {
-            border-left: 4px solid var(--accent-amber);
-        }
-        .audit-card.warning .audit-icon {
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--accent-amber);
-            border: 1px solid rgba(245, 158, 11, 0.15);
-        }
-        .audit-card.passed {
-            border-left: 4px solid var(--accent-emerald);
-        }
-        .audit-card.passed .audit-icon {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--accent-emerald);
-            border: 1px solid rgba(16, 185, 129, 0.15);
-        }
-        .audit-info {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        .audit-title {
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-        .audit-desc {
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
-        .audit-category-tag {
-            display: inline-block;
-            align-self: flex-start;
-            font-size: 9px;
-            text-transform: uppercase;
-            font-weight: 800;
-            letter-spacing: 1px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text-muted);
-            margin-bottom: 2px;
-        }
     </style>
 </head>
 <body>
@@ -1855,22 +1668,18 @@ HTML = """
         <aside class="sidebar">
             <div class="brand-box">
                 <p>Maysan Labs</p>
-                <span>{% if is_seo_checker %}SEO{% elif is_school_dashboard %}Schools{% else %}Finance{% endif %}</span>
+                <span>{% if is_school_dashboard %}Schools{% else %}Finance{% endif %}</span>
             </div>
             
             <nav class="nav-group">
                 <p class="nav-label">Views</p>
-                <a href="/" class="nav-item {% if not is_school_dashboard and not is_seo_checker %}active{% endif %}" {% if is_school_dashboard or is_seo_checker %}style="border:1px dashed var(--accent-blue);"{% endif %}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{% if not is_school_dashboard and not is_seo_checker %}currentColor{% else %}var(--accent-blue){% endif %}" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    <span style="{% if is_school_dashboard or is_seo_checker %}color:var(--accent-blue);{% endif %}">Finance</span>
+                <a href="/" class="nav-item {% if not is_school_dashboard %}active{% endif %}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    <span>Finance</span>
                 </a>
-                <a href="/schools" class="nav-item {% if is_school_dashboard and not is_seo_checker %}active{% endif %}" {% if not is_school_dashboard or is_seo_checker %}style="border:1px dashed var(--accent-emerald);"{% endif %}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{% if is_school_dashboard and not is_seo_checker %}currentColor{% else %}var(--accent-emerald){% endif %}" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
-                    <span style="{% if not is_school_dashboard or is_seo_checker %}color:var(--accent-emerald);{% endif %}">Schools</span>
-                </a>
-                <a href="/seo-checker" class="nav-item {% if is_seo_checker %}active{% endif %}" {% if not is_seo_checker %}style="border:1px dashed var(--accent-amber);"{% endif %}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{% if is_seo_checker %}currentColor{% else %}var(--accent-amber){% endif %}" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    <span style="{% if not is_seo_checker %}color:var(--accent-amber);{% endif %}">SEO</span>
+                <a href="/schools" class="nav-item {% if is_school_dashboard %}active{% endif %}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10v6M12 2L2 10h20L12 2zM4 10v6h16v-6"></path></svg>
+                    <span>Schools</span>
                 </a>
             </nav>
 
@@ -1907,10 +1716,7 @@ HTML = """
     <main class="main-view">
         <div class="header-row">
             <div class="page-title">
-                {% if is_seo_checker %}
-                <h2>SEO</h2>
-                <p>Analyze site health and search presence</p>
-                {% elif is_school_dashboard %}
+                {% if is_school_dashboard %}
                 <h2>Schools</h2>
                 <p>Manage scraped school leads</p>
                 {% else %}
@@ -1923,7 +1729,6 @@ HTML = """
                     <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                     <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                 </button>
-                {% if not is_seo_checker %}
                 <div class="scraping-control-group" style="display:flex; align-items:center; gap:4px; background:var(--card-glass); border:1px solid var(--border-muted); padding:3px 6px; border-radius:10px; backdrop-filter:blur(10px);">
                     <button class="action-btn-green" onclick="startScrapeGlobal()" id="global-start-btn" style="background:var(--accent-emerald); color:#fff; border:none; padding:6px 10px; border-radius:7px; font-size:10px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px; letter-spacing: 0.5px; transition: all 0.2s ease;">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -1942,9 +1747,8 @@ HTML = """
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                     <span id="last-update" class="mono" style="color:var(--text-primary);">--:--:--</span>
                 </div>
-                {% endif %}
             </div>
-        </div>        {% if not is_seo_checker %}
+        </div>
         <div id="prog-wrap" style="display:none; margin-top: -16px;">
             <div class="progress-bar-container">
                 <div id="prog-bar" class="progress-bar" style="width: 0%;"></div>
@@ -2208,137 +2012,7 @@ HTML = """
                 </div>
             </div>
         </div>
-        {% else %}
-        <!-- SEO CHECKER LAYOUT -->
-        <div class="controls-card" style="margin-top:-16px;">
-            <div class="search-bar-wrapper" style="max-width:100%;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="22" x2="16" y2="16"></line></svg>
-                <input type="text" id="seo-url-input" placeholder="Enter website URL to analyze (e.g. https://maysanlabs.com)..." style="font-size:14px; font-weight:500;">
-                <button class="search-btn" onclick="runSEOAnalysis()" style="background:var(--accent-amber); color:#000; font-weight:800; padding:0 24px;">Analyze URL</button>
-            </div>
-        </div>
 
-        <div id="seo-loading" style="display:none; text-align:center; padding:60px 20px; background:var(--card-glass); border:1px solid var(--border-muted); border-radius:20px; backdrop-filter:blur(15px); margin-top:20px;">
-            <div class="spinner-sm" style="width:50px; height:50px; border-width:3px; border-color:rgba(245,158,11,0.1); border-top-color:var(--accent-amber); margin:0 auto 20px;"></div>
-            <h3 style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:6px;">Performing Comprehensive Site Audit</h3>
-            <p style="color:var(--text-muted); font-size:13px; max-width:480px; margin:0 auto; line-height:1.5;">Stealth parsing meta titles, descriptions, H1 headings, content density, image accessibility alt attributes, stylesheets, script payload density, and SSL configurations.</p>
-        </div>
-
-        <div id="seo-error" style="display:none; margin-top:20px; padding:20px; background:rgba(239,68,68,0.08); border:1px solid var(--accent-red); border-radius:16px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="background:rgba(239,68,68,0.1); color:var(--accent-red); width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                </div>
-                <div>
-                    <h4 style="font-size:14px; font-weight:800; color:var(--text-primary);">Audit Failed</h4>
-                    <p id="seo-error-msg" style="font-size:13px; color:var(--text-secondary); margin-top:3px;"></p>
-                </div>
-            </div>
-        </div>
-
-        <div id="seo-results" style="display:none; margin-top:20px;">
-            <div class="seo-grid">
-                <div class="gauge-box">
-                    <div class="gauge-svg-container">
-                        <svg class="gauge-svg" viewBox="0 0 160 160">
-                            <circle class="gauge-bg" cx="80" cy="80" r="70"></circle>
-                            <circle id="seo-gauge-fill" class="gauge-fill" cx="80" cy="80" r="70"></circle>
-                        </svg>
-                        <div class="gauge-text">
-                            <div id="seo-gauge-num" class="gauge-num">0</div>
-                            <div class="gauge-label">HEALTH</div>
-                        </div>
-                    </div>
-                    <h3 style="font-size:15px; font-weight:800; color:var(--text-primary); margin-top:16px; text-transform:uppercase; letter-spacing:0.5px;">Overall Health Score</h3>
-                    <p style="font-size:11px; color:var(--text-muted); text-align:center; margin-top:6px; max-width:220px;" class="mono cell-truncate" id="seo-scanned-url">--</p>
-                </div>
-
-                <div class="gauge-box" style="align-items:stretch; justify-content:space-between;">
-                    <h3 style="font-size:15px; font-weight:800; color:var(--text-primary); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;">Sub-category Audits</h3>
-                    
-                    <div style="flex:1; display:flex; flex-direction:column; justify-content:space-around; gap:16px;">
-                        <div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; color:var(--text-secondary); letter-spacing:0.5px;">
-                                <span>SEO CONTENT AUDIT</span>
-                                <span class="mono" id="seo-score-val">0/100</span>
-                            </div>
-                            <div class="progress-bar-container"><div id="seo-score-bar" class="progress-bar" style="width:0%; background:var(--accent-amber);"></div></div>
-                        </div>
-                        
-                        <div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; color:var(--text-secondary); letter-spacing:0.5px;">
-                                <span>STRUCTURE & ACCESSIBILITY</span>
-                                <span class="mono" id="struct-score-val">0/100</span>
-                            </div>
-                            <div class="progress-bar-container"><div id="struct-score-bar" class="progress-bar" style="width:0%; background:var(--accent-blue);"></div></div>
-                        </div>
-                        
-                        <div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; color:var(--text-secondary); letter-spacing:0.5px;">
-                                <span>SECURITY ASSURANCE</span>
-                                <span class="mono" id="sec-score-val">0/100</span>
-                            </div>
-                            <div class="progress-bar-container"><div id="sec-score-bar" class="progress-bar" style="width:0%; background:var(--accent-emerald);"></div></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="gauge-box" style="align-items:stretch;">
-                    <h3 style="font-size:15px; font-weight:800; color:var(--text-primary); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;">Metric Summary</h3>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px;">
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">HTML Size</div>
-                            <div id="det-size" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Response Time</div>
-                            <div id="det-time" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">H1 Count</div>
-                            <div id="det-h1" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">SSL Security</div>
-                            <div id="det-ssl" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Image Tags</div>
-                            <div id="det-images" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Missing Alt Tags</div>
-                            <div id="det-missing-alt" class="mono" style="font-size:12px; font-weight:800; color:var(--accent-red); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Stylesheets</div>
-                            <div id="det-css" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);">
-                            <div style="color:var(--text-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Script Tags</div>
-                            <div id="det-js" class="mono" style="font-size:12px; font-weight:800; color:var(--text-primary); margin-top:2px;">--</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Google Search Preview Card -->
-            <div class="glass-card" style="margin-top:20px; padding:20px;">
-                <h3 style="font-size:14px; font-weight:800; color:var(--text-primary); margin-bottom:12px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.5px;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    Google Search Snippet Preview
-                </h3>
-                <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-muted); border-radius:12px; padding:18px; font-family:sans-serif; max-width:600px;">
-                    <div style="color:#8ab4f8; font-size:18px; margin-bottom:3px; font-weight:400; cursor:pointer;" id="det-title">--</div>
-                    <div style="color:#34a853; font-size:13px; margin-bottom:6px;" id="seo-scanned-url-preview">--</div>
-                    <div style="color:#bdc1c6; font-size:13px; line-height:1.4;" id="det-desc">--</div>
-                </div>
-            </div>
-
-            <!-- Dynamic Audits Container -->
-            <div id="seo-audits-list"></div>
-        </div>
-        {% endif %}
     </main>
 </div>
 
@@ -3315,10 +2989,7 @@ window.updatePaginationUI = function(data) {
                     if (e.target.id === 't-cat' || e.target.id === 't-city') {
                         e.preventDefault();
                         applyFilters();
-                    } else if (e.target.id === 'seo-url-input') {
-                        e.preventDefault();
-                        runSEOAnalysis();
-                    }
+
                 }
                 return;
             }
@@ -3328,213 +2999,7 @@ window.updatePaginationUI = function(data) {
             }
         });
 
-        /* ===== SEO & HEALTH CHECKER DYNAMIC ENGINE ===== */
-        window.runSEOAnalysis = async function() {
-            const urlInput = document.getElementById('seo-url-input');
-            let url = urlInput ? urlInput.value.trim() : "";
-            if (!url) {
-                showNotif('Please enter a website URL', 3000, true);
-                return;
-            }
 
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                url = 'https://' + url;
-                if (urlInput) urlInput.value = url;
-            }
-
-            const loading = document.getElementById('seo-loading');
-            const results = document.getElementById('seo-results');
-            const errorCard = document.getElementById('seo-error');
-
-            if (loading) loading.style.display = 'block';
-            if (results) results.style.display = 'none';
-            if (errorCard) errorCard.style.display = 'none';
-
-            try {
-                const response = await fetch(`/api/seo-check?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-
-                if (loading) loading.style.display = 'none';
-
-                if (!data.success) {
-                    if (errorCard) {
-                        document.getElementById('seo-error-msg').innerText = data.error || 'An error occurred during analysis.';
-                        errorCard.style.display = 'block';
-                    }
-                    showNotif(data.error || 'Analysis failed', 3000, true);
-                    return;
-                }
-
-                const report = data.report;
-                
-                if (results) results.style.display = 'block';
-
-                // Display active domain
-                document.getElementById('seo-scanned-url').innerText = report.url;
-                document.getElementById('seo-scanned-url-preview').innerText = report.url;
-
-                // Animate circular health gauge
-                const score = report.overall_score || 0;
-                const gaugeFill = document.getElementById('seo-gauge-fill');
-                const gaugeNum = document.getElementById('seo-gauge-num');
-                
-                let strokeColor = 'var(--accent-red)';
-                if (score >= 75) strokeColor = 'var(--accent-emerald)';
-                else if (score >= 40) strokeColor = 'var(--accent-amber)';
-
-                if (gaugeFill) {
-                    gaugeFill.style.stroke = strokeColor;
-                    gaugeFill.style.strokeDashoffset = '440';
-                    setTimeout(() => {
-                        gaugeFill.style.strokeDashoffset = 440 - (score / 100) * 440;
-                    }, 50);
-                }
-
-                // Increment score counter beautifully
-                let count = 0;
-                if (gaugeNum) {
-                    gaugeNum.innerText = '0';
-                    const interval = setInterval(() => {
-                        if (count >= score) {
-                            gaugeNum.innerText = score;
-                            clearInterval(interval);
-                        } else {
-                            count += Math.ceil((score - count) / 4);
-                            if (count > score) count = score;
-                            gaugeNum.innerText = count;
-                        }
-                    }, 25);
-                }
-
-                // Update subscores
-                updateSubscore('seo-score', report.seo_score);
-                updateSubscore('struct-score', report.perf_score);
-                updateSubscore('sec-score', report.sec_score);
-
-                // Update details stats card
-                const d = report.details || {};
-                document.getElementById('det-title').innerText = d.title || 'No Title tag found';
-                document.getElementById('det-desc').innerText = d.description || 'No Meta Description tag found. Search engines will synthesize fallback snippets.';
-                document.getElementById('det-size').innerText = (d.html_size_kb || 0) + ' KB';
-                document.getElementById('det-time').innerText = (d.load_time_seconds || 0) + 's';
-                document.getElementById('det-h1').innerText = d.h1_count || '0';
-                document.getElementById('det-ssl').innerText = d.is_https ? 'Active (HTTPS)' : 'Disabled (HTTP)';
-                document.getElementById('det-images').innerText = d.img_count || '0';
-                document.getElementById('det-missing-alt').innerText = d.missing_alt || '0';
-                document.getElementById('det-css').innerText = d.stylesheet_count || '0';
-                document.getElementById('det-js').innerText = d.script_count || '0';
-
-                // Populate checks
-                renderAudits(report);
-                showNotif('Website analysis successful!', 3000, false);
-            } catch(e) {
-                if (loading) loading.style.display = 'none';
-                if (errorCard) {
-                    document.getElementById('seo-error-msg').innerText = e.message || 'Server timeout.';
-                    errorCard.style.display = 'block';
-                }
-                showNotif('Connection failure', 3000, true);
-            }
-        };
-
-        function updateSubscore(id, score) {
-            const label = document.getElementById(id + '-val');
-            const fill = document.getElementById(id + '-bar');
-            if (label) label.innerText = score + '/100';
-            
-            let color = 'var(--accent-red)';
-            if (score >= 75) color = 'var(--accent-emerald)';
-            else if (score >= 40) color = 'var(--accent-amber)';
-
-            if (fill) {
-                fill.style.width = '0%';
-                fill.style.background = color;
-                setTimeout(() => {
-                    fill.style.width = score + '%';
-                }, 50);
-            }
-        }
-
-        function renderAudits(report) {
-            const container = document.getElementById('seo-audits-list');
-            if (!container) return;
-
-            let html = '';
-            const crits = report.critical || [];
-            const warns = report.warnings || [];
-            const passs = report.passed || [];
-
-            // Critical Section
-            if (crits.length > 0) {
-                html += `<div class="audit-section-header">
-                    <span class="badge critical">Critical Issues</span>
-                    <h3>CRITICAL OPTIMIZATIONS REQUIRED (${crits.length})</h3>
-                </div>
-                <div class="audit-list">`;
-                crits.forEach(a => {
-                    html += `
-                    <div class="audit-card critical">
-                        <div class="audit-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                        </div>
-                        <div class="audit-info">
-                            <span class="audit-category-tag">${a.category || 'System'}</span>
-                            <div class="audit-title">${a.title}</div>
-                            <div class="audit-desc">${a.desc}</div>
-                        </div>
-                    </div>`;
-                });
-                html += `</div>`;
-            }
-
-            // Warnings Section
-            if (warns.length > 0) {
-                html += `<div class="audit-section-header">
-                    <span class="badge warning">Warnings</span>
-                    <h3>RECOMMENDED IMPROVEMENTS (${warns.length})</h3>
-                </div>
-                <div class="audit-list">`;
-                warns.forEach(a => {
-                    html += `
-                    <div class="audit-card warning">
-                        <div class="audit-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                        </div>
-                        <div class="audit-info">
-                            <span class="audit-category-tag">${a.category || 'SEO'}</span>
-                            <div class="audit-title">${a.title}</div>
-                            <div class="audit-desc">${a.desc}</div>
-                        </div>
-                    </div>`;
-                });
-                html += `</div>`;
-            }
-
-            // Passed Section
-            if (passs.length > 0) {
-                html += `<div class="audit-section-header">
-                    <span class="badge passed">Passed</span>
-                    <h3>SUCCESSFUL CHECKS (${passs.length})</h3>
-                </div>
-                <div class="audit-list">`;
-                passs.forEach(a => {
-                    html += `
-                    <div class="audit-card passed">
-                        <div class="audit-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                        </div>
-                        <div class="audit-info">
-                            <span class="audit-category-tag">${a.category || 'System'}</span>
-                            <div class="audit-title">${a.title}</div>
-                            <div class="audit-desc">${a.desc}</div>
-                        </div>
-                    </div>`;
-                });
-                html += `</div>`;
-            }
-
-            container.innerHTML = html;
-        }
 
         // Init
     </script>
@@ -4814,51 +4279,7 @@ def api_chart_stats():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/seo-checker")
-def seo_checker():
-    config = load_config()
-    return render_template_string(
-        HTML,
-        is_seo_checker=True,
-        is_school_dashboard=False,
-        contacts=[],
-        s={"total": 0, "phone": 0, "email": 0, "cities": 0, "filtered_total": 0, "quality_high": 0, "quality_medium": 0, "quality_low": 0, "avg_quality": 0, "with_phone_pct": 0, "with_email_pct": 0},
-        by_source={},
-        by_cat={},
-        page=1,
-        total_pages=1,
-        cities_default=config.get("cities", []),
-        categories_default=config.get("categories", []),
-        cities=[],
-        categories=[],
-        sources=[],
-        selected_city="",
-        selected_category="",
-        selected_source="",
-        selected_quality="",
-        search_query="",
-        sort_by="date",
-        limit=50
-    )
 
-
-@app.route("/api/seo-check")
-async def api_seo_check():
-    url = request.args.get("url", "").strip()
-    if not url:
-        return jsonify({"success": False, "error": "URL parameter is required"}), 400
-        
-    try:
-        from seo_analyzer import SEOAnalyzer
-        html, load_time, error = await SEOAnalyzer.fetch_html(url)
-        if error:
-            return jsonify({"success": False, "error": error}), 500
-            
-        report = SEOAnalyzer.analyze(url, html, load_time)
-        return jsonify({"success": True, "report": report})
-    except Exception as e:
-        logger.error(f"SEO check failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":
