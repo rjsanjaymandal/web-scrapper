@@ -648,6 +648,18 @@ def auto_pilot_task():
         from scrape_state import claim_scrape_job, finish_scrape_job
         config = load_config()
         
+        # Clear stale "running" locks that were never released
+        if redis_client:
+            try:
+                for key in redis_client.scan_iter("scraper:job:running:*"):
+                    ttl = redis_client.ttl(key)
+                    if ttl < 0:
+                        redis_client.delete(key)
+                    elif ttl < 120:
+                        redis_client.delete(key)
+            except Exception:
+                pass
+        
         cities = list(getattr(config, "cities", []))
         categories = list(getattr(config, "categories", []))
         random.shuffle(cities)
@@ -663,17 +675,18 @@ def auto_pilot_task():
             found_job = False
             for cat in categories:
                 for city in cities:
-                    claimed, reason, token = claim_scrape_job(city, cat, "AMFI")
-                    if not claimed:
-                        logger.info(f"Skipping {cat} in {city} ({reason})")
-                        continue
-
+                    # Let scrape_category_task handle its own claiming
                     set_status(f"AutoPilot: Scraping {cat} in {city} via AMFI", True)
                     try:
                         result = scrape_category_task(city=city, category=cat, source="AMFI")
                         count = result.get("count", 0)
-                        found_job = True
-                        set_status(f"AutoPilot: AMFI {city} done. Found {count} leads.", True)
+                        if count > 0:
+                            found_job = True
+                            set_status(f"AutoPilot: AMFI {city} done. Found {count} leads.", True)
+                        else:
+                            logger.info(f"AutoPilot: AMFI {city} returned 0 leads (already running or empty).")
+                        if redis_client:
+                            redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
                     except Exception as e:
                         logger.error(f"AutoPilot AMFI failed for {city}: {e}")
                         if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
@@ -682,8 +695,6 @@ def auto_pilot_task():
                             return {"status": "waiting", "reason": "site_blocked"}
                         continue
                     
-                    if redis_client:
-                        redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
                     break  # One city per cycle, re-queue
                 if found_job:
                     break
