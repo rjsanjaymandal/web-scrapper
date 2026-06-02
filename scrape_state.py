@@ -135,7 +135,7 @@ def finish_scrape_job(
         client.delete(_key("running", job_id))
 
         if success and count > 0:
-            ttl = _env_int("SCRAPE_DONE_TTL_SECONDS", 604800)
+            ttl = _env_int("SCRAPE_DONE_TTL_SECONDS", 3600)
             client.set(_key("done", job_id), payload, ex=ttl)
         elif success:
             ttl = _env_int("SCRAPE_EMPTY_TTL_SECONDS", 21600)

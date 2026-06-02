@@ -674,31 +674,30 @@ def auto_pilot_task():
         else:
             random.shuffle(categories)
             found_job = False
-            for cat in categories:
-                for city in cities:
-                    # Let scrape_category_task handle its own claiming
+            for city in cities:
+                city_total = 0
+                city_cats = []
+                for cat in categories:
                     set_status(f"AutoPilot: Scraping {cat} in {city} via AMFI", True)
                     try:
                         result = scrape_category_task(city=city, category=cat, source="AMFI")
                         count = result.get("count", 0)
                         if count > 0:
-                            found_job = True
-                            set_status(f"AutoPilot: AMFI {city} done. Found {count} leads.", True)
+                            city_total += count
+                            city_cats.append(cat)
                         else:
-                            logger.info(f"AutoPilot: AMFI {city} returned 0 leads (already running or empty).")
-                        if redis_client:
-                            redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
+                            logger.info(f"AutoPilot: AMFI {city} {cat} returned 0 leads.")
                     except Exception as e:
-                        logger.error(f"AutoPilot AMFI failed for {city}: {e}")
+                        logger.error(f"AutoPilot AMFI failed for {city} {cat}: {e}")
                         if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
                             set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
                             auto_pilot_task.apply_async(countdown=1800)
                             return {"status": "waiting", "reason": "site_blocked"}
-                        continue
-                    
-                    break  # One city per cycle, re-queue
-                if found_job:
-                    break
+                if city_total > 0:
+                    found_job = True
+                    set_status(f"AutoPilot: AMFI {city} done. Found {city_total} leads across {len(city_cats)} categories.", True)
+                    logger.info(f"AutoPilot: AMFI {city} -> {city_total} leads ({', '.join(city_cats)})")
+                    break  # One CITY per cycle (all categories done)
             
         if not found_job:
             set_status("AutoPilot: No new AMFI jobs found.", False)
@@ -707,11 +706,11 @@ def auto_pilot_task():
         logger.error(f"AutoPilot core error: {e}")
         set_status(f"AutoPilot Error: {e}", False)
         
-    # Self-Perpetuation: Always re-queue after 30 seconds unless explicitly stopped
+    # Self-Perpetuation: Always re-queue after 10 seconds unless explicitly stopped
     if redis_client:
         active = redis_client.get("scraper:auto_pilot:active")
         if not active or active.decode('utf-8') == "1":
-            auto_pilot_task.apply_async(countdown=30)
-            logger.info("AutoPilot: Re-queued next cycle in 30 seconds.")
+            auto_pilot_task.apply_async(countdown=10)
+            logger.info("AutoPilot: Re-queued next cycle in 10 seconds.")
             
     return {"status": "cycle_complete", "job_found": found_job}
