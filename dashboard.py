@@ -3484,6 +3484,8 @@ def trigger_scrape():
         use_business = request.args.get("business", "false").lower() == "true"
 
     if auto:
+        if auto_pilot_task is None:
+            return jsonify({"error": "Celery tasks not available (import failed)"}), 500
         if redis_client:
             redis_client.set("scraper:auto_pilot:active", "1")
         
@@ -3499,6 +3501,8 @@ def trigger_scrape():
         logger.info("Dashboard activated Continuous AutoPilot")
     elif not city and not category and not source:
         # Fallback for manual button click without params but not 'auto'
+        if direct_gov_scrape_batch is None:
+            return jsonify({"error": "Celery tasks not available (import failed)"}), 500
         set_status(
             "Queued auto scrape: CA-first official registries...",
             True,
@@ -3510,6 +3514,8 @@ def trigger_scrape():
         msg = "Auto scrape queued: Chartered Accountants first, then official registries."
         logger.info("Dashboard triggered CA-first auto government scrape")
     elif city and category:
+        if scrape_category_task is None:
+            return jsonify({"error": "Celery tasks not available (import failed)"}), 500
         log_msg = f"Dashboard triggered manual scrape: {category} in {city} (Source: {source or 'Auto'})"
         set_status(
             f"Queued: {category} in {city}...",
@@ -3519,9 +3525,11 @@ def trigger_scrape():
         task_result = scrape_category_task.delay(city=city, category=category, source=source, use_business=use_business)
         if task_result and getattr(task_result, "id", None):
             set_active_task_id(task_result.id)
-        msg = f"🚀 Scrape queued for {category} in {city}!"
+        msg = f"Scrape queued for {category} in {city}!"
         logger.info(log_msg)
     else:
+        if fast_scrape_task is None:
+            return jsonify({"error": "Celery tasks not available (import failed)"}), 500
         set_status(
             "Queued batch fast-scrape for all configured targets...",
             True,
@@ -3530,7 +3538,7 @@ def trigger_scrape():
         task_result = fast_scrape_task.delay(source=source)
         if task_result and getattr(task_result, "id", None):
             set_active_task_id(task_result.id)
-        msg = f"🚀 Batch fast-scrape queued for all Official sources!"
+        msg = f"Batch fast-scrape queued for all Official sources!"
     
     return jsonify({"message": msg, "task_id": getattr(task_result, "id", None)})
 
@@ -3638,6 +3646,8 @@ def trigger_direct_gov_batch():
     Scrapes SEBI, ICAI, NSE, MCA, AMFI without proxies.
     """
     os.environ.setdefault("CELERY_HEALTH_SERVER_STARTED", "1")
+    if direct_gov_scrape_batch is None:
+        return jsonify({"error": "Celery tasks not available (import failed)"}), 500
     try:
         set_status(
             "Queued direct government sites batch...",

@@ -653,7 +653,7 @@ def auto_pilot_task():
         random.shuffle(cities)
         
         # ONLY scrape Mutual Fund categories — everything else is skipped
-        categories = [c for c in categories if "mutual-fund" in c.lower()]
+        categories = [c for c in categories if "mutual fund" in c.lower()]
         if not categories:
             set_status("AutoPilot: No mutual-fund categories configured.", False)
             logger.warning("No mutual-fund categories found in config. Nothing to scrape.")
