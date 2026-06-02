@@ -651,90 +651,45 @@ def auto_pilot_task():
         cities = list(getattr(config, "cities", []))
         categories = list(getattr(config, "categories", []))
         random.shuffle(cities)
-        random.shuffle(categories)
         
-        # Prioritize financial categories (keep schools at the bottom)
-        priority_cats = [
-            "chartered-accountants", "accountants", "accounting-firms", "Chartered Accountants",
-            "financial-advisors", "insurance-agents", "mutual-fund-advisors",
-            "tax-consultants", "gst-consultants", "investment-consultants",
-            "loan-consultants", "business-consultants",
-        ]
-        for pcat in reversed(priority_cats):
-            if pcat in categories:
-                categories.remove(pcat)
-                categories.insert(0, pcat)
-        # Move schools to the end
-        if "schools" in categories:
-            categories.remove("schools")
-            categories.append("schools")
-        
-        # Sources to try in order (Hybrid: Official for quality, Directories for contact info)
-        sources = ["Official", "GROTAL", "YELLOWPAGES", "SULEKHA", "JUSTDIAL", "GMB"]
-        
-        found_job = False
-        for cat in categories:
-            # Category-level batch for direct-gov sources (handles ALL cities internally)
-            if any(k in cat.lower() for k in ["accountant", "mutual-fund", "insurance-agent", "investment-advisor"]):
-                claimed, reason, token = claim_scrape_job("batch", cat, "Official")
-                if claimed:
-                    set_status(f"AutoPilot: Starting direct gov batch for {cat}...", True)
+        # ONLY scrape Mutual Fund categories — everything else is skipped
+        categories = [c for c in categories if "mutual-fund" in c.lower()]
+        if not categories:
+            set_status("AutoPilot: No mutual-fund categories configured.", False)
+            logger.warning("No mutual-fund categories found in config. Nothing to scrape.")
+            found_job = False
+        else:
+            random.shuffle(categories)
+            found_job = False
+            for cat in categories:
+                for city in cities:
+                    claimed, reason, token = claim_scrape_job(city, cat, "AMFI")
+                    if not claimed:
+                        logger.info(f"Skipping {cat} in {city} ({reason})")
+                        continue
+
+                    set_status(f"AutoPilot: Scraping {cat} in {city} via AMFI", True)
                     try:
-                        result = direct_gov_scrape_batch()
-                        count = result.get("saved", 0)
+                        result = scrape_category_task(city=city, category=cat, source="AMFI")
+                        count = result.get("count", 0)
                         found_job = True
-                        set_status(f"AutoPilot: Finished direct batch for {cat}. Found {count} leads.", True)
+                        set_status(f"AutoPilot: AMFI {city} done. Found {count} leads.", True)
                     except Exception as e:
-                        logger.error(f"AutoPilot direct batch failed: {e}")
+                        logger.error(f"AutoPilot AMFI failed for {city}: {e}")
                         if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
                             set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
                             auto_pilot_task.apply_async(countdown=1800)
                             return {"status": "waiting", "reason": "site_blocked"}
-                    break  # One batch per cycle, re-queue after
-                continue  # Not claimable, try next category
-            
-            # Per-city general scraping for all other categories
-            for city in cities:
-                for src in sources:
-                    target_src = None if src == "Official" else src
+                        continue
                     
-                    claimed, reason, token = claim_scrape_job(city, cat, target_src)
-                    if claimed:
-                        set_status(f"AutoPilot: Starting {cat} in {city} via {src}", True)
-                        
-                        try:
-                            if redis_client:
-                                last_run = redis_client.get(f"scraper:last_run:{city}:{cat}")
-                                if last_run:
-                                    if time.time() - float(last_run) < 3600:
-                                        continue
-
-                            if "school" in cat.lower():
-                                result = school_scrape_task(city=city, category=cat)
-                                count = result.get("saved", 0)
-                            else:
-                                result = scrape_category_task(city=city, category=cat, source=target_src)
-                                count = result.get("count", 0)
-                            
-                            if redis_client:
-                                redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
-
-                            found_job = True
-                            set_status(f"AutoPilot: Finished {cat} in {city}. Found {count} leads.", True)
-                            break
-                        except Exception as e:
-                            logger.error(f"AutoPilot job failed: {e}")
-                            if "SITE_BLOCK_DETECTED" in str(e) or "PROXY_TRAFFIC_EXHAUSTED" in str(e):
-                                set_status("AutoPilot: Site blocking detected. Cooling down for 30 mins...", False)
-                                auto_pilot_task.apply_async(countdown=1800)
-                                return {"status": "waiting", "reason": "site_blocked"}
-                            continue
-                if found_job: break
-            if found_job: break
+                    if redis_client:
+                        redis_client.set(f"scraper:last_run:{city}:{cat}", str(time.time()), ex=86400)
+                    break  # One city per cycle, re-queue
+                if found_job:
+                    break
             
         if not found_job:
-            set_status("AutoPilot: No new jobs found. All targets recently scraped.", False)
-            # Still re-queue to check again later (maybe some TTLs expired)
+            set_status("AutoPilot: No new AMFI jobs found.", False)
     
     except Exception as e:
         logger.error(f"AutoPilot core error: {e}")
