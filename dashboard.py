@@ -2399,52 +2399,70 @@ window.updatePaginationUI = function(data) {
             window.applyFilters();
         };
 
-        window.exportData = function(fmt, btn) {
+        window.downloadBlob = async function(url, filename, btn, originalHTML) {
+            try {
+                const res = await fetch(url, { method: 'GET', credentials: 'same-origin' });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error('Export failed: ' + res.status + ' ' + text.substring(0, 200));
+                }
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+                return true;
+            } catch (err) {
+                console.error('Download failed, falling back to navigation:', err);
+                window.location.href = url;
+                setTimeout(() => { if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; } }, 3000);
+                return false;
+            }
+        };
+
+        window.exportData = async function(fmt, btn) {
             const q = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
             const src = document.getElementById('t-source')?.value || "";
             const originalHTML = btn ? btn.innerHTML : '';
-            
+
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<div class="spinner-sm"></div>';
             }
-            
+
             const baseUrl = window.location.origin;
             let url = baseUrl + "/export/" + fmt;
             const params = new URLSearchParams();
             if (city) params.set('city', city);
             if (q) params.set('q', q);
             if (src) params.set('source', src);
-            
+
             const currentUrl = new URL(window.location.href);
             const category = currentUrl.searchParams.get('category');
             if (category) params.set('category', category);
-            
+
             if (window.isSchoolDashboard) {
                 params.set('schools_only', 'true');
             } else {
                 params.set('financial_only', 'true');
             }
-            
+
             const queryString = params.toString();
             if (queryString) url += "?" + queryString;
-            
+
             const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'export.' + ext;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            setTimeout(() => {
-                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
-            }, 3000);
+            const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+            await window.downloadBlob(url, 'export_' + ts + '.' + ext, btn, originalHTML);
         };
 
-        window.exportAllData = function(fmt, btn) {
+        window.exportAllData = async function(fmt, btn) {
             const originalHTML = btn ? btn.innerHTML : '';
             if (btn) {
                 btn.disabled = true;
@@ -2465,22 +2483,13 @@ window.updatePaginationUI = function(data) {
             if (q) url += "&q=" + encodeURIComponent(q);
             if (src) url += "&source=" + encodeURIComponent(src);
             if (quality) url += "&quality=" + encodeURIComponent(quality);
-            
+
             const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'export.' + ext;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            setTimeout(() => {
-                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
-            }, 3000);
+            const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+            await window.downloadBlob(url, 'bulk_export_' + ts + '.' + ext, btn, originalHTML);
         };
 
-        window.exportCategory = function(category, fmt, btn) {
+        window.exportCategory = async function(category, fmt, btn) {
             const originalHTML = btn ? btn.innerHTML : '';
             if (btn) {
                 btn.disabled = true;
@@ -2492,17 +2501,11 @@ window.updatePaginationUI = function(data) {
             } else {
                 url += "&financial_only=true";
             }
-            
-            const link = document.createElement('a');
-            link.href = url;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            setTimeout(() => {
-                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
-            }, 3000);
+
+            const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
+            const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+            const safeCat = category.replace(/\\s+/g, '_');
+            await window.downloadBlob(url, safeCat + '_' + ts + '.' + ext, btn, originalHTML);
         };
 
         window.stopScraping = async function() {
