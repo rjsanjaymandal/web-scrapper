@@ -75,10 +75,10 @@ LOGS_DIR.mkdir(exist_ok=True)
 
 OFFICIAL_CATEGORY_SOURCE_MAP = {
     # Financial Services (Regulated)
-    "mutual-fund-agents": ["AMFI"],
-    "mutual-fund-agent": ["AMFI"],
+    "mutual-fund-agents": ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "GROTAL", "SULEKHA"],
+    "mutual-fund-agent": ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "GROTAL", "SULEKHA"],
     "mutual-fund-advisor": ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "GROTAL", "SULEKHA"],
-    "mutual-fund-distributor": ["AMFI", "YELLOWPAGES", "JUSTDIAL", "GROTAL", "SULEKHA"],
+    "mutual-fund-distributor": ["AMFI", "SEBI", "YELLOWPAGES", "JUSTDIAL", "GROTAL", "SULEKHA"],
     "insurance-agents": ["IRDAI"],
     "insurance-agent": ["IRDAI"],
     "insurance-advisor": ["IRDAI"],

@@ -1615,6 +1615,38 @@ HTML = """
         }
         .export-btn-red span { font-weight: 700; font-size: 13px; }
         .export-btn-red:hover { background: rgba(239,68,68,0.15); }
+        .export-btn-blue {
+            border: 1px solid var(--accent-blue);
+            background: rgba(59,130,246,0.08);
+            padding: 10px 12px;
+            height: auto;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .export-btn-blue svg { stroke: var(--accent-blue); }
+        .export-btn-blue span { color: var(--accent-blue); font-weight: 700; font-size: 13px; }
+        .export-btn-blue:hover { background: rgba(59,130,246,0.15); border-color: var(--accent-blue); }
+        .export-btn-amber {
+            border: 1px solid var(--accent-amber);
+            background: rgba(245,158,11,0.08);
+            padding: 10px 12px;
+            height: auto;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .export-btn-amber svg { stroke: var(--accent-amber); }
+        .export-btn-amber span { color: var(--accent-amber); font-weight: 700; font-size: 13px; }
+        .export-btn-amber:hover { background: rgba(245,158,11,0.15); border-color: var(--accent-amber); }
         .cat-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); }
         .btn-group { display: flex; gap: 3px; }
         .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; }
@@ -1926,6 +1958,18 @@ HTML = """
                         <h3>Lead Records</h3>
                         <div class="table-actions">
                             <span class="record-count">{{ contacts|length }} of {{ "{:,}".format(s.filtered_total) }} records</span>
+                            <button onclick="exportData('csv', this)" class="export-btn-green" title="Export filtered as CSV">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                <span>CSV</span>
+                            </button>
+                            <button onclick="exportData('xlsx', this)" class="export-btn-blue" title="Export filtered as Excel">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                <span>Excel</span>
+                            </button>
+                            <button onclick="exportData('json', this)" class="export-btn-amber" title="Export filtered as JSON">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                <span>JSON</span>
+                            </button>
                         </div>
                     </div>
                     <div class="table-wrap">
