@@ -3834,6 +3834,10 @@ def export(fmt):
     
     export_all = request.args.get("all") == "true"
     target_cat = request.args.get("category", "")
+
+    search_query = request.args.get("q", "")
+    filter_city = request.args.get("city", "")
+    filter_source = request.args.get("source", "")
     
     try:
         conn = get_db()
@@ -3843,51 +3847,41 @@ def export(fmt):
         financial_only = request.args.get("financial_only") == "true"
 
         if export_all:
-            search_query = request.args.get("q", "")
-            filter_city = request.args.get("city", "")
-            filter_source = request.args.get("source", "")
             filter_quality = request.args.get("quality", "")
             filter_category = target_cat or request.args.get("category", "")
-            where_sql, params = build_contact_filters(
-                search_query, filter_city, filter_category, filter_source,
-                quality=filter_quality,
-                exclude_schools=financial_only, only_schools=schools_only,
-            )
         else:
-            search_query = request.args.get("q", "")
-            filter_city = request.args.get("city", "")
+            filter_quality = ""
             filter_category = request.args.get("category", "")
-            filter_source = request.args.get("source", "")
-            where_sql, params = build_contact_filters(
-                search_query,
-                filter_city,
-                filter_category,
-                filter_source,
-                exclude_schools=financial_only,
-                only_schools=schools_only
-            )
+
+        where_sql, params = build_contact_filters(
+            search_query, filter_city, filter_category, filter_source,
+            quality=filter_quality,
+            exclude_schools=financial_only, only_schools=schools_only,
+        )
             
         logger.info(f"Export query: WHERE {where_sql} with params {params}")
 
-        # For large exports, we use streaming to avoid memory issues
+        # Support user-specified limit via query param; cap at 200k
+        max_rows = request.args.get("limit", type=int)
+        if max_rows is None:
+            max_rows = 50000 if export_all else 20000
+        max_rows = min(max_rows, 200000)
+
         if fmt == "csv":
             import csv
             
             def generate():
-                # Yield Header
                 out = io.StringIO()
                 fields = ["name", "phone", "email", "address", "category", "city", "area", "state", "source", "scraped_at", "arn", "license_no"]
                 writer = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
                 writer.writeheader()
                 yield out.getvalue()
-                
-                # Yield Data in chunks
-                cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC", params)
+
+                cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {max_rows}", params)
                 while True:
                     rows = cur.fetchmany(1000)
                     if not rows:
                         break
-                    
                     out = io.StringIO()
                     writer = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
                     for r in rows:
@@ -3899,26 +3893,18 @@ def export(fmt):
                                 row[k] = ""
                         writer.writerow(row)
                     yield out.getvalue()
-                
                 cur.close()
                 conn.close()
 
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            if export_all and target_cat:
-                filename = f"bulk_export_{target_cat.replace(' ', '_').lower()}_{ts}.csv"
-            else:
-                filename = f"export_{ts}.csv" if not export_all else f"bulk_export_{ts}.csv"
-            
+            filename = f"bulk_export_{target_cat.replace(' ', '_').lower()}_{ts}.csv" if export_all and target_cat else f"bulk_export_{ts}.csv" if export_all else f"export_{ts}.csv"
             return Response(
                 stream_with_context(generate()),
                 mimetype="text/csv",
                 headers={"Content-Disposition": f"attachment; filename={filename}"}
             )
 
-        # For non-streaming formats, we still need to load data
-        # We cap these to prevent crash
-        limit = 50000 if export_all else 20000
-        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {limit}", params)
+        cur.execute(f"SELECT * FROM contacts WHERE {where_sql} ORDER BY scraped_at DESC LIMIT {max_rows}", params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
@@ -3938,10 +3924,7 @@ def export(fmt):
         if filter_category: parts.append(filter_category.replace(' ', '_'))
         if search_query: parts.append(search_query.replace(' ', '_'))
     else:
-        if target_cat:
-            parts.append(f"BULK_{target_cat.replace(' ', '_').upper()}")
-        else:
-            parts.append("BULK_ALL")
+        parts.append(f"BULK_{target_cat.replace(' ', '_').upper()}" if target_cat else "BULK_ALL")
         
     filename_prefix = "_".join(parts)
     total_rows = len(rows)
@@ -3950,6 +3933,7 @@ def export(fmt):
         return jsonify({
             "status": "success",
             "count": total_rows,
+            "limit": max_rows,
             "filters": "ALL" if export_all else {
                 "search": search_query,
                 "city": filter_city,
