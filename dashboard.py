@@ -3057,7 +3057,7 @@ window.updatePaginationUI = function(data) {
                     if (e.target.id === 't-cat' || e.target.id === 't-city') {
                         e.preventDefault();
                         applyFilters();
-
+                    }
                 }
                 return;
             }
