@@ -2403,15 +2403,11 @@ window.updatePaginationUI = function(data) {
             const q = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
             const src = document.getElementById('t-source')?.value || "";
+            const originalHTML = btn ? btn.innerHTML : '';
             
             if (btn) {
-                const originalHTML = btn.innerHTML;
                 btn.disabled = true;
                 btn.innerHTML = '<div class="spinner-sm"></div>';
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = originalHTML;
-                }, 5000);
             }
             
             const baseUrl = window.location.origin;
@@ -2421,7 +2417,6 @@ window.updatePaginationUI = function(data) {
             if (q) params.set('q', q);
             if (src) params.set('source', src);
             
-            // Preserve category parameter if present in current URL
             const currentUrl = new URL(window.location.href);
             const category = currentUrl.searchParams.get('category');
             if (category) params.set('category', category);
@@ -2434,18 +2429,26 @@ window.updatePaginationUI = function(data) {
             
             const queryString = params.toString();
             if (queryString) url += "?" + queryString;
-            window.location.assign(url);
+            
+            const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'export.' + ext;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => {
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+            }, 3000);
         };
 
         window.exportAllData = function(fmt, btn) {
+            const originalHTML = btn ? btn.innerHTML : '';
             if (btn) {
-                const originalHTML = btn.innerHTML;
                 btn.disabled = true;
                 btn.innerHTML = '<div class="spinner-sm"></div>';
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = originalHTML;
-                }, 5000);
             }
             const q = document.getElementById('t-cat')?.value || "";
             const city = document.getElementById('t-city')?.value || "";
@@ -2462,18 +2465,26 @@ window.updatePaginationUI = function(data) {
             if (q) url += "&q=" + encodeURIComponent(q);
             if (src) url += "&source=" + encodeURIComponent(src);
             if (quality) url += "&quality=" + encodeURIComponent(quality);
-            window.location.assign(url);
+            
+            const ext = fmt === 'xlsx' ? 'xlsx' : fmt;
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'export.' + ext;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => {
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+            }, 3000);
         };
 
         window.exportCategory = function(category, fmt, btn) {
+            const originalHTML = btn ? btn.innerHTML : '';
             if (btn) {
-                const originalHTML = btn.innerHTML;
                 btn.disabled = true;
                 btn.innerHTML = '<div class="spinner-sm"></div>';
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = originalHTML;
-                }, 5000);
             }
             let url = window.location.origin + "/export/" + fmt + "?all=true&category=" + encodeURIComponent(category);
             if (window.isSchoolDashboard) {
@@ -2481,7 +2492,17 @@ window.updatePaginationUI = function(data) {
             } else {
                 url += "&financial_only=true";
             }
-            window.location.assign(url);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => {
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+            }, 3000);
         };
 
         window.stopScraping = async function() {
