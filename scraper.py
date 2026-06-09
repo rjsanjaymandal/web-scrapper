@@ -826,17 +826,18 @@ class ContactScraper:
             return None
 
         try:
-            await self.page.goto(
-                detail_url,
-                timeout=self.config.timeout_seconds * 1000,
-                wait_until="networkidle",
-            )
-            await asyncio.sleep(1)
-
-            page_text = await self.page.content()
-            email = EmailVerifier.extract_from_text(page_text)
-
-            return email
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    detail_url,
+                    timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds),
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                ) as resp:
+                    if resp.status == 200:
+                        page_text = await resp.text()
+                        from processing import ProcessingHandler
+                        email = ProcessingHandler.extract_email_from_text(page_text)
+                        return email
+            return None
         except Exception as e:
             logger.debug(f"Email extraction failed: {e}")
             return None
@@ -1213,6 +1214,12 @@ class ContactScraper:
         max_pages: Optional[int] = None,
         on_progress=None,
     ) -> List[Dict]:
+        """
+        HTTP-based page scraper (replaces legacy Playwright path).
+        Uses PoliteHTTPScraper for reliable Railway deployment.
+        """
+        from polite_http_scraper import PoliteHTTPScraper
+
         all_listings = []
         limit = max_pages or self.config.max_pages
         start_page = load_progress(
@@ -1225,155 +1232,129 @@ class ContactScraper:
             )
             start_page = 1
 
-        for page_num in range(start_page, limit + 1):
-            page_url = (
-                scraper.build_search_url(city, category, page_num)
-                if scraper and page_num > 1
-                else url
-            )
-            if page_num > 1 and page_url == url:
-                break
+        proxy = self.proxy_manager.get_proxy_string()
+        async with PoliteHTTPScraper(max_concurrent=3, proxy=proxy) as fast_engine:
+            for page_num in range(start_page, limit + 1):
+                page_url = (
+                    scraper.build_search_url(city, category, page_num)
+                    if scraper and page_num > 1
+                    else url
+                )
+                if page_num > 1 and page_url == url:
+                    break
 
-            retries = 0
-            success = False
+                retries = 0
+                success = False
 
-            while retries < self.config.max_retries and not success:
-                try:
-                    logger.info(f"Fetching: {page_url}")
+                while retries < self.config.max_retries and not success:
+                    try:
+                        logger.info(f"Fetching: {page_url}")
 
-                    await self.ensure_browser()
-                    await self.page.goto(
-                        page_url,
-                        timeout=self.config.timeout_seconds * 1000,
-                        wait_until="networkidle",
-                    )
-                    await asyncio.sleep(2)
+                        html_content = await fast_engine.get(page_url)
+                        if not html_content:
+                            logger.warning(f"Empty response for {page_url}")
+                            break
 
-                    page_title = await self.page.title()
-                    page_url_final = self.page.url
-                    logger.info(
-                        f"Page loaded - Title: {page_title}, URL: {page_url_final}"
-                    )
+                        page_text_lower = html_content.lower()
+                        if (
+                            "captcha" in page_text_lower
+                            or "verify" in page_text_lower
+                            or "robot" in page_text_lower
+                            or "unusual activity" in page_text_lower
+                        ):
+                            logger.warning("[DEBUG] Detection: CAPTCHA or bot detection detected!")
+                            self.proxy_manager.get_proxy()
+                            break
 
-                    # 1. Human-like interaction (vCPU optimized)
-                    await self.human_scroll(self.page)
-
-                    page_text = await self.page.inner_text("body")
-                    page_text_lower = page_text.lower()
-
-                    if (
-                        "captcha" in page_text_lower
-                        or "verify" in page_text_lower
-                        or "robot" in page_text_lower
-                        or "unusual activity" in page_text_lower
-                    ):
-                        logger.warning("[DEBUG] Detection: CAPTCHA or bot detection detected!")
-                        # Rotate proxy profile on next retry
-                        self.proxy_manager.get_proxy() 
-                        break
-
-                    error_signatures = [
-                        "service unavailable",
-                        "gateway timeout",
-                        "404 not found",
-                        "cannot find the requested page",
-                        "azure front door",
-                    ]
-                    if any(
-                        signature in page_text_lower for signature in error_signatures
-                    ):
-                        logger.warning(
-                            "Source returned an error page; skipping extraction for this source"
-                        )
-                        break
-
-                    await self.rate_limiter.wait()
-
-                    # THE GOLDEN RULE: Save raw HTML first before parsing (0:37)
-                    html_content = await self.page.content()
-                    raw_path = storage.save(
-                        html_content,
-                        scraper.source_name if scraper else "Unknown",
-                        city,
-                        category,
-                    )
-                    if raw_path:
-                        logger.info(f"[STORAGE] Raw HTML saved: {raw_path}")
-
-                    # Anti-Detection: Standard randomized jitter delay (Updated to 5-15s)
-                    jitter = random.uniform(
-                        self.config.request_delay_min, self.config.request_delay_max
-                    )
-                    logger.info(f"Stealth jitter: Sleeping for {jitter:.2f}s")
-                    await asyncio.sleep(jitter)
-
-                    # Extract data from current page (Optionally using raw HTML)
-                    listings = await self._extract_current_page(
-                        city, category, scraper, html_content=html_content
-                    )
-                    logger.info(
-                        f"Extracted {len(listings)} listings from page {page_num}"
-                    )
-
-                    if not listings:
-                        logger.warning(f"No listings found on page {page_num}")
-                        break
-
-                    processed = await self._process_listings(listings)
-                    if processed:
-                        await self.save_to_db(
-                            processed,
-                            category,
-                            city,
-                            scraper.source_name if scraper else "Unknown",
-                            self.page.url,
-                        )
-                        all_listings.extend(processed)
-
-                        if on_progress:
-                            on_progress(
-                                {
-                                    "page": page_num,
-                                    "total_pages": limit,
-                                    "leads": len(processed),
-                                    "source": scraper.source_name
-                                    if scraper
-                                    else "Unknown",
-                                }
+                        error_signatures = [
+                            "service unavailable",
+                            "gateway timeout",
+                            "404 not found",
+                            "cannot find the requested page",
+                            "azure front door",
+                        ]
+                        if any(
+                            signature in page_text_lower for signature in error_signatures
+                        ):
+                            logger.warning(
+                                "Source returned an error page; skipping extraction for this source"
                             )
+                            break
 
-                        # Clear memory for long crawls
-                        if len(all_listings) > 2000:
-                            all_listings = []
+                        await self.rate_limiter.wait()
 
-                    # Update progress after each successful page
-                    save_progress(
-                        city,
-                        category,
-                        scraper.source_name if scraper else "Unknown",
-                        page_num + 1,
-                    )
-
-                    success = True
-                    self.rate_limiter.record_success()
-                    self.stats["successful"] += 1
-
-                except Exception as e:
-                    if self._is_proxy_error(e) and not self.browser_proxy_disabled:
-                        logger.warning(
-                            "Proxy failed during page fetch, retrying browser without proxy"
+                        raw_path = storage.save(
+                            html_content,
+                            scraper.source_name if scraper else "Unknown",
+                            city,
+                            category,
                         )
-                        await self.init_browser(disable_proxy=True, force_restart=True)
-                        continue
+                        if raw_path:
+                            logger.info(f"[STORAGE] Raw HTML saved: {raw_path}")
 
-                    retries += 1
-                    self.rate_limiter.record_failure()
-                    self.stats["failed"] += 1
-                    logger.warning(f"Retry {retries}/{self.config.max_retries}: {e}")
-                    await asyncio.sleep(random.uniform(3, 8))
+                        jitter = random.uniform(
+                            self.config.request_delay_min, self.config.request_delay_max
+                        )
+                        logger.info(f"Stealth jitter: Sleeping for {jitter:.2f}s")
+                        await asyncio.sleep(jitter)
 
-            if not success:
-                logger.error(f"Failed after {self.config.max_retries} retries")
+                        listings = await self._extract_current_page(
+                            city, category, scraper, html_content=html_content
+                        )
+                        logger.info(
+                            f"Extracted {len(listings)} listings from page {page_num}"
+                        )
+
+                        if not listings:
+                            logger.warning(f"No listings found on page {page_num}")
+                            break
+
+                        processed = await self._process_listings(listings)
+                        if processed:
+                            await self.save_to_db(
+                                processed,
+                                category,
+                                city,
+                                scraper.source_name if scraper else "Unknown",
+                                page_url,
+                            )
+                            all_listings.extend(processed)
+
+                            if on_progress:
+                                on_progress(
+                                    {
+                                        "page": page_num,
+                                        "total_pages": limit,
+                                        "leads": len(processed),
+                                        "source": scraper.source_name
+                                        if scraper
+                                        else "Unknown",
+                                    }
+                                )
+
+                            if len(all_listings) > 2000:
+                                all_listings = []
+
+                        save_progress(
+                            city,
+                            category,
+                            scraper.source_name if scraper else "Unknown",
+                            page_num + 1,
+                        )
+
+                        success = True
+                        self.rate_limiter.record_success()
+                        self.stats["successful"] += 1
+
+                    except Exception as e:
+                        retries += 1
+                        self.rate_limiter.record_failure()
+                        self.stats["failed"] += 1
+                        logger.warning(f"Retry {retries}/{self.config.max_retries}: {e}")
+                        await asyncio.sleep(random.uniform(3, 8))
+
+                if not success:
+                    logger.error(f"Failed after {self.config.max_retries} retries")
 
         return all_listings
 
